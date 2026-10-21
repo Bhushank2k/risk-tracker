@@ -56,7 +56,8 @@ class MainActivity : ComponentActivity() {
         val store = Store(applicationContext)
         inrRate = store.inr
         setContent {
-            val dark = isSystemInDarkTheme()
+            var themeMode by remember { mutableStateOf(store.themeMode) }
+            val dark = when (themeMode) { "Light" -> false; "Dark" -> true; else -> isSystemInDarkTheme() }
             val ctx = LocalContext.current
             val scheme = when {
                 android.os.Build.VERSION.SDK_INT >= 31 ->
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
                 else -> lightColorScheme()
             }
             MaterialTheme(colorScheme = scheme) {
-                Surface(Modifier.fillMaxSize()) { App(store) }
+                Surface(Modifier.fillMaxSize()) { App(store, themeMode, onThemeModeChange = { themeMode = it; store.themeMode = it }) }
             }
         }
     }
@@ -73,15 +74,14 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun App(store: Store) {
+fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
-    val titles = listOf("Daily PNL", "Journal", "Calculator", "Leverage", "Sync", "About")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Warning,
-        Icons.Default.Refresh, Icons.Default.Info)
+    val titles = listOf("Daily P&L", "Trades", "More")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info)
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Risk Tracker") }) },
@@ -89,8 +89,8 @@ fun App(store: Store) {
             NavigationBar {
                 titles.forEachIndexed { i, t ->
                     NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
+                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; else -> tab >= 2 },
+                        onClick = { tab = if (i == 2) 6 else i },
                         icon = { Icon(icons[i], contentDescription = null) },
                         label = { Text(t) }
                     )
@@ -120,7 +120,8 @@ fun App(store: Store) {
                     entries = synced
                     syncedCount = synced.size
                 }
-                else -> AboutScreen()
+                5 -> AboutScreen()
+                else -> MoreScreen(themeMode, onThemeModeChange) { tab = it }
             }
         }
     }
