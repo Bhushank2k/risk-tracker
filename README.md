@@ -1,46 +1,31 @@
-# Risk Tracker
+# Risk Tracker — Android
 
-Crypto futures trading tracker — with a Material 3 Expressive-inspired responsive UI prototype.
+A native Android app built with Kotlin and Jetpack Compose for crypto-futures risk tracking.
 
-## Preview
+## Features
 
-Open [index.html](./index.html) directly in a browser, or serve this folder locally:
+- Daily P&L tracking, balance chart, and CSV export
+- Native trade journal for closed long/short trades
+- Trade analytics: net P&L after fees, win rate, profit factor, average wins/losses, and maximum drawdown
+- Local on-device trade storage and CSV sharing
+- Position sizing and risk calculator
+- Leverage/liquidation reference table
+- Optional Google Sheets sync for Daily P&L
+- Light/dark theme support
+
+## Build and test
+
+Requirements: JDK 17, Android SDK (API 36), and Gradle 8.13 or compatible.
 
 ```bash
-python -m http.server 8000
+gradle testDebugUnitTest --no-daemon
+gradle assembleDebug --no-daemon
 ```
 
-Then visit http://localhost:8000.
+The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs the unit tests and builds the APK for pushes and pull requests.
 
-## UI prototype features
+## Trade journal calculation notes
 
-- Risk overview with portfolio summary cards and illustrative equity visualization
-- Positions table with risk labels and CSV export
-- Risk analytics and an interactive risk checklist
-- Trade journal with long/short realized P&L estimates, fees, searchable history, CSV export, equity curve, win rate, profit factor, and maximum drawdown
-- Browser journal entries persist locally in that browser; they are not synced to Android or Google Sheets
-- Dedicated **Developer · About** tab with project information, project details, design notes, and next steps
-- Responsive desktop sidebar and mobile bottom navigation
-- Dark/light theme toggle, accessible status announcements, and reduced-motion support
-- No JavaScript framework or build step required
+P&L is estimated from entered entry/exit prices, quantity, side, and fees. It does not include funding, slippage, or exchange-specific contract multipliers. Journal entries are stored locally on the Android device and are not synchronized with Google Sheets. No exchange API is connected and the app does not execute trades.
 
-## Android apps
-
-- `app/` is the native Jetpack Compose app (daily PNL, trade journal and analytics, position calculator, leverage table, Google Sheet sync, About). It follows the system light/dark theme and uses dynamic color on Android 12+.
-- `android/` wraps this web prototype in a WebView; CI copies `index.html` and `logo.svg` into it.
-
-Both use the adaptive launcher icon in `res/` (with a monochrome layer for themed icons), generated from `logo.svg`.
-
-Run the calculator unit tests with `gradle testDebugUnitTest`.
-
-## Important data note
-
-The dashboard's portfolio/position overview currently uses **illustrative demo values only**. The trade journal is user-entered and stores browser data locally; Android journal entries are stored locally on-device and are not synchronized with the browser journal. It does not connect to an exchange, provide live prices, calculate real liquidation levels, or execute trades. Connect a trusted backend and validate risk calculations before relying on this UI for financial decisions. Never expose exchange API secrets in client-side code.
-
-## Design direction
-
-Material 3 Expressive-inspired: generous rounded surfaces, clear typography, semantic risk colors, responsive navigation, and a risk-first information hierarchy.
-
-## Repository
-
-https://github.com/Bhushank2k/risk-tracker
+Never put exchange API secrets in source code or client-side builds.
