@@ -354,28 +354,69 @@ fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced
 }
 
 @Composable
-fun MoreScreen(themeMode: String, onThemeModeChange: (String) -> Unit, onNavigate: (Int) -> Unit) {
+fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onNavigate: (Int) -> Unit) {
+    val context = LocalContext.current
+    var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
+    var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
+    var backupMessage by remember { mutableStateOf("") }
+    val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
+    }
+    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try { val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file"); onRestore(store.importBackup(raw)); backupMessage = "Backup restored. Existing records were replaced by the selected backup." } catch (e: Exception) { backupMessage = "Restore failed: " + (e.message ?: "invalid backup") }
+    }
+    val weekly = entries.filter { it.date.takeLast(4).isNotEmpty() }.takeLast(7)
+    val monthKey = java.text.SimpleDateFormat("yyyy-MM", Locale.US)
+    val monthly = entries.filter { e -> try { val date = parseReportDate(e.date); monthKey.format(date) == monthKey.format(Date()) } catch (_: Exception) { false } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         listOf(Triple("Position calculator", "Position size, risk and target", 2), Triple("Leverage & liquidation", "Compare leverage risk", 3), Triple("Google Sheets sync", "Sync Daily P&L only", 4), Triple("About Risk Tracker", "App details and risk disclaimer", 5)).forEach { (title, subtitle, destination) ->
-            Card(Modifier.fillMaxWidth(), onClick = { onNavigate(destination) }) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+            Card(Modifier.fillMaxWidth(), onClick = { onNavigate(destination) }) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary) } }
         }
         HorizontalDivider()
+        Text("Weekly report · last 7 recorded days", style = MaterialTheme.typography.titleMedium)
+        ReportSummary(weekly)
+        Text("Monthly report · current month", style = MaterialTheme.typography.titleMedium)
+        ReportSummary(monthly)
+        HorizontalDivider()
+        Text("Risk limits", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
+        Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider()
+        Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export all records (JSON)") }
+        OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Restore from backup") }
+        if (backupMessage.isNotBlank()) Text(backupMessage, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            listOf("System", "Light", "Dark").forEachIndexed { index, mode ->
-                SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) }
-            }
-        }
-        Text("Daily P&L tracks one net result per day and can sync to Sheets. Trades records each closed position with side, entry, exit, quantity and fees. Journal results do not automatically change Daily P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
+        Text("Daily P&L is one net result per day and remains separate from individual trades. Weekly and monthly reports use Daily P&L records. Trade journal statistics and filters use closed trades only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+private fun parseReportDate(value: String): Date {
+    val formats = listOf("yyyy-MM-dd", "d/M/yyyy", "M/d/yyyy", "dd/MM/yyyy")
+    formats.forEach { pattern -> try { return java.text.SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(value)!! } catch (_: Exception) {} }
+    throw IllegalArgumentException("Unrecognized date: " + value)
+}
+
+@Composable
+private fun ReportSummary(rows: List<PnlEntry>) {
+    val net = rows.sumOf { it.pnl }
+    val decisive = rows.filter { it.pnl != 0.0 }
+    val wins = decisive.count { it.pnl > 0 }
+    val best = rows.maxByOrNull { it.pnl }
+    val worst = rows.minByOrNull { it.pnl }
+    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text("Net P&L: " + net.usd(), color = pnlColor(net), fontWeight = FontWeight.Bold)
+        Text("Win rate: " + (if (decisive.isEmpty()) 0.0 else wins * 100.0 / decisive.size).pct(1))
+        Text("Best day: " + (best?.date ?: "—") + " · " + (best?.pnl?.usd() ?: "—"))
+        Text("Worst day: " + (worst?.date ?: "—") + " · " + (worst?.pnl?.usd() ?: "—"))
+        Text("Return on opening balance: " + (if (rows.firstOrNull()?.balance ?: 0.0 > 0) (net / rows.first().balance * 100).pct(2) else "—"))
+    } }
+}
 // ---------------- About ----------------
 
 @Composable
