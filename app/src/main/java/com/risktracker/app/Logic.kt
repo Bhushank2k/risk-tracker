@@ -238,6 +238,33 @@ class Store(context: Context) {
         prefs.edit().putString("trade_journal_v1", arr.toString()).apply()
     }
 
+    var maxDailyLoss: Double
+        get() = prefs.getString("max_daily_loss", "20")?.toDoubleOrNull() ?: 20.0
+        set(v) { prefs.edit().putString("max_daily_loss", v.toString()).apply() }
+    var maxTradeRisk: Double
+        get() = prefs.getString("max_trade_risk", "5")?.toDoubleOrNull() ?: 5.0
+        set(v) { prefs.edit().putString("max_trade_risk", v.toString()).apply() }
+
+    fun exportBackup(): String {
+        val root = JSONObject().put("format", "risk-tracker-backup-v1")
+        val daily = JSONArray()
+        loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl)) }
+        val journal = JSONArray()
+        loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
+        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).toString(2)
+    }
+
+    fun importBackup(raw: String): Pair<List<PnlEntry>, List<TradeEntry>> {
+        val root = JSONObject(raw)
+        require(root.optString("format") == "risk-tracker-backup-v1") { "Unsupported backup format." }
+        val a = root.getJSONArray("dailyEntries")
+        val daily = (0 until a.length()).map { i -> a.getJSONObject(i).let { PnlEntry(it.getString("date"),it.getDouble("balance"),it.getDouble("pnl")) } }
+        val b = root.getJSONArray("trades")
+        val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
+        saveEntries(daily); saveTrades(journal)
+        maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk)
+        return daily to journal
+    }
     fun loadInput(): CalcInput {
         val d = CalcInput()
         return CalcInput(
