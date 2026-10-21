@@ -93,4 +93,38 @@ class LogicTest {
         assertEquals(0.0, s.currentBalance, eps)
         assertEquals(0.0, s.winRate, eps)
     }
+    @Test
+    fun longAndShortTradePnlSubtractsFees() {
+        val long = TradeEntry("1", "2026-01-01", "BTCUSDT", "Long", 100.0, 110.0, 2.0, 1.0)
+        val short = TradeEntry("2", "2026-01-02", "ETHUSDT", "Short", 100.0, 90.0, 3.0, 2.0)
+        assertEquals(19.0, long.pnl, eps)
+        assertEquals(28.0, short.pnl, eps)
+    }
+
+    @Test
+    fun tradeStatsComputeWinRateProfitFactorAndDrawdown() {
+        val trades = listOf(
+            TradeEntry("1", "2026-01-01", "BTC", "Long", 100.0, 110.0, 1.0),
+            TradeEntry("2", "2026-01-02", "BTC", "Long", 100.0, 95.0, 1.0),
+            TradeEntry("3", "2026-01-03", "BTC", "Short", 100.0, 100.0, 1.0)
+        )
+        val s = computeTradeStats(trades)
+        assertEquals(3, s.count)
+        assertEquals(1, s.wins)
+        assertEquals(1, s.losses)
+        assertEquals(5.0, s.netPnl, eps)
+        assertEquals(50.0, s.winRate, eps)
+        assertEquals(2.0, s.profitFactor, eps)
+        assertEquals(5.0, s.maxDrawdown, eps)
+    }
+
+    @Test
+    fun emptyTradeJournalHasSafeStats() {
+        val s = computeTradeStats(emptyList())
+        assertEquals(0, s.count)
+        assertEquals(0.0, s.winRate, eps)
+        assertEquals(0.0, s.netPnl, eps)
+        assertEquals(0.0, s.maxDrawdown, eps)
+    }
+
 }
