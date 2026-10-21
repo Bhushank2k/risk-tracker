@@ -292,12 +292,13 @@ class Store(context: Context) {
 }
 
 fun entriesToCsv(list: List<PnlEntry>, inrRate: Double): String {
-    val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing\n")
+    val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing,DisciplineScore,Notes\n")
     list.forEachIndexed { idx, e ->
         val inr = e.balance * inrRate
         val inrPnl = e.pnl * inrRate
+        val safeNotes = e.notes.replace("\"", "\"\"").replace("\n", " ")
         sb.append("${idx + 1},${e.date},${"%.2f".format(e.balance)},${"%.2f".format(e.pnl)},")
-            .append("${"%.2f".format(e.wlPercent)}%,${inr.toLong()},${inrPnl.toLong()},${(inr + inrPnl).toLong()}\n")
+            .append("${"%.2f".format(e.wlPercent)}%,${inr.toLong()},${inrPnl.toLong()},${(inr + inrPnl).toLong()},${e.disciplineScore},\"${safeNotes}\"\n")
     }
     return sb.toString()
 }
