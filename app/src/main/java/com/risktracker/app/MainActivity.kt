@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,7 +81,7 @@ fun App(store: Store) {
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
     val titles = listOf("Daily PNL", "Journal", "Calculator", "Leverage", "Sync", "About")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.List, Icons.Default.Build, Icons.Default.Warning,
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Warning,
         Icons.Default.Refresh, Icons.Default.Info)
 
     Scaffold(
