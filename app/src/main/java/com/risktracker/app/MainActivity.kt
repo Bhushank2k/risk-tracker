@@ -103,7 +103,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -134,7 +134,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
@@ -178,6 +178,14 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, o
                         Spacer(Modifier.height(8.dp))
                         Text("${stats.winDays}W / ${stats.lossDays}L  •  win rate ${stats.winRate.pct(0)}",
                             style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (entries.lastOrNull()?.pnl?.let { it >= dailyProfitTarget } == true) {
+                item {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Text("Daily profit target reached: " + entries.last().pnl.usd() + " of " + dailyProfitTarget.usd() + ". Protect your gains and follow your plan.",
+                            Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -478,6 +486,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     val context = LocalContext.current
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
+    var profitTarget by remember { mutableStateOf(store.dailyProfitTarget.toString()) }
     var backupMessage by remember { mutableStateOf("") }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -510,7 +519,8 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
+        OutlinedTextField(profitTarget, { profitTarget = it }, label = { Text("Daily profit target (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); val p = profitTarget.toDoubleOrNull(); if (d != null && t != null && p != null && d > 0 && t > 0 && p > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; store.dailyProfitTarget = p; backupMessage = "Daily targets and risk limits saved." } else backupMessage = "Enter positive numbers for all targets and limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save targets & risk limits") }
         Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
