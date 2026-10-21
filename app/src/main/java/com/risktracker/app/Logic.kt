@@ -244,6 +244,9 @@ class Store(context: Context) {
     var maxTradeRisk: Double
         get() = prefs.getString("max_trade_risk", "5")?.toDoubleOrNull() ?: 5.0
         set(v) { prefs.edit().putString("max_trade_risk", v.toString()).apply() }
+    var dailyProfitTarget: Double
+        get() = prefs.getString("daily_profit_target", "10")?.toDoubleOrNull() ?: 10.0
+        set(v) { prefs.edit().putString("daily_profit_target", v.toString()).apply() }
 
     fun exportBackup(): String {
         val root = JSONObject().put("format", "risk-tracker-backup-v1")
@@ -251,7 +254,7 @@ class Store(context: Context) {
         loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl).put("notes",it.notes).put("disciplineScore",it.disciplineScore)) }
         val journal = JSONArray()
         loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
-        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).toString(2)
+        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
     fun importBackup(raw: String): Pair<List<PnlEntry>, List<TradeEntry>> {
@@ -262,7 +265,7 @@ class Store(context: Context) {
         val b = root.getJSONArray("trades")
         val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
         saveEntries(daily); saveTrades(journal)
-        maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk)
+        maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
         return daily to journal
     }
     fun loadInput(): CalcInput {
