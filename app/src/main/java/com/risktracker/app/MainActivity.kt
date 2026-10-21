@@ -271,10 +271,12 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
                     supportingText = { Text("Change it if you deposited or withdrew") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
                 )
-                OutlinedTextField(
-                    pnl, { pnl = it }, label = { Text("Daily PNL (USD, negative for loss)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = pnl, onValueChange = { pnl = it }, label = { Text("Daily P&L (USD)") },
+                        supportingText = { Text("Enter profit or loss") }, modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                    OutlinedButton(onClick = { pnl = when { pnl.startsWith("-") -> pnl.removePrefix("-"); pnl.isNotBlank() -> "-$pnl"; else -> "-" } }) { Text("−", fontSize = 22.sp) }
+                }
             }
         },
         confirmButton = {
@@ -347,6 +349,29 @@ fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced
                 "3. Paste the Web app URL and the same token above.",
             style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+@Composable
+fun MoreScreen(themeMode: String, onThemeModeChange: (String) -> Unit, onNavigate: (Int) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        listOf(Triple("Position calculator", "Position size, risk and target", 2), Triple("Leverage & liquidation", "Compare leverage risk", 3), Triple("Google Sheets sync", "Sync Daily P&L only", 4), Triple("About Risk Tracker", "App details and risk disclaimer", 5)).forEach { (title, subtitle, destination) ->
+            Card(Modifier.fillMaxWidth(), onClick = { onNavigate(destination) }) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        HorizontalDivider()
+        Text("Appearance", style = MaterialTheme.typography.titleMedium)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            listOf("System", "Light", "Dark").forEachIndexed { index, mode ->
+                SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) }
+            }
+        }
+        Text("Daily P&L tracks one net result per day and can sync to Sheets. Trades records each closed position with side, entry, exit, quantity and fees. Journal results do not automatically change Daily P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
