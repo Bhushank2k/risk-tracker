@@ -2,6 +2,8 @@ package com.risktracker.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.pdf.PdfDocument
+import android.graphics.Paint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
@@ -40,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 
 private val Green = Color(0xFF1B9E4B)
@@ -170,6 +173,9 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, o
                 }
             }
             item { BalanceChart(entries) }
+            item { EquityDrawdownCard(entries) }
+            item { PnlCalendar(entries) }
+            item { DailyInsights(entries) }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = {
@@ -286,11 +292,16 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
                     OutlinedButton(onClick = { pnl = when { pnl.startsWith("-") -> pnl.removePrefix("-"); pnl.isNotBlank() -> "-$pnl"; else -> "-" } }) { Text("−", fontSize = 22.sp) }
                 }
+                var notes by remember { mutableStateOf("") }
+                var discipline by remember { mutableIntStateOf(3) }
+                OutlinedTextField(notes, { notes = it }, label = { Text("Daily notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Text("Discipline score: $discipline / 5")
+                Slider(value = discipline.toFloat(), onValueChange = { discipline = it.toInt().coerceIn(0, 5) }, valueRange = 0f..5f, steps = 4)
             }
         },
         confirmButton = {
             TextButton(enabled = b != null && p != null && date.isNotBlank(),
-                onClick = { onAdd(PnlEntry(date.trim(), b!!, p!!)) }) { Text("Add") }
+                onClick = { onAdd(PnlEntry(date.trim(), b!!, p!!, notes.trim(), discipline)) }) { Text("Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
