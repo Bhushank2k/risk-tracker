@@ -50,7 +50,6 @@ fun Double.pct(d: Int = 2) = "%.${d}f%%".format(this)
 fun Double.num(d: Int = 2) = "%,.${d}f".format(this)
 fun pnlColor(v: Double) = if (v > 0) Green else if (v < 0) Red else Color.Gray
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +64,7 @@ class MainActivity : ComponentActivity() {
                 dark -> darkColorScheme()
                 else -> lightColorScheme()
             }
-            MaterialExpressiveTheme(colorScheme = scheme) {
+            MaterialTheme(colorScheme = scheme) {
                 Surface(Modifier.fillMaxSize()) { App(store) }
             }
         }
@@ -287,7 +286,6 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
 
 // ---------------- Sync ----------------
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced: (List<PnlEntry>) -> Unit) {
     var url by remember { mutableStateOf(store.webUrl) }
@@ -336,7 +334,7 @@ fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced
             }
         ) { Text(if (busy) "Syncing…" else "Sync now") }
         if (busy) {
-            LoadingIndicator()
+            CircularProgressIndicator()
         }
         status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
