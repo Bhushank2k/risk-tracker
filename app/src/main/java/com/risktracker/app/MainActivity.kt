@@ -64,8 +64,8 @@ fun App(store: Store) {
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
-    val titles = listOf("Daily PNL", "Calculator", "Leverage", "Sync")
-    val icons = listOf("📈", "🧮", "⚖", "🔄")
+    val titles = listOf("Daily PNL", "Calculator", "Leverage", "Sync", "About")
+    val icons = listOf("📈", "🧮", "⚖", "🔄", "ℹ")
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Risk Tracker") }) },
@@ -93,10 +93,11 @@ fun App(store: Store) {
                     store.saveInput(it)
                 }
                 2 -> LeverageScreen(input)
-                else -> SyncScreen(store, entries, syncedCount) { synced ->
+                3 -> SyncScreen(store, entries, syncedCount) { synced ->
                     entries = synced
                     syncedCount = synced.size
                 }
+                else -> AboutScreen()
             }
         }
     }
@@ -319,6 +320,41 @@ fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced
                 "3. Paste the Web app URL and the same token above.",
             style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+// ---------------- About ----------------
+
+@Composable
+fun AboutScreen() {
+    val ctx = LocalContext.current
+    val version = remember {
+        runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "1.0"
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Risk Tracker", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("Crypto futures trading tracker: daily PNL, position sizing and leverage risk in one place.",
+            style = MaterialTheme.typography.bodyMedium)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AboutRow("Developer", "Bhushank2k")
+                AboutRow("Version", version)
+                AboutRow("Source", "github.com/Bhushank2k/risk-tracker")
+            }
+        }
+        OutlinedButton(onClick = {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/Bhushank2k/risk-tracker")))
+        }) { Text("Open GitHub repository") }
+        Warn("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.")
+    }
+}
+
+@Composable
+fun AboutRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(value, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
