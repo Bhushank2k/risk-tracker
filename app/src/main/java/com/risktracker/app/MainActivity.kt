@@ -217,6 +217,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, o
                             Text("#${idx + 1}  ${e.date}", fontWeight = FontWeight.Medium)
                             Text("Bal ${e.balance.usd()}  →  ${e.closing.usd()}",
                                 style = MaterialTheme.typography.bodySmall)
+                            if (e.disciplineScore > 0) Text("Discipline: ${e.disciplineScore}/5", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (e.notes.isNotBlank()) Text(e.notes, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text((if (e.pnl > 0) "+" else "") + e.pnl.usd(),
