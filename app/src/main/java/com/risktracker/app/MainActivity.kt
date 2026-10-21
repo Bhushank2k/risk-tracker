@@ -100,7 +100,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -131,7 +131,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
@@ -158,6 +158,14 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, onChange: (List<PnlEntr
                         Spacer(Modifier.height(8.dp))
                         Text("${stats.winDays}W / ${stats.lossDays}L  •  win rate ${stats.winRate.pct(0)}",
                             style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (entries.lastOrNull()?.pnl?.let { it <= -maxDailyLoss } == true) {
+                item {
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Text("Daily loss limit reached: " + entries.last().pnl.usd() + " loss meets/exceeds your " + maxDailyLoss.usd() + " limit. Consider stopping for the day.",
+                            Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
