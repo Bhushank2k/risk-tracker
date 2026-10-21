@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground: the logo.svg mark, scaled into the 66dp safe zone of the 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.58"
+        android:scaleY="0.58"
+        android:translateX="16.9"
+        android:translateY="16.6">
+
+        <!-- Shield -->
+        <path
+            android:pathData="M64,14 L105,31 V60 C105,87 89,103 64,115 C39,103 23,87 23,60 V31 Z"
+            android:strokeWidth="7"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="17"
+                    android:startY="25"
+                    android:endX="108"
+                    android:endY="105">
+                    <item android:offset="0" android:color="#39F5BB" />
+                    <item android:offset="0.48" android:color="#00C9DF" />
+                    <item android:offset="1" android:color="#743CFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Candle wicks -->
+        <path
+            android:pathData="M43,62 V54 M43,80 V89 M60,47 V39 M60,69 V77 M77,37 V30 M77,58 V66"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="37"
+                    android:startY="30"
+                    android:endX="83"
+                    android:endY="89">
+                    <item android:offset="0" android:color="#44FFD0" />
+                    <item android:offset="0.52" android:color="#17D5D6" />
+                    <item android:offset="1" android:color="#6650FF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Candle bodies -->
+        <path android:pathData="M41,61 H45 A4,4 0 0 1 49,65 V77 A4,4 0 0 1 45,81 H41 A4,4 0 0 1 37,77 V65 A4,4 0 0 1 41,61 Z
+                                M58,46 H62 A4,4 0 0 1 66,50 V67 A4,4 0 0 1 62,71 H58 A4,4 0 0 1 54,67 V50 A4,4 0 0 1 58,46 Z
+                                M75,36 H79 A4,4 0 0 1 83,40 V55 A4,4 0 0 1 79,59 H75 A4,4 0 0 1 71,55 V40 A4,4 0 0 1 75,36 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="37"
+                    android:startY="30"
+                    android:endX="83"
+                    android:endY="89">
+                    <item android:offset="0" android:color="#44FFD0" />
+                    <item android:offset="0.52" android:color="#17D5D6" />
+                    <item android:offset="1" android:color="#6650FF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Trend arrow -->
+        <path
+            android:pathData="M30,88 C48,97 71,89 95,61"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="31"
+                    android:startY="91"
+                    android:endX="99"
+                    android:endY="48">
+                    <item android:offset="0" android:color="#00D6ED" />
+                    <item android:offset="1" android:color="#43FFC1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path
+            android:pathData="M86,58 L99,55 L98,69"
+            android:strokeColor="#48FFD0"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

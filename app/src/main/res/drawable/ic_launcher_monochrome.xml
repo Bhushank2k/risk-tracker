@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-colour version of the mark for Android 13+ themed icons. The system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.58"
+        android:scaleY="0.58"
+        android:translateX="16.9"
+        android:translateY="16.6">
+        <path
+            android:pathData="M64,14 L105,31 V60 C105,87 89,103 64,115 C39,103 23,87 23,60 V31 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M43,62 V54 M43,80 V89 M60,47 V39 M60,69 V77 M77,37 V30 M77,58 V66"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M41,61 H45 A4,4 0 0 1 49,65 V77 A4,4 0 0 1 45,81 H41 A4,4 0 0 1 37,77 V65 A4,4 0 0 1 41,61 Z
+                              M58,46 H62 A4,4 0 0 1 66,50 V67 A4,4 0 0 1 62,71 H58 A4,4 0 0 1 54,67 V50 A4,4 0 0 1 58,46 Z
+                              M75,36 H79 A4,4 0 0 1 83,40 V55 A4,4 0 0 1 79,59 H75 A4,4 0 0 1 71,55 V40 A4,4 0 0 1 75,36 Z" />
+        <path
+            android:pathData="M30,88 C48,97 71,89 95,61 M86,58 L99,55 L98,69"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

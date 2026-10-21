@@ -5,6 +5,8 @@
         android:label="Risk Tracker"
         android:usesCleartextTraffic="false"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
