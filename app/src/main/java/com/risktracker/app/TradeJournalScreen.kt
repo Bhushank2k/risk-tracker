@@ -236,6 +236,7 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
                 val x = exit.toDoubleOrNull()
                 val q = quantity.toDoubleOrNull()
                 val fee = fees.toDoubleOrNull()
+                val plannedRisk = riskUsd.toDoubleOrNull() ?: 0.0
                 error = when {
                     symbol.isBlank() -> "Enter a symbol."
                     date.isBlank() -> "Enter a date."
