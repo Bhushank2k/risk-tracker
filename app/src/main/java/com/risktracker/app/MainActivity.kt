@@ -371,7 +371,15 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
     }
     val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) try { val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file"); onRestore(store.importBackup(raw)); backupMessage = "Backup restored. Existing records were replaced by the selected backup." } catch (e: Exception) { backupMessage = "Restore failed: " + (e.message ?: "invalid backup") }
+        if (uri != null) {
+            try {
+                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file")
+                onRestore(store.importBackup(raw))
+                backupMessage = "Backup restored. Existing records were replaced by the selected backup."
+            } catch (e: Exception) {
+                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
+            }
+        }
     }
     val weekly = entries.filter { it.date.takeLast(4).isNotEmpty() }.takeLast(7)
     val monthKey = java.text.SimpleDateFormat("yyyy-MM", Locale.US)
