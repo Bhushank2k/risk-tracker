@@ -186,6 +186,10 @@ class Store(context: Context) {
         get() = prefs.getString("inr", null)?.toDoubleOrNull() ?: INR_RATE
         set(v) = prefs.edit().putString("inr", v.toString()).apply()
 
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "System") ?: "System"
+        set(v) = prefs.edit().putString("theme_mode", v).apply()
+
     fun loadEntries(): List<PnlEntry> {
         val raw = prefs.getString("entries", null) ?: return seedEntries()
         val arr = JSONArray(raw)
