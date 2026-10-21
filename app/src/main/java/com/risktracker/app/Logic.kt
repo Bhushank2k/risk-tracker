@@ -70,8 +70,8 @@ data class SideResult(
 
 fun calcSide(i: CalcInput, long: Boolean): SideResult {
     val risk = i.balance * i.riskPercent / 100
-    val slDist = abs(i.entry - i.stopLoss) / i.entry
-    val tpDist = abs(i.target - i.entry) / i.entry
+    val slDist = if (i.entry > 0) abs(i.entry - i.stopLoss) / i.entry else 0.0
+    val tpDist = if (i.entry > 0) abs(i.target - i.entry) / i.entry else 0.0
     val size = if (slDist > 0) risk / slDist else 0.0
     val tokens = if (i.entry > 0) size / i.entry else 0.0
     val margin = if (i.leverage > 0) size / i.leverage else 0.0
