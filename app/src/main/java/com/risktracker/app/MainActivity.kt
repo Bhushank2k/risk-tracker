@@ -110,7 +110,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 }, onDelete = { trade ->
                     trades = trades.filterNot { it.id == trade.id }
                     store.saveTrades(trades)
-                })
+                }, maxTradeRisk = store.maxTradeRisk)
                 2 -> CalculatorScreen(input) {
                     input = it
                     store.saveInput(it)
@@ -121,7 +121,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     syncedCount = synced.size
                 }
                 5 -> AboutScreen()
-                else -> MoreScreen(themeMode, onThemeModeChange) { tab = it }
+                else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
+                    onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
         }
     }
