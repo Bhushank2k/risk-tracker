@@ -179,7 +179,19 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
     var quantity by remember { mutableStateOf("1") }
     var fees by remember { mutableStateOf("0") }
     var notes by remember { mutableStateOf("") }
+    var strategy by remember { mutableStateOf("") }
+    var mistake by remember { mutableStateOf("") }
+    var riskUsd by remember { mutableStateOf("") }
+    var screenshotUri by remember { mutableStateOf("") }
+    var riskAcknowledged by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            screenshotUri = uri.toString()
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Record closed trade") },
@@ -199,7 +211,21 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
                     JournalField("Exit price", exit, { exit = it }, true)
                     JournalField("Quantity / contracts", quantity, { quantity = it }, true)
                     JournalField("Fees (quote currency)", fees, { fees = it }, true)
+                    JournalField("Strategy tag", strategy, { strategy = it })
+                    JournalField("Mistake tag", mistake, { mistake = it })
+                    JournalField("Planned risk (USD)", riskUsd, { riskUsd = it }, true)
+                    OutlinedButton(onClick = { screenshotPicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (screenshotUri.isBlank()) "Attach chart screenshot" else "Chart screenshot selected")
+                    }
                     JournalField("Notes (optional)", notes, { notes = it })
+                }
+                val plannedRisk = riskUsd.toDoubleOrNull() ?: 0.0
+                if (plannedRisk > maxTradeRisk) {
+                    Text("Risk warning: " + plannedRisk.usd() + " exceeds your " + maxTradeRisk.usd() + " limit.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = riskAcknowledged, onCheckedChange = { riskAcknowledged = it })
+                        Text("I understand and want to save")
+                    }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
@@ -216,12 +242,15 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
                     e == null || x == null || e <= 0 || x <= 0 -> "Entry and exit must be positive prices."
                     q == null || q <= 0 -> "Quantity must be greater than zero."
                     fee == null || fee < 0 -> "Fees cannot be negative."
+                    riskUsd.isNotBlank() && (riskUsd.toDoubleOrNull() == null || riskUsd.toDoubleOrNull()!! < 0) -> "Planned risk must be zero or greater."
+                    plannedRisk > maxTradeRisk && !riskAcknowledged -> "Confirm the risk warning to save."
                     else -> null
                 }
                 if (error == null) onAdd(TradeEntry(
                     id = "${System.currentTimeMillis()}-${symbol.trim().uppercase(Locale.ROOT)}",
                     date = date.trim(), symbol = symbol.trim().uppercase(Locale.ROOT), side = side,
-                    entry = e!!, exit = x!!, quantity = q!!, fees = fee!!, notes = notes.trim()
+                    entry = e!!, exit = x!!, quantity = q!!, fees = fee!!, notes = notes.trim(),
+                    strategy = strategy.trim(), mistake = mistake.trim(), riskUsd = plannedRisk, screenshotUri = screenshotUri
                 ))
             }) { Text("Save trade") }
         },
