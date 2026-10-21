@@ -325,6 +325,87 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
     )
 }
 
+@Composable
+fun EquityDrawdownCard(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val ordered = entries.sortedBy { reportDate(it.date) ?: Date(0) }
+    var peak = ordered.first().closing
+    var maxDd = 0.0
+    ordered.forEach { e -> peak = maxOf(peak, e.closing); maxDd = maxOf(maxDd, peak - e.closing) }
+    val currentPeak = ordered.lastOrNull()?.let { last -> ordered.takeWhile { it.date != last.date }.fold(0.0) { p, e -> maxOf(p, e.closing) }.let { maxOf(it, last.closing) } } ?: 0.0
+    val current = ordered.last().closing
+    val drawdown = (currentPeak - current).coerceAtLeast(0.0)
+    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Equity & drawdown", style = MaterialTheme.typography.titleMedium)
+        Text("Current balance: " + current.usd() + " · Peak-to-current drawdown: " + drawdown.usd(), color = if (drawdown > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        Text("Maximum historical drawdown: " + maxDd.usd(), style = MaterialTheme.typography.bodySmall)
+        Text("Drawdown compares recorded closing balances with the highest prior closing balance; deposits/withdrawals may affect it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
+private fun reportDate(value: String): Date? {
+    listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "M/d/yyyy").forEach { pattern ->
+        try { return SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(value) } catch (_: Exception) { }
+    }
+    return null
+}
+
+@Composable
+fun PnlCalendar(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val parsed = entries.mapNotNull { e -> reportDate(e.date)?.let { it to e } }
+    if (parsed.isEmpty()) return
+    val latest = parsed.maxBy { it.first.time }.first
+    val cal = Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, 1) }
+    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
+    val startOffset = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val byDay = parsed.associate { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(it.first) to it.second }
+    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("P&L calendar · " + monthTitle, style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth()) { listOf("M", "T", "W", "T", "F", "S", "S").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall) } }
+        val cells = List(startOffset) { 0 } + (1..days).toList()
+        cells.chunked(7).forEach { week -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            (week + List(7 - week.size) { 0 }).forEach { day ->
+                val key = if (day > 0) SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, day) }.time) else ""
+                val e = byDay[key]
+                val bg = when { day == 0 -> MaterialTheme.colorScheme.surface; e == null -> MaterialTheme.colorScheme.surfaceVariant; e.pnl > 0 -> Color(0xFFDDF3E4); e.pnl < 0 -> Color(0xFFF8DEDE); else -> MaterialTheme.colorScheme.surfaceVariant }
+                Column(Modifier.weight(1f).padding(vertical = 2.dp).background(bg, MaterialTheme.shapes.small).padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (day == 0) " " else day.toString(), style = MaterialTheme.typography.labelSmall, color = Color.Black)
+                    if (e != null) Text(if (e.pnl > 0) "+" + e.pnl.num(0) else e.pnl.num(0), style = MaterialTheme.typography.labelSmall, color = Color.Black, maxLines = 1)
+                }
+            }
+        } }
+        Text("Green = profit · Red = loss · Empty = no recorded result", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
+@Composable
+fun DailyInsights(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val ordered = entries.sortedBy { reportDate(it.date) ?: Date(0) }
+    var currentStreak = 0
+    var streakSign = 0
+    var bestWinStreak = 0
+    var bestLossStreak = 0
+    ordered.forEach { e ->
+        val sign = when { e.pnl > 0 -> 1; e.pnl < 0 -> -1; else -> 0 }
+        if (sign == 0) { currentStreak = 0; streakSign = 0 } else if (sign == streakSign) currentStreak++ else { currentStreak = 1; streakSign = sign }
+        if (sign > 0) bestWinStreak = maxOf(bestWinStreak, currentStreak)
+        if (sign < 0) bestLossStreak = maxOf(bestLossStreak, currentStreak)
+    }
+    val weekdayTotals = ordered.mapNotNull { e -> reportDate(e.date)?.let { Calendar.getInstance().apply { time = it }.get(Calendar.DAY_OF_WEEK) to e.pnl } }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+    val bestWeekday = weekdayTotals.maxByOrNull { it.value }
+    val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Streaks & weekday insights", style = MaterialTheme.typography.titleMedium)
+        Text("Current streak: " + if (streakSign == 0) "No active win/loss streak" else "$currentStreak consecutive ${if (streakSign > 0) "winning" else "losing"} days")
+        Text("Longest winning streak: $bestWinStreak days · Longest losing streak: $bestLossStreak days")
+        Text("Best recorded weekday: " + (bestWeekday?.let { names[it.key - 1] + " (" + it.value.usd() + ")" } ?: "Not enough data"))
+        Text("Weekday totals combine all recorded years and may reflect deposits/withdrawals in balances, not just trading skill.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
 // ---------------- Sync ----------------
 
 @Composable
