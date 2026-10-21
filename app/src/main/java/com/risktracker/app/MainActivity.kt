@@ -138,6 +138,23 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, o
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
+    val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) {
+            val document = PdfDocument()
+            try {
+                val page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
+                val paint = Paint().apply { textSize = 16f; color = android.graphics.Color.BLACK }
+                val canvas = page.canvas
+                canvas.drawText("Risk Tracker - Daily P&L Report", 36f, 42f, paint)
+                paint.textSize = 10f
+                canvas.drawText("Net P&L: " + stats.net.usd() + "    Win rate: " + stats.winRate.pct(1) + "    Recorded days: " + entries.size, 36f, 66f, paint)
+                canvas.drawText("Date                         Opening Balance            Daily P&L            Closing Balance       Discipline", 36f, 94f, paint)
+                entries.takeLast(38).forEachIndexed { index, e -> canvas.drawText(e.date.padEnd(18) + " " + e.balance.usd().padEnd(20) + " " + e.pnl.usd().padEnd(18) + " " + e.closing.usd().padEnd(20) + " " + e.disciplineScore + "/5", 36f, (116 + index * 17).toFloat(), paint) }
+                document.finishPage(page)
+                ctx.contentResolver.openOutputStream(uri)?.use { document.writeTo(it) }
+            } catch (_: Exception) { } finally { document.close() }
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -186,6 +203,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, o
                         }
                         ctx.startActivity(Intent.createChooser(send, "Export CSV"))
                     }) { Text("Export CSV") }
+                    TextButton(onClick = { pdfLauncher.launch("risk-tracker-daily-pnl.pdf") }) { Text("Export PDF") }
                 }
             }
             items(entries.indices.reversed().toList()) { idx ->
