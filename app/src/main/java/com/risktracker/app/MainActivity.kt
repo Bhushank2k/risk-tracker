@@ -414,7 +414,7 @@ private fun ReportSummary(rows: List<PnlEntry>) {
         Text("Win rate: " + (if (decisive.isEmpty()) 0.0 else wins * 100.0 / decisive.size).pct(1))
         Text("Best day: " + (best?.date ?: "—") + " · " + (best?.pnl?.usd() ?: "—"))
         Text("Worst day: " + (worst?.date ?: "—") + " · " + (worst?.pnl?.usd() ?: "—"))
-        Text("Return on opening balance: " + (if (rows.firstOrNull()?.balance ?: 0.0 > 0) (net / rows.first().balance * 100).pct(2) else "—"))
+        Text("Return on opening balance: " + (if ((rows.firstOrNull()?.balance ?: 0.0) > 0) (net / rows.first().balance * 100).pct(2) else "—"))
     } }
 }
 // ---------------- About ----------------
