@@ -17,10 +17,19 @@ Then visit http://localhost:8000.
 - Risk overview with portfolio summary cards and illustrative equity visualization
 - Positions table with risk labels and CSV export
 - Risk analytics and an interactive risk checklist
-- Dedicated **Developer · About** tab with project information, design notes, repository link, and next steps
+- Dedicated **Developer · About** tab with project information, project details, design notes, and next steps
 - Responsive desktop sidebar and mobile bottom navigation
 - Dark/light theme toggle, accessible status announcements, and reduced-motion support
 - No JavaScript framework or build step required
+
+## Android apps
+
+- `app/` is the native Jetpack Compose app (daily PNL, position calculator, leverage table, Google Sheet sync, About). It follows the system light/dark theme and uses dynamic color on Android 12+.
+- `android/` wraps this web prototype in a WebView; CI copies `index.html` and `logo.svg` into it.
+
+Both use the adaptive launcher icon in `res/` (with a monochrome layer for themed icons), generated from `logo.svg`.
+
+Run the calculator unit tests with `gradle testDebugUnitTest`.
 
 ## Important data note
 

@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,7 +15,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,7 +56,15 @@ class MainActivity : ComponentActivity() {
         val store = Store(applicationContext)
         inrRate = store.inr
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme()) {
+            val dark = isSystemInDarkTheme()
+            val ctx = LocalContext.current
+            val scheme = when {
+                android.os.Build.VERSION.SDK_INT >= 31 ->
+                    if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+                dark -> darkColorScheme()
+                else -> lightColorScheme()
+            }
+            MaterialTheme(colorScheme = scheme) {
                 Surface(Modifier.fillMaxSize()) { App(store) }
             }
         }
@@ -65,7 +79,8 @@ fun App(store: Store) {
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     val titles = listOf("Daily PNL", "Calculator", "Leverage", "Sync", "About")
-    val icons = listOf("📈", "🧮", "⚖", "🔄", "ℹ")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Warning,
+        Icons.Default.Refresh, Icons.Default.Info)
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Risk Tracker") }) },
@@ -75,7 +90,7 @@ fun App(store: Store) {
                     NavigationBarItem(
                         selected = tab == i,
                         onClick = { tab = i },
-                        icon = { Text(icons[i], fontSize = 20.sp) },
+                        icon = { Icon(icons[i], contentDescription = null) },
                         label = { Text(t) }
                     )
                 }
@@ -340,12 +355,8 @@ fun AboutScreen() {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AboutRow("Developer", "Bhushank2k")
                 AboutRow("Version", version)
-                AboutRow("Source", "github.com/Bhushank2k/risk-tracker")
             }
         }
-        OutlinedButton(onClick = {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/Bhushank2k/risk-tracker")))
-        }) { Text("Open GitHub repository") }
         Warn("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.")
     }
 }
@@ -438,8 +449,8 @@ fun ResultRow(label: String, a: String, b: String, header: Boolean = false) {
 
 @Composable
 fun Warn(text: String) {
-    Box(Modifier.fillMaxWidth().background(Color(0xFFFFF3CD)).padding(10.dp)) {
-        Text(text, color = Color(0xFF7A5B00), style = MaterialTheme.typography.bodySmall)
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(10.dp)) {
+        Text(text, color = MaterialTheme.colorScheme.onTertiaryContainer, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -465,7 +476,7 @@ fun LeverageScreen(input: CalcInput) {
                     val current = r.lev.toDouble() == input.leverage
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(if (current) Color(0xFFE3F2FD) else Color.Transparent)
+                            .background(if (current) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                             .padding(vertical = 6.dp)
                     ) {
                         Text("${r.lev}x", Modifier.weight(0.6f), fontWeight = FontWeight.Medium)
