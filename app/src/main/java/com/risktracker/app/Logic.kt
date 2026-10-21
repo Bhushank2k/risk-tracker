@@ -124,7 +124,8 @@ fun leverageMatrix(entry: Double): List<LevRow> = LEVERAGES.map {
 data class TradeEntry(
     val id: String, val date: String, val symbol: String, val side: String,
     val entry: Double, val exit: Double, val quantity: Double,
-    val fees: Double = 0.0, val notes: String = ""
+    val fees: Double = 0.0, val notes: String = "",
+    val strategy: String = "", val mistake: String = "", val riskUsd: Double = 0.0, val screenshotUri: String = ""
 ) {
     /** Estimated realized P&L after fees; not exchange-reported P&L. */
     val pnl: Double get() = ((exit - entry) * quantity *
@@ -218,7 +219,9 @@ class Store(context: Context) {
                     symbol = o.getString("symbol"), side = o.getString("side"),
                     entry = o.getDouble("entry"), exit = o.getDouble("exit"),
                     quantity = o.getDouble("quantity"), fees = o.optDouble("fees", 0.0),
-                    notes = o.optString("notes", "")
+                    notes = o.optString("notes", ""), strategy = o.optString("strategy", ""),
+                    mistake = o.optString("mistake", ""), riskUsd = o.optDouble("riskUsd", 0.0),
+                    screenshotUri = o.optString("screenshotUri", "")
                 )
             }
         } catch (_: Exception) { emptyList() }
@@ -229,7 +232,8 @@ class Store(context: Context) {
         trades.forEach { t ->
             arr.put(JSONObject().put("id", t.id).put("date", t.date).put("symbol", t.symbol)
                 .put("side", t.side).put("entry", t.entry).put("exit", t.exit)
-                .put("quantity", t.quantity).put("fees", t.fees).put("notes", t.notes))
+                .put("quantity", t.quantity).put("fees", t.fees).put("notes", t.notes)
+                .put("strategy", t.strategy).put("mistake", t.mistake).put("riskUsd", t.riskUsd).put("screenshotUri", t.screenshotUri))
         }
         prefs.edit().putString("trade_journal_v1", arr.toString()).apply()
     }
