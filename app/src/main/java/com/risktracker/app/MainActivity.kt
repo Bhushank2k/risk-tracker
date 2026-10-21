@@ -291,6 +291,8 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
     var date by remember { mutableStateOf(today) }
     var balance by remember { mutableStateOf(last?.closing?.let { "%.2f".format(it) } ?: "") }
     var pnl by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var discipline by remember { mutableIntStateOf(3) }
     val b = balance.toDoubleOrNull()
     val p = pnl.toDoubleOrNull()
     AlertDialog(
@@ -310,8 +312,6 @@ fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> 
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
                     OutlinedButton(onClick = { pnl = when { pnl.startsWith("-") -> pnl.removePrefix("-"); pnl.isNotBlank() -> "-$pnl"; else -> "-" } }) { Text("−", fontSize = 22.sp) }
                 }
-                var notes by remember { mutableStateOf("") }
-                var discipline by remember { mutableIntStateOf(3) }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Daily notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 Text("Discipline score: $discipline / 5")
                 Slider(value = discipline.toFloat(), onValueChange = { discipline = it.toInt().coerceIn(0, 5) }, valueRange = 0f..5f, steps = 4)
