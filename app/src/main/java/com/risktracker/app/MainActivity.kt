@@ -79,8 +79,9 @@ fun App(store: Store) {
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
-    val titles = listOf("Daily PNL", "Calculator", "Leverage", "Sync", "About")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Warning,
+    var trades by remember { mutableStateOf(store.loadTrades()) }
+    val titles = listOf("Daily PNL", "Journal", "Calculator", "Leverage", "Sync", "About")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Warning,
         Icons.Default.Refresh, Icons.Default.Info)
 
     Scaffold(
@@ -104,12 +105,19 @@ fun App(store: Store) {
                     entries = it
                     store.saveEntries(it)
                 }
-                1 -> CalculatorScreen(input) {
+                1 -> TradeJournalScreen(trades, onAdd = { trade ->
+                    trades = (trades + trade).sortedByDescending { it.date }
+                    store.saveTrades(trades)
+                }, onDelete = { trade ->
+                    trades = trades.filterNot { it.id == trade.id }
+                    store.saveTrades(trades)
+                })
+                2 -> CalculatorScreen(input) {
                     input = it
                     store.saveInput(it)
                 }
-                2 -> LeverageScreen(input)
-                3 -> SyncScreen(store, entries, syncedCount) { synced ->
+                3 -> LeverageScreen(input)
+                4 -> SyncScreen(store, entries, syncedCount) { synced ->
                     entries = synced
                     syncedCount = synced.size
                 }

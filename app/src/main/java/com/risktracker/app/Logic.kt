@@ -119,6 +119,51 @@ fun leverageMatrix(entry: Double): List<LevRow> = LEVERAGES.map {
     LevRow(it, move * 100, entry * (1 - move), entry * (1 + move))
 }
 
+// ---------- Trade journal & analytics ----------
+
+data class TradeEntry(
+    val id: String, val date: String, val symbol: String, val side: String,
+    val entry: Double, val exit: Double, val quantity: Double,
+    val fees: Double = 0.0, val notes: String = ""
+) {
+    /** Estimated realized P&L after fees; not exchange-reported P&L. */
+    val pnl: Double get() = ((exit - entry) * quantity *
+        (if (side.equals("Long", true)) 1.0 else -1.0)) - fees
+}
+
+data class TradeStats(
+    val count: Int, val wins: Int, val losses: Int, val netPnl: Double,
+    val winRate: Double, val profitFactor: Double, val maxDrawdown: Double
+)
+
+fun computeTradeStats(trades: List<TradeEntry>): TradeStats {
+    val ordered = trades.sortedBy { it.date }
+    val wins = ordered.filter { it.pnl > 0 }
+    val losses = ordered.filter { it.pnl < 0 }
+    val grossWin = wins.sumOf { it.pnl }
+    val grossLoss = -losses.sumOf { it.pnl }
+    var equity = 0.0
+    var peak = 0.0
+    var maxDrawdown = 0.0
+    ordered.forEach {
+        equity += it.pnl
+        if (equity > peak) peak = equity
+        maxDrawdown = maxOf(maxDrawdown, peak - equity)
+    }
+    val decisive = wins.size + losses.size
+    return TradeStats(
+        count = trades.size, wins = wins.size, losses = losses.size,
+        netPnl = ordered.sumOf { it.pnl },
+        winRate = if (decisive > 0) wins.size * 100.0 / decisive else 0.0,
+        profitFactor = when {
+            grossLoss > 0 -> grossWin / grossLoss
+            grossWin > 0 -> Double.POSITIVE_INFINITY
+            else -> 0.0
+        },
+        maxDrawdown = maxDrawdown
+    )
+}
+
 // ---------- Storage (SharedPreferences, JSON) ----------
 
 class Store(context: Context) {
@@ -156,6 +201,33 @@ class Store(context: Context) {
             arr.put(JSONObject().put("date", it.date).put("balance", it.balance).put("pnl", it.pnl))
         }
         prefs.edit().putString("entries", arr.toString()).apply()
+    }
+
+    fun loadTrades(): List<TradeEntry> {
+        val raw = prefs.getString("trade_journal_v1", null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { idx ->
+                val o = arr.getJSONObject(idx)
+                TradeEntry(
+                    id = o.optString("id", "legacy-$idx"), date = o.getString("date"),
+                    symbol = o.getString("symbol"), side = o.getString("side"),
+                    entry = o.getDouble("entry"), exit = o.getDouble("exit"),
+                    quantity = o.getDouble("quantity"), fees = o.optDouble("fees", 0.0),
+                    notes = o.optString("notes", "")
+                )
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun saveTrades(trades: List<TradeEntry>) {
+        val arr = JSONArray()
+        trades.forEach { t ->
+            arr.put(JSONObject().put("id", t.id).put("date", t.date).put("symbol", t.symbol)
+                .put("side", t.side).put("entry", t.entry).put("exit", t.exit)
+                .put("quantity", t.quantity).put("fees", t.fees).put("notes", t.notes))
+        }
+        prefs.edit().putString("trade_journal_v1", arr.toString()).apply()
     }
 
     fun loadInput(): CalcInput {
