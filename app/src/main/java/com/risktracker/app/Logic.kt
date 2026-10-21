@@ -8,7 +8,7 @@ import kotlin.math.abs
 // ---------- Daily PNL ----------
 
 /** One row of the Daily_PNL tab. [balance] is the opening balance for the day (USD). */
-data class PnlEntry(val date: String, val balance: Double, val pnl: Double) {
+data class PnlEntry(val date: String, val balance: Double, val pnl: Double, val notes: String = "", val disciplineScore: Int = 0) {
     val wlPercent: Double get() = if (balance != 0.0) pnl / balance * 100 else 0.0
     val closing: Double get() = balance + pnl
 }
@@ -124,7 +124,8 @@ fun leverageMatrix(entry: Double): List<LevRow> = LEVERAGES.map {
 data class TradeEntry(
     val id: String, val date: String, val symbol: String, val side: String,
     val entry: Double, val exit: Double, val quantity: Double,
-    val fees: Double = 0.0, val notes: String = ""
+    val fees: Double = 0.0, val notes: String = "",
+    val strategy: String = "", val mistake: String = "", val riskUsd: Double = 0.0, val screenshotUri: String = ""
 ) {
     /** Estimated realized P&L after fees; not exchange-reported P&L. */
     val pnl: Double get() = ((exit - entry) * quantity *
@@ -186,19 +187,23 @@ class Store(context: Context) {
         get() = prefs.getString("inr", null)?.toDoubleOrNull() ?: INR_RATE
         set(v) = prefs.edit().putString("inr", v.toString()).apply()
 
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "System") ?: "System"
+        set(v) = prefs.edit().putString("theme_mode", v).apply()
+
     fun loadEntries(): List<PnlEntry> {
         val raw = prefs.getString("entries", null) ?: return seedEntries()
         val arr = JSONArray(raw)
         return (0 until arr.length()).map {
             val o = arr.getJSONObject(it)
-            PnlEntry(o.getString("date"), o.getDouble("balance"), o.getDouble("pnl"))
+            PnlEntry(o.getString("date"), o.getDouble("balance"), o.getDouble("pnl"), o.optString("notes", ""), o.optInt("disciplineScore", 0))
         }
     }
 
     fun saveEntries(list: List<PnlEntry>) {
         val arr = JSONArray()
         list.forEach {
-            arr.put(JSONObject().put("date", it.date).put("balance", it.balance).put("pnl", it.pnl))
+            arr.put(JSONObject().put("date", it.date).put("balance", it.balance).put("pnl", it.pnl).put("notes", it.notes).put("disciplineScore", it.disciplineScore))
         }
         prefs.edit().putString("entries", arr.toString()).apply()
     }
@@ -214,7 +219,9 @@ class Store(context: Context) {
                     symbol = o.getString("symbol"), side = o.getString("side"),
                     entry = o.getDouble("entry"), exit = o.getDouble("exit"),
                     quantity = o.getDouble("quantity"), fees = o.optDouble("fees", 0.0),
-                    notes = o.optString("notes", "")
+                    notes = o.optString("notes", ""), strategy = o.optString("strategy", ""),
+                    mistake = o.optString("mistake", ""), riskUsd = o.optDouble("riskUsd", 0.0),
+                    screenshotUri = o.optString("screenshotUri", "")
                 )
             }
         } catch (_: Exception) { emptyList() }
@@ -225,11 +232,42 @@ class Store(context: Context) {
         trades.forEach { t ->
             arr.put(JSONObject().put("id", t.id).put("date", t.date).put("symbol", t.symbol)
                 .put("side", t.side).put("entry", t.entry).put("exit", t.exit)
-                .put("quantity", t.quantity).put("fees", t.fees).put("notes", t.notes))
+                .put("quantity", t.quantity).put("fees", t.fees).put("notes", t.notes)
+                .put("strategy", t.strategy).put("mistake", t.mistake).put("riskUsd", t.riskUsd).put("screenshotUri", t.screenshotUri))
         }
         prefs.edit().putString("trade_journal_v1", arr.toString()).apply()
     }
 
+    var maxDailyLoss: Double
+        get() = prefs.getString("max_daily_loss", "20")?.toDoubleOrNull() ?: 20.0
+        set(v) { prefs.edit().putString("max_daily_loss", v.toString()).apply() }
+    var maxTradeRisk: Double
+        get() = prefs.getString("max_trade_risk", "5")?.toDoubleOrNull() ?: 5.0
+        set(v) { prefs.edit().putString("max_trade_risk", v.toString()).apply() }
+    var dailyProfitTarget: Double
+        get() = prefs.getString("daily_profit_target", "10")?.toDoubleOrNull() ?: 10.0
+        set(v) { prefs.edit().putString("daily_profit_target", v.toString()).apply() }
+
+    fun exportBackup(): String {
+        val root = JSONObject().put("format", "risk-tracker-backup-v1")
+        val daily = JSONArray()
+        loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl).put("notes",it.notes).put("disciplineScore",it.disciplineScore)) }
+        val journal = JSONArray()
+        loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
+        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
+    }
+
+    fun importBackup(raw: String): Pair<List<PnlEntry>, List<TradeEntry>> {
+        val root = JSONObject(raw)
+        require(root.optString("format") == "risk-tracker-backup-v1") { "Unsupported backup format." }
+        val a = root.getJSONArray("dailyEntries")
+        val daily = (0 until a.length()).map { i -> a.getJSONObject(i).let { PnlEntry(it.getString("date"),it.getDouble("balance"),it.getDouble("pnl"),it.optString("notes",""),it.optInt("disciplineScore",0)) } }
+        val b = root.getJSONArray("trades")
+        val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
+        saveEntries(daily); saveTrades(journal)
+        maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
+        return daily to journal
+    }
     fun loadInput(): CalcInput {
         val d = CalcInput()
         return CalcInput(
@@ -257,12 +295,13 @@ class Store(context: Context) {
 }
 
 fun entriesToCsv(list: List<PnlEntry>, inrRate: Double): String {
-    val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing\n")
+    val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing,DisciplineScore,Notes\n")
     list.forEachIndexed { idx, e ->
         val inr = e.balance * inrRate
         val inrPnl = e.pnl * inrRate
+        val safeNotes = e.notes.replace("\"", "\"\"").replace("\n", " ")
         sb.append("${idx + 1},${e.date},${"%.2f".format(e.balance)},${"%.2f".format(e.pnl)},")
-            .append("${"%.2f".format(e.wlPercent)}%,${inr.toLong()},${inrPnl.toLong()},${(inr + inrPnl).toLong()}\n")
+            .append("${"%.2f".format(e.wlPercent)}%,${inr.toLong()},${inrPnl.toLong()},${(inr + inrPnl).toLong()},${e.disciplineScore},\"${safeNotes}\"\n")
     }
     return sb.toString()
 }

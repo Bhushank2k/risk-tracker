@@ -127,4 +127,26 @@ class LogicTest {
         assertEquals(0.0, s.maxDrawdown, eps)
     }
 
+
+    @Test
+    fun dailyNotesAndDisciplineAreIncludedInCsvWithoutChangingPnl() {
+        val row = PnlEntry("21/10/2026", 100.0, -5.0, "Followed plan, no revenge trade", 4)
+        assertEquals(95.0, row.closing, eps)
+        assertEquals(4, row.disciplineScore)
+        val csv = entriesToCsv(listOf(row), 90.0)
+        assertTrue(csv.contains("DisciplineScore,Notes"))
+        assertTrue(csv.contains("4,\"Followed plan, no revenge trade\""))
+    }
+
+    @Test
+    fun dailyWinRateExcludesFlatDays() {
+        val stats = computeStats(listOf(
+            PnlEntry("19/10/2026", 100.0, 10.0),
+            PnlEntry("20/10/2026", 110.0, -5.0),
+            PnlEntry("21/10/2026", 105.0, 0.0)
+        ))
+        assertEquals(50.0, stats.winRate, eps)
+        assertEquals(5.0, stats.net, eps)
+    }
+
 }

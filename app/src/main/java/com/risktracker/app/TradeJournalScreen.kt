@@ -1,6 +1,8 @@
 package com.risktracker.app
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,11 +27,23 @@ import java.util.Locale
 fun TradeJournalScreen(
     trades: List<TradeEntry>,
     onAdd: (TradeEntry) -> Unit,
-    onDelete: (TradeEntry) -> Unit
+    onDelete: (TradeEntry) -> Unit,
+    maxTradeRisk: Double = 5.0
 ) {
     val context = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
-    val stats = computeTradeStats(trades)
+    var search by remember { mutableStateOf("") }
+    var sideFilter by remember { mutableStateOf("All") }
+    var resultFilter by remember { mutableStateOf("All") }
+    var fromDate by remember { mutableStateOf("") }
+    var toDate by remember { mutableStateOf("") }
+    val filteredTrades = trades.filter { t ->
+        (search.isBlank() || t.symbol.contains(search, true) || t.strategy.contains(search, true) || t.mistake.contains(search, true)) &&
+        (sideFilter == "All" || t.side.equals(sideFilter, true)) &&
+        (resultFilter == "All" || (resultFilter == "Wins" && t.pnl > 0) || (resultFilter == "Losses" && t.pnl < 0)) &&
+        (fromDate.isBlank() || t.date >= fromDate) && (toDate.isBlank() || t.date <= toDate)
+    }
+    val stats = computeTradeStats(filteredTrades)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
@@ -84,7 +98,16 @@ fun TradeJournalScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Export journal CSV") }
         }
-        if (trades.isEmpty()) {
+        item {
+            OutlinedTextField(search, { search = it }, label = { Text("Search symbol, strategy or mistake") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("All", "Long", "Short").forEach { v -> FilterChip(selected = sideFilter == v, onClick = { sideFilter = v }, label = { Text(v) }) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("All", "Wins", "Losses").forEach { v -> FilterChip(selected = resultFilter == v, onClick = { resultFilter = v }, label = { Text(v) }) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("From date") }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(toDate, { toDate = it }, label = { Text("To date") }, modifier = Modifier.weight(1f), singleLine = true)
+            }
+        }
+        if (filteredTrades.isEmpty()) {
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -97,7 +120,7 @@ fun TradeJournalScreen(
             }
         } else {
             item { Text("Closed trades", style = MaterialTheme.typography.titleMedium) }
-            items(trades, key = { it.id }) { trade ->
+            items(filteredTrades, key = { it.id }) { trade ->
                 Card(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
@@ -107,6 +130,10 @@ fun TradeJournalScreen(
                             Text("${trade.symbol.uppercase(Locale.ROOT)} · ${trade.side}", fontWeight = FontWeight.Bold)
                             Text("${trade.date} · Entry ${trade.entry.num()} → Exit ${trade.exit.num()}", style = MaterialTheme.typography.bodySmall)
                             Text("Qty ${trade.quantity.num(4)} · Fees ${trade.fees.usd()}", style = MaterialTheme.typography.bodySmall)
+                            if (trade.strategy.isNotBlank()) Text("Strategy: " + trade.strategy, style = MaterialTheme.typography.bodySmall)
+                            if (trade.mistake.isNotBlank()) Text("Mistake: " + trade.mistake, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            if (trade.riskUsd > 0) Text("Planned risk: " + trade.riskUsd.usd(), style = MaterialTheme.typography.bodySmall)
+                            if (trade.screenshotUri.isNotBlank()) TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(trade.screenshotUri))) } }) { Text("View chart screenshot") }
                             if (trade.notes.isNotBlank()) Text(trade.notes, style = MaterialTheme.typography.bodySmall)
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -127,7 +154,7 @@ fun TradeJournalScreen(
             )
         }
     }
-    if (showAdd) AddTradeDialog(onDismiss = { showAdd = false }) { trade ->
+    if (showAdd) AddTradeDialog(maxTradeRisk, onDismiss = { showAdd = false }) { trade ->
         onAdd(trade)
         showAdd = false
     }
@@ -142,7 +169,7 @@ private fun JournalMetric(label: String, value: String, color: androidx.compose.
 }
 
 @Composable
-private fun AddTradeDialog(onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
+private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     var date by remember { mutableStateOf(today) }
     var symbol by remember { mutableStateOf("") }
@@ -152,7 +179,19 @@ private fun AddTradeDialog(onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
     var quantity by remember { mutableStateOf("1") }
     var fees by remember { mutableStateOf("0") }
     var notes by remember { mutableStateOf("") }
+    var strategy by remember { mutableStateOf("") }
+    var mistake by remember { mutableStateOf("") }
+    var riskUsd by remember { mutableStateOf("") }
+    var screenshotUri by remember { mutableStateOf("") }
+    var riskAcknowledged by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            screenshotUri = uri.toString()
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Record closed trade") },
@@ -172,7 +211,21 @@ private fun AddTradeDialog(onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
                     JournalField("Exit price", exit, { exit = it }, true)
                     JournalField("Quantity / contracts", quantity, { quantity = it }, true)
                     JournalField("Fees (quote currency)", fees, { fees = it }, true)
+                    JournalField("Strategy tag", strategy, { strategy = it })
+                    JournalField("Mistake tag", mistake, { mistake = it })
+                    JournalField("Planned risk (USD)", riskUsd, { riskUsd = it }, true)
+                    OutlinedButton(onClick = { screenshotPicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (screenshotUri.isBlank()) "Attach chart screenshot" else "Chart screenshot selected")
+                    }
                     JournalField("Notes (optional)", notes, { notes = it })
+                }
+                val plannedRisk = riskUsd.toDoubleOrNull() ?: 0.0
+                if (plannedRisk > maxTradeRisk) {
+                    Text("Risk warning: " + plannedRisk.usd() + " exceeds your " + maxTradeRisk.usd() + " limit.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = riskAcknowledged, onCheckedChange = { riskAcknowledged = it })
+                        Text("I understand and want to save")
+                    }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
@@ -183,18 +236,22 @@ private fun AddTradeDialog(onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
                 val x = exit.toDoubleOrNull()
                 val q = quantity.toDoubleOrNull()
                 val fee = fees.toDoubleOrNull()
+                val plannedRisk = riskUsd.toDoubleOrNull() ?: 0.0
                 error = when {
                     symbol.isBlank() -> "Enter a symbol."
                     date.isBlank() -> "Enter a date."
                     e == null || x == null || e <= 0 || x <= 0 -> "Entry and exit must be positive prices."
                     q == null || q <= 0 -> "Quantity must be greater than zero."
                     fee == null || fee < 0 -> "Fees cannot be negative."
+                    riskUsd.isNotBlank() && (riskUsd.toDoubleOrNull() == null || riskUsd.toDoubleOrNull()!! < 0) -> "Planned risk must be zero or greater."
+                    plannedRisk > maxTradeRisk && !riskAcknowledged -> "Confirm the risk warning to save."
                     else -> null
                 }
                 if (error == null) onAdd(TradeEntry(
                     id = "${System.currentTimeMillis()}-${symbol.trim().uppercase(Locale.ROOT)}",
                     date = date.trim(), symbol = symbol.trim().uppercase(Locale.ROOT), side = side,
-                    entry = e!!, exit = x!!, quantity = q!!, fees = fee!!, notes = notes.trim()
+                    entry = e!!, exit = x!!, quantity = q!!, fees = fee!!, notes = notes.trim(),
+                    strategy = strategy.trim(), mistake = mistake.trim(), riskUsd = plannedRisk, screenshotUri = screenshotUri
                 ))
             }) { Text("Save trade") }
         },
