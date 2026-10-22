@@ -62,11 +62,30 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(store.themeMode) }
             val dark = when (themeMode) { "Light" -> false; "Dark" -> true; else -> isSystemInDarkTheme() }
             val ctx = LocalContext.current
-            val scheme = when {
-                android.os.Build.VERSION.SDK_INT >= 31 ->
-                    if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-                dark -> darkColorScheme()
-                else -> lightColorScheme()
+            val scheme = if (dark) {
+                darkColorScheme(
+                    primary = Color(0xFF7DE2B8),
+                    onPrimary = Color(0xFF06271A),
+                    secondary = Color(0xFF91C9FF),
+                    background = Color(0xFF0B1110),
+                    surface = Color(0xFF111A18),
+                    surfaceVariant = Color(0xFF202B28),
+                    primaryContainer = Color(0xFF183D2E),
+                    onPrimaryContainer = Color(0xFFD6F8E7),
+                    error = Color(0xFFFF7B78)
+                )
+            } else {
+                lightColorScheme(
+                    primary = Color(0xFF087F5B),
+                    onPrimary = Color.White,
+                    secondary = Color(0xFF285F8F),
+                    background = Color(0xFFF5F8F6),
+                    surface = Color(0xFFFFFFFF),
+                    surfaceVariant = Color(0xFFE8EFEB),
+                    primaryContainer = Color(0xFFD6F8E7),
+                    onPrimaryContainer = Color(0xFF123D2C),
+                    error = Color(0xFFB3261E)
+                )
             }
             MaterialTheme(colorScheme = scheme) {
                 Surface(Modifier.fillMaxSize()) { App(store, themeMode, onThemeModeChange = { themeMode = it; store.themeMode = it }) }
@@ -80,24 +99,63 @@ class MainActivity : ComponentActivity() {
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
+    var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
-    val titles = listOf("Daily P&L", "Trades", "More")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info)
+    val titles = listOf("Home", "Journal", "Insights", "More")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Info)
+    val menuItems = listOf(
+        "Dashboard" to 0,
+        "Trade journal" to 1,
+        "Performance insights" to 8,
+        "Position calculator" to 2,
+        "Leverage & liquidation" to 3,
+        "Google Sheets sync" to 4,
+        "Binance trade history" to 6,
+        "Crypto tax report" to 9,
+        "Settings & backup" to 7,
+        "About Risk Tracker" to 5
+    )
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Risk Tracker") }) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text("Risk Tracker", fontWeight = FontWeight.SemiBold)
+                        Text("Trade with a plan", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        menuItems.forEach { (label, destination) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = { menuExpanded = false; tab = destination }
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { tab = 7 }) { Text("Settings") }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar {
-                titles.forEachIndexed { i, t ->
+                titles.forEachIndexed { i, title ->
                     NavigationBarItem(
-                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; else -> tab >= 2 },
-                        onClick = { tab = if (i == 2) 7 else i },
+                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; 2 -> tab == 8; else -> tab !in setOf(0, 1, 8) },
+                        onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 8; else -> 7 } },
                         icon = { Icon(icons[i], contentDescription = null) },
-                        label = { Text(t) }
+                        label = { Text(title) }
                     )
                 }
             }
@@ -127,6 +185,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 }
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) })
+                8 -> InsightsScreen(entries, trades.size)
+                9 -> CryptoTaxReportScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
