@@ -80,7 +80,7 @@ fun CryptoTaxReportScreen() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Crypto tax reports · India", style = MaterialTheme.typography.headlineSmall)
-        Text("Historical Binance trade ledger from 2019 onward, grouped by Indian financial year (1 April–31 March). Imported realized P&L is not automatically the taxable VDA income under Indian law. Reports are review aids, not tax-filing advice; verify records, date-specific INR values and tax treatment with a qualified Indian tax professional."), style = MaterialTheme.typography.bodyMedium)
+        Text("Historical Binance trade ledger from 2019 onward, grouped by Indian financial year (1 April–31 March). Imported realized P&L is not automatically the taxable VDA income under Indian law. Reports are review aids, not tax-filing advice; verify records, date-specific INR values and tax treatment with a qualified Indian tax professional.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Import historical trades", style = MaterialTheme.typography.titleMedium)
