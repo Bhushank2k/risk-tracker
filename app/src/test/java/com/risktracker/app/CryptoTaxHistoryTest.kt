@@ -30,7 +30,7 @@ class CryptoTaxHistoryTest {
     @Test fun yearlySummaryFlagsMissingRealizedPnlAndConvertsAmountsToInr() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n" +
-            "2019-07-01 12:30:00,BTCUSDT,BUY,0.5,9000,4500,1,USDT,\n"
+            "2019-07-01 12:30:00,BTCUSDT,SELL,0.5,9000,4500,1,USDT,\n"
         val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         val summary = CryptoTaxHistory.summaries(rows, 80.0).single()
         assertEquals(2019, summary.year)
@@ -41,3 +41,28 @@ class CryptoTaxHistoryTest {
         assertTrue(summary.proceedsInr > 0)
     }
 }
+
+
+    @Test fun groupsTradesByIndianFinancialYearAcrossAprilBoundary() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-03-31 23:59:00,BTCUSDT,SELL,0.1,10000,1000,1,USDT,50\n" +
+            "2025-04-01 00:01:00,BTCUSDT,SELL,0.1,11000,1100,1,USDT,60\n"
+        val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
+        assertEquals(2024, rows[0].year) // FY 2024-25
+        assertEquals(2025, rows[1].year) // FY 2025-26
+        assertEquals(listOf(2024, 2025), CryptoTaxHistory.summaries(rows, 1.0).map { it.year })
+    }
+
+    @Test fun dataQualityFlagsMissingPnlAndIncompleteTradeFields() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-05-01 12:00:00,BTCUSDT,SELL,0,0,0,2,,\n" +
+            "2025-05-02 12:00:00,ETHUSDT,UNKNOWN,1,100,100,0,USDT,\n"
+        val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
+        val quality = CryptoTaxHistory.dataQuality(rows)
+        assertEquals(1, quality.missingRealizedPnl)
+        assertEquals(1, quality.unknownSide)
+        assertEquals(1, quality.invalidQuantityOrPrice)
+        assertEquals(1, quality.missingFeeAsset)
+        assertTrue(quality.score < 100)
+        assertTrue(quality.warnings.isNotEmpty())
+    }

@@ -45,9 +45,15 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var showTaxReports by remember { mutableStateOf(false) }
+    var showStatements by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     
+
+    if (showStatements) {
+        BinanceStatementsScreen(onBack = { showStatements = false })
+        return
+    }
 
     if (showTaxReports) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -60,6 +66,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
         OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.fillMaxWidth()) { Text("Historical trades & India tax reports") }
+        OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.fillMaxWidth()) { Text("Automatic Binance account statements") }
         Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -71,6 +78,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         if (secret.isNotBlank()) credentials.save(apiKey, secret)
                         else if (!hasSaved) error("Enter the API secret.")
                         BinanceDailyWorker.schedule(context)
+                        BinanceStatementWorker.schedule(context)
                         hasSaved = true
                         secret = ""
                         status = "Credentials saved encrypted on this device. Daily background sync is scheduled."
@@ -81,6 +89,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     OutlinedButton(onClick = {
                         credentials.clear()
                         BinanceDailyWorker.cancel(context)
+                        BinanceStatementWorker.cancel(context)
                         apiKey = ""; secret = ""; hasSaved = false
                         status = "Credentials cleared and scheduled sync disabled."
                     }, modifier = Modifier.weight(1f)) { Text("Disconnect") }
