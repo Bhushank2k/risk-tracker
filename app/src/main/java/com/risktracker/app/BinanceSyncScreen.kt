@@ -48,8 +48,17 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     
 
+    if (showTaxReports) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showTaxReports = false }) { Text("Back to Binance sync") }
+            CryptoTaxReportScreen()
+        }
+        return
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
+        OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.fillMaxWidth()) { Text("Historical trades & India tax reports") }
         Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
