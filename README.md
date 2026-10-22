@@ -11,6 +11,9 @@ A native Android app built with Kotlin and Jetpack Compose for crypto-futures ri
 - Position sizing and risk calculator
 - Leverage/liquidation reference table
 - Optional Google Sheets sync for Daily P&L
+- Premium dashboard with hybrid bottom navigation and a full destination menu
+- Performance insights: net daily P&L, win rate, best/worst day, average daily P&L, and peak-to-trough drawdown
+- Custom light and dark palettes with System / Light / Dark appearance selection
 - Light/dark theme support
 
 ## Build and test

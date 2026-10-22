@@ -1,0 +1,147 @@
+package com.risktracker.app
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+data class PerformanceSnapshot(
+    val netPnl: Double,
+    val winRatePercent: Double,
+    val winningDays: Int,
+    val losingDays: Int,
+    val averagePnl: Double,
+    val bestDay: Double?,
+    val worstDay: Double?,
+    val maxDrawdownPercent: Double,
+    val tradeCount: Int
+)
+
+fun buildPerformanceSnapshot(pnlValues: List<Double>, closingBalances: List<Double>, tradeCount: Int): PerformanceSnapshot {
+    val decisive = pnlValues.filter { it != 0.0 && it.isFinite() }
+    val wins = decisive.count { it > 0.0 }
+    var peak = 0.0
+    var maxDrawdown = 0.0
+    closingBalances.filter { it.isFinite() && it >= 0.0 }.forEach { balance ->
+        if (balance > peak) peak = balance
+        if (peak > 0.0) maxDrawdown = maxOf(maxDrawdown, (peak - balance) / peak * 100.0)
+    }
+    val cleanPnl = pnlValues.filter { it.isFinite() }
+    return PerformanceSnapshot(
+        netPnl = cleanPnl.sum(),
+        winRatePercent = if (decisive.isEmpty()) 0.0 else wins * 100.0 / decisive.size,
+        winningDays = cleanPnl.count { it > 0.0 },
+        losingDays = cleanPnl.count { it < 0.0 },
+        averagePnl = if (cleanPnl.isEmpty()) 0.0 else cleanPnl.average(),
+        bestDay = cleanPnl.maxOrNull(),
+        worstDay = cleanPnl.minOrNull(),
+        maxDrawdownPercent = maxDrawdown,
+        tradeCount = tradeCount.coerceAtLeast(0)
+    )
+}
+
+@Composable
+fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
+    val snapshot = remember(entries, tradeCount) {
+        buildPerformanceSnapshot(entries.map { it.pnl }, entries.map { it.closing }, tradeCount)
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Performance", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("A clear view of your recorded results. Only data saved in this app is included.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Net realized daily P&L", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MetricCard("Win rate", snapshot.winRatePercent.pct(1), Modifier.weight(1f))
+                MetricCard("Max drawdown", snapshot.maxDrawdownPercent.pct(1), Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MetricCard("Average day", snapshot.averagePnl.usd(), Modifier.weight(1f))
+                MetricCard("Journal trades", snapshot.tradeCount.toString(), Modifier.weight(1f))
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Highlights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
+                    InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
+                    InsightRow("Recorded days", entries.size.toString())
+                }
+            }
+        }
+        item {
+            if (entries.size >= 2) BalanceChart(entries)
+            else Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Add at least two daily records to see your balance trend.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        item {
+            Text(
+                "Metrics are based on manually recorded daily P&L and balances. Trade count is the number of journal records; it is not an exchange-confirmed live position count.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun InsightRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
