@@ -29,10 +29,26 @@ data class HistoricalCryptoTrade(
     val realizedPnl: Double?,
     val source: String
 ) {
-    val year: Int get() = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply { timeInMillis = timestamp }.get(java.util.Calendar.YEAR)
+    /** Indian financial year start (e.g. 2025 represents FY 2025-26). */
+    val year: Int get() {
+        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply { timeInMillis = timestamp }
+        val y = calendar.get(java.util.Calendar.YEAR)
+        return if (calendar.get(java.util.Calendar.MONTH) >= java.util.Calendar.APRIL) y else y - 1
+    }
 }
 
+data class TaxDataQuality(
+    val score: Int,
+    val transactionCount: Int,
+    val missingRealizedPnl: Int,
+    val unknownSide: Int,
+    val invalidQuantityOrPrice: Int,
+    val missingFeeAsset: Int,
+    val warnings: List<String>
+)
+
 data class IndiaTaxYearSummary(
+    /** Financial-year start year: 2025 means FY 2025-26. */
     val year: Int,
     val trades: Int,
     val realizedPnlInr: Double,
@@ -148,6 +164,31 @@ object CryptoTaxHistory {
         }
         if (imported.isEmpty()) throw IllegalArgumentException("No supported trade rows found. Export Binance trade history as CSV or ZIP.")
         return imported
+    }
+
+    /**
+     * Heuristic data-quality indicator only; it is not a legal/tax correctness score.
+     * Flags records that need review before a tax estimate can be relied on.
+     */
+    fun dataQuality(trades: List<HistoricalCryptoTrade>): TaxDataQuality {
+        val missingPnl = trades.count { it.realizedPnl == null }
+        val unknownSide = trades.count { it.side !in setOf("BUY", "SELL") }
+        val invalidAmounts = trades.count { !it.quantity.isFinite() || it.quantity <= 0.0 || !it.price.isFinite() || it.price <= 0.0 }
+        val missingFeeAsset = trades.count { it.fee > 0.0 && it.feeAsset.isBlank() }
+        val warnings = buildList {
+            if (missingPnl > 0) add("$missingPnl records have no exchange-reported realized P&L; do not treat them as zero.")
+            if (unknownSide > 0) add("$unknownSide records have an unrecognized buy/sell side.")
+            if (invalidAmounts > 0) add("$invalidAmounts records have missing or non-positive quantity/price.")
+            if (missingFeeAsset > 0) add("$missingFeeAsset records have fees but no fee asset.")
+            if (trades.isEmpty()) add("Import transaction history to assess data completeness.")
+        }
+        val penalty = if (trades.isEmpty()) 100 else (
+            missingPnl * 35.0 / trades.size +
+            unknownSide * 25.0 / trades.size +
+            invalidAmounts * 25.0 / trades.size +
+            missingFeeAsset * 15.0 / trades.size
+        )
+        return TaxDataQuality((100.0 - penalty).toInt().coerceIn(0, 100), trades.size, missingPnl, unknownSide, invalidAmounts, missingFeeAsset, warnings)
     }
 
     /** All money amounts are explicitly converted to INR by the caller; no implicit USD/USDT=INR assumption. */
