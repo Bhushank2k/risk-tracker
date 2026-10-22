@@ -1,5 +1,7 @@
 package com.risktracker.app
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,6 +57,30 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     val yearRows = rows.filter { it.date.take(4).toIntOrNull() == selectedYear }
     val yearSpot = yearRows.sumOf { it.spotPnl }
     val yearFutures = yearRows.sumOf { it.futuresPnl }
+    val incomeCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            busy = true
+            status = "Importing the $selectedYear Futures income export…"
+            scope.launch {
+                try {
+                    val daily = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            BinanceIncomeCsvImporter.parse(it, selectedYear)
+                        } ?: error("Could not open the selected file.")
+                    }
+                    BinanceSyncData.replaceFuturesYear(context, selectedYear, daily)
+                    rows = BinanceSyncData.load(context)
+                    lastSync = BinanceSyncData.lastSync(context)
+                    onSynced()
+                    status = "Imported ${daily.size} daily totals for $selectedYear. Confirm the CSV is a complete full-year income export."
+                } catch (e: Exception) {
+                    status = "CSV import failed: " + (e.message ?: "check the export format")
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
     
 
     if (showStatements) {
@@ -140,6 +166,16 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         lastSync = BinanceSyncData.lastSync(context)
                     }) { Text("Refresh") }
                 }
+                Button(
+                    onClick = { incomeCsvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "application/vnd.ms-excel")) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Import historical Futures income CSV for $selectedYear") }
+                Text(
+                    "Use a complete Binance USDⓈ-M Futures income-history export containing only $selectedYear. Import replaces that year's saved Futures totals, preserves Spot totals and other years, and includes REALIZED_PNL, COMMISSION and FUNDING_FEE rows.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text("Spot: " + yearSpot.usd() + " · Futures: " + yearFutures.usd(),
                     color = MaterialTheme.colorScheme.primary)
                 Text("Combined total: " + (yearSpot + yearFutures).usd(),
