@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -43,12 +44,22 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var showTaxReports by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     
 
+    if (showTaxReports) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showTaxReports = false }) { Text("Back to Binance sync") }
+            CryptoTaxReportScreen()
+        }
+        return
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
+        OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.fillMaxWidth()) { Text("Historical trades & India tax reports") }
         Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
