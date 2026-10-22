@@ -41,7 +41,13 @@ fun CryptoTaxReportScreen() {
     var rateText by remember { mutableStateOf("83.0") }
     var status by remember { mutableStateOf("Import Binance CSV or ZIP exports. Existing manual journal and Daily P&L records are not changed.") }
     var busy by remember { mutableStateOf(false) }
-    var selectedYear by remember { mutableStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()) }
+    var selectedYear by remember {
+        mutableStateOf(run {
+            val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US)
+            val year = now.get(java.util.Calendar.YEAR)
+            (if (now.get(java.util.Calendar.MONTH) >= java.util.Calendar.APRIL) year else year - 1).toString()
+        })
+    }
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             busy = true
@@ -73,6 +79,9 @@ fun CryptoTaxReportScreen() {
 
     val summaries = remember(trades, rateText) {
         runCatching { CryptoTaxHistory.summaries(trades, rateText.toDouble()) }.getOrDefault(emptyList())
+    }
+    val costReview = remember(trades, rateText) {
+        runCatching { CryptoTaxHistory.costBasisReview(trades, rateText.toDouble()) }.getOrNull()
     }
     val year = selectedYear.toIntOrNull()
     val yearTrades = trades.filter { it.year == year }
@@ -116,6 +125,24 @@ fun CryptoTaxReportScreen() {
                     Text("Rows missing realized P&L: ${yearSummary.missingPnlRecords}", color = if (yearSummary.missingPnlRecords > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 } else Text("No imported records found for this year.")
                 OutlinedButton(onClick = { exportPicker.launch("risk-tracker-india-crypto-tax-years.csv") }, modifier = Modifier.fillMaxWidth(), enabled = trades.isNotEmpty()) { Text("Export year-wise CSV report") }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Cost-basis & reconciliation review", style = MaterialTheme.typography.titleMedium)
+                Text("Indicative FIFO matching by exact symbol, using the same manual conversion rate above. This is not a tax calculation.", style = MaterialTheme.typography.bodySmall)
+                if (costReview != null) {
+                    Text("Matched historical buy cost (estimate): ₹${costReview.estimatedMatchedCostInr.num(2)}")
+                    Text("Sell quantity without earlier imported buys: ${costReview.unmatchedSellQuantity}")
+                    Text("Sell rows needing earlier history review: ${costReview.sellRowsWithoutPriorBuys}",
+                        color = if (costReview.sellRowsWithoutPriorBuys > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    Text("Possible duplicate rows: ${costReview.possibleDuplicateRows}")
+                    costReview.warnings.forEach { warning ->
+                        Text("• $warning", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    Text("Enter a valid positive conversion rate to run this review.", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         if (summaries.isNotEmpty()) {
