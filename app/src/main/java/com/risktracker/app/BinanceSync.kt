@@ -65,17 +65,19 @@ class BinanceCredentialStore(context: Context) {
             .putString("secret_enc", encrypt(secret.trim())).apply()
     }
 
-    fun read(): Pair<String, String>? = try {
-        val a = prefs.getString("api_key_enc", null) ?: return null
-        val s = prefs.getString("secret_enc", null) ?: return null
-        decrypt(a) to decrypt(s)
-    } catch (_: Exception) { null }
+    fun read(): Pair<String, String>? {
+        return try {
+            val a = prefs.getString("api_key_enc", null) ?: return null
+            val s = prefs.getString("secret_enc", null) ?: return null
+            decrypt(a) to decrypt(s)
+        } catch (_: Exception) { null }
+    }
 
     fun clear() { prefs.edit().clear().apply() }
 }
 
 class BinanceApi(private val apiKey: String, private val secret: String) {
-    private fun signedGet(base: String, path: String, params: List<Pair<String, String>>): JSONArray {
+    private fun signedRequest(base: String, path: String, params: List<Pair<String, String>>): String {
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
@@ -94,18 +96,13 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("Binance API error ($status): $message")
             }
-            return JSONArray(body)
+            return body
         } finally { conn.disconnect() }
     }
 
     /** Fetches available Spot trade history. P&L is FIFO matched across imported fills. */
     fun spotDailyPnl(): Map<String, Double> {
         val fills = mutableListOf<JSONObject>()
-        var fromId: Long? = null
-        repeat(1000) {
-            val params = mutableListOf("symbol" to "") // replaced per discovered symbol below
-            break
-        }
         // Binance Spot myTrades requires a symbol; discover account symbols via read-only account endpoint.
         val account = signedGetObject("https://api.binance.com", "/api/v3/account", emptyList())
         val balances = account.optJSONArray("balances") ?: JSONArray()
@@ -127,7 +124,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             repeat(100) {
                 val p = mutableListOf("symbol" to symbol, "limit" to "1000")
                 if (cursor != null) p += "fromId" to cursor.toString()
-                val page = signedGet("https://api.binance.com", "/api/v3/myTrades", p)
+                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
                 if (page.length() == 0) return@repeat
                 for (i in 0 until page.length()) fills += page.getJSONObject(i).put("_symbol", symbol)
                 val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
@@ -178,7 +175,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         val start = 0L
         var cursor = start
         repeat(1000) {
-            val page = signedGet("https://fapi.binance.com", "/fapi/v1/income", listOf("startTime" to cursor.toString(), "limit" to "1000"))
+            val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/income", listOf("startTime" to cursor.toString(), "limit" to "1000"))
             if (page.length() == 0) return@repeat
             var maxTime = cursor
             for (i in 0 until page.length()) {
@@ -197,10 +194,11 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         return daily
     }
 
-    private fun signedGetObject(base: String, path: String, params: List<Pair<String, String>>): JSONObject {
-        val arr = signedGet(base, path, params)
-        return JSONObject().put("balances", arr)
-    }
+    private fun signedGetArray(base: String, path: String, params: List<Pair<String, String>>): JSONArray =
+        JSONArray(signedRequest(base, path, params))
+
+    private fun signedGetObject(base: String, path: String, params: List<Pair<String, String>>): JSONObject =
+        JSONObject(signedRequest(base, path, params))
 
     private fun publicGet(url: String): JSONObject {
         val conn = URL(url).openConnection() as HttpURLConnection
