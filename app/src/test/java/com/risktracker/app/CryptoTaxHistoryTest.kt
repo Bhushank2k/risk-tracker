@@ -83,4 +83,3 @@ class CryptoTaxHistoryTest {
         val review = CryptoTaxHistory.costBasisReview(listOf(row, row.copy(id = "other-source")), 80.0)
         assertEquals(1, review.possibleDuplicateRows)
     }
-
