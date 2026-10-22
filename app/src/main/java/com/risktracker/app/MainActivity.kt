@@ -6,6 +6,9 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.Paint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -78,7 +81,9 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
+    val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
+    var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
@@ -93,7 +98,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, t ->
                     NavigationBarItem(
                         selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; else -> tab >= 2 },
-                        onClick = { tab = if (i == 2) 6 else i },
+                        onClick = { tab = if (i == 2) 7 else i },
                         icon = { Icon(icons[i], contentDescription = null) },
                         label = { Text(t) }
                     )
@@ -103,7 +108,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget, importedPnl) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -124,6 +129,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     syncedCount = synced.size
                 }
                 5 -> AboutScreen()
+                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
@@ -134,7 +140,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, importedPnl: List<BinanceDailyResult> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
@@ -181,6 +187,25 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         Spacer(Modifier.height(8.dp))
                         Text("${stats.winDays}W / ${stats.lossDays}L  •  win rate ${stats.winRate.pct(0)}",
                             style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (importedPnl.isNotEmpty()) {
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("Binance imported P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Spot FIFO realized: " + importedPnl.sumOf { it.spotPnl }.usd(), color = pnlColor(importedPnl.sumOf { it.spotPnl }))
+                            Text("Futures realized P&L, commissions & funding: " + importedPnl.sumOf { it.futuresPnl }.usd(), color = pnlColor(importedPnl.sumOf { it.futuresPnl }))
+                            Text("Combined imported result: " + importedPnl.sumOf { it.total }.usd(), fontWeight = FontWeight.Bold, color = pnlColor(importedPnl.sumOf { it.total }))
+                            Text("Kept separate from manual daily entries to prevent overwriting or double-counting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            importedPnl.takeLast(7).reversed().forEach { row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(row.date, style = MaterialTheme.typography.bodySmall)
+                                    Text("Spot " + row.spotPnl.usd() + " · Futures " + row.futuresPnl.usd(), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -510,7 +535,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     val monthly = entries.filter { e -> try { val date = parseReportDate(e.date); monthKey.format(date) == monthKey.format(Date()) } catch (_: Exception) { false } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        listOf(Triple("Position calculator", "Position size, risk and target", 2), Triple("Leverage & liquidation", "Compare leverage risk", 3), Triple("Google Sheets sync", "Sync Daily P&L only", 4), Triple("About Risk Tracker", "App details and risk disclaimer", 5)).forEach { (title, subtitle, destination) ->
+        listOf(Triple("Position calculator", "Position size, risk and target", 2), Triple("Leverage & liquidation", "Compare leverage risk", 3), Triple("Google Sheets sync", "Sync Daily P&L only", 4), Triple("Binance trade sync", "Read-only Spot & Futures history", 6), Triple("About Risk Tracker", "App details and risk disclaimer", 5)).forEach { (title, subtitle, destination) ->
             Card(onClick = { onNavigate(destination) }, modifier = Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary) } }
         }
         HorizontalDivider()
