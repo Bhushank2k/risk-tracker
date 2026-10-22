@@ -171,7 +171,7 @@ object CryptoTaxHistory {
      * Flags records that need review before a tax estimate can be relied on.
      */
     fun dataQuality(trades: List<HistoricalCryptoTrade>): TaxDataQuality {
-        val missingPnl = trades.count { it.realizedPnl == null }
+        val missingPnl = trades.count { it.side == "SELL" && it.realizedPnl == null }
         val unknownSide = trades.count { it.side !in setOf("BUY", "SELL") }
         val invalidAmounts = trades.count { !it.quantity.isFinite() || it.quantity <= 0.0 || !it.price.isFinite() || it.price <= 0.0 }
         val missingFeeAsset = trades.count { it.fee > 0.0 && it.feeAsset.isBlank() }
@@ -198,7 +198,7 @@ object CryptoTaxHistory {
             val knownPnl = rows.mapNotNull { it.realizedPnl }
             IndiaTaxYearSummary(year, rows.size, knownPnl.sum() * inrPerUsdt,
                 rows.sumOf { it.fee } * inrPerUsdt, rows.filter { it.side == "SELL" }.sumOf { it.quoteAmount } * inrPerUsdt,
-                rows.filter { it.side == "BUY" }.sumOf { it.quoteAmount } * inrPerUsdt, rows.count { it.realizedPnl == null })
+                rows.filter { it.side == "BUY" }.sumOf { it.quoteAmount } * inrPerUsdt, rows.count { it.side == "SELL" && it.realizedPnl == null })
         }
     }
 
