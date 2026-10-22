@@ -43,8 +43,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val rows = remember { BinanceSyncData.load(context) }
-    val lastSync = BinanceSyncData.lastSync(context)
+    var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
+    var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
+    
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
@@ -78,7 +79,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         status = "Syncing Spot and Futures history…"
                         scope.launch {
                             try {
-                                withContext(Dispatchers.IO) { BinanceDailyWorker(context, androidx.work.WorkerParameters.Builder().build()).runSyncNowForUi() }
+                                BinanceSyncRunner.sync(context)
+                                rows = BinanceSyncData.load(context)
+                                lastSync = BinanceSyncData.lastSync(context)
                                 onSynced()
                                 status = "Sync completed. Imported P&L is visible on Daily P&L."
                             } catch (e: Exception) {
