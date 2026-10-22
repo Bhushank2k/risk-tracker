@@ -190,7 +190,7 @@ object CryptoTaxHistory {
             if (missingFeeAsset > 0) add("$missingFeeAsset records have fees but no fee asset.")
             if (trades.isEmpty()) add("Import transaction history to assess data completeness.")
         }
-        val penalty = if (trades.isEmpty()) 100 else (
+        val penalty = if (trades.isEmpty()) 100.0 else (
             missingPnl * 35.0 / trades.size +
             unknownSide * 25.0 / trades.size +
             invalidAmounts * 25.0 / trades.size +
