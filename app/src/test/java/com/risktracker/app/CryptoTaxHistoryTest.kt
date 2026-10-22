@@ -55,7 +55,8 @@ class CryptoTaxHistoryTest {
 
     @Test fun dataQualityFlagsMissingPnlAndIncompleteTradeFields() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
-            "2025-05-01 12:00:00,BTCUSDT,UNKNOWN,0,0,0,2,,\n"
+            "2025-05-01 12:00:00,BTCUSDT,SELL,0,0,0,2,,\n" +
+            "2025-05-02 12:00:00,ETHUSDT,UNKNOWN,1,100,100,0,USDT,\n"
         val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         val quality = CryptoTaxHistory.dataQuality(rows)
         assertEquals(1, quality.missingRealizedPnl)
