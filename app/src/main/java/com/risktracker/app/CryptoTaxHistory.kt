@@ -58,6 +58,14 @@ data class IndiaTaxYearSummary(
     val missingPnlRecords: Int
 )
 
+data class CostBasisReview(
+    val estimatedMatchedCostInr: Double,
+    val unmatchedSellQuantity: Double,
+    val sellRowsWithoutPriorBuys: Int,
+    val possibleDuplicateRows: Int,
+    val warnings: List<String>
+)
+
 object CryptoTaxHistory {
     private const val PREFS = "crypto_tax_history_v1"
     private const val KEY = "trades_json"
@@ -189,6 +197,54 @@ object CryptoTaxHistory {
             missingFeeAsset * 15.0 / trades.size
         )
         return TaxDataQuality((100.0 - penalty).toInt().coerceIn(0, 100), trades.size, missingPnl, unknownSide, invalidAmounts, missingFeeAsset, warnings)
+    }
+
+    /**
+     * Review-only FIFO matching within each exact symbol string. Assumes BUY/SELL quantity units
+     * are consistent and quoteAmount is in the currency represented by the manually entered rate.
+     * It deliberately does not claim to calculate Indian taxable VDA income.
+     */
+    fun costBasisReview(trades: List<HistoricalCryptoTrade>, inrPerQuote: Double): CostBasisReview {
+        require(inrPerQuote > 0.0 && inrPerQuote.isFinite()) { "Enter a valid INR conversion rate." }
+        data class Lot(var remaining: Double, val unitCostInr: Double)
+        val lots = mutableMapOf<String, MutableList<Lot>>()
+        var matchedCost = 0.0
+        var unmatchedQty = 0.0
+        var unmatchedRows = 0
+        trades.sortedBy { it.timestamp }.forEach { trade ->
+            if (trade.side == "BUY" && trade.quantity > 0.0 && trade.quantity.isFinite() &&
+                trade.quoteAmount >= 0.0 && trade.quoteAmount.isFinite()) {
+                val unitCost = trade.quoteAmount * inrPerQuote / trade.quantity
+                lots.getOrPut(trade.symbol) { mutableListOf() }.add(Lot(trade.quantity, unitCost))
+            } else if (trade.side == "SELL" && trade.quantity > 0.0 && trade.quantity.isFinite()) {
+                var needed = trade.quantity
+                val symbolLots = lots.getOrPut(trade.symbol) { mutableListOf() }
+                for (lot in symbolLots) {
+                    if (needed <= 1e-10) break
+                    if (lot.remaining <= 1e-10) continue
+                    val used = minOf(needed, lot.remaining)
+                    matchedCost += used * lot.unitCostInr
+                    lot.remaining -= used
+                    needed -= used
+                }
+                if (needed > 1e-8) {
+                    unmatchedQty += needed
+                    unmatchedRows++
+                }
+            }
+        }
+        val duplicateCount = trades.groupBy {
+            listOf(it.timestamp, it.exchange, it.market, it.symbol, it.side,
+                it.quantity.toString(), it.price.toString(), it.quoteAmount.toString(),
+                it.fee.toString(), it.feeAsset.uppercase(Locale.US)).joinToString("|")
+        }.values.sumOf { group -> (group.size - 1).coerceAtLeast(0) }
+        val warnings = buildList {
+            if (unmatchedRows > 0) add("$unmatchedRows sell rows have quantity with no earlier imported BUY lot; import earlier history or review transfers.")
+            if (duplicateCount > 0) add("$duplicateCount possible duplicate rows share matching trade details. Review them; records were not deleted.")
+            add("FIFO matching is an indicative data review only, not a determination of Indian tax cost basis.")
+            add("The conversion rate is a single manual estimate and is applied to all quote amounts.")
+        }
+        return CostBasisReview(matchedCost, unmatchedQty, unmatchedRows, duplicateCount, warnings)
     }
 
     /** All money amounts are explicitly converted to INR by the caller; no implicit USD/USDT=INR assumption. */

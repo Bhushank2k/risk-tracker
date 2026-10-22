@@ -40,8 +40,6 @@ class CryptoTaxHistoryTest {
         assertEquals(1, summary.missingPnlRecords)
         assertTrue(summary.proceedsInr > 0)
     }
-}
-
 
     @Test fun groupsTradesByIndianFinancialYearAcrossAprilBoundary() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
@@ -65,4 +63,23 @@ class CryptoTaxHistoryTest {
         assertEquals(1, quality.missingFeeAsset)
         assertTrue(quality.score < 100)
         assertTrue(quality.warnings.isNotEmpty())
+    }
+
+    @Test fun fifoReviewMatchesBuysAndFlagsSellQuantityWithoutImportedCostBasis() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n" +
+            "2025-05-02 10:00:00,BTCUSDT,SELL,1.5,120,180,0,USDT,\n"
+        val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
+        val review = CryptoTaxHistory.costBasisReview(rows, 80.0)
+        assertEquals(8000.0, review.estimatedMatchedCostInr, 0.0001)
+        assertEquals(0.5, review.unmatchedSellQuantity, 0.0001)
+        assertEquals(1, review.sellRowsWithoutPriorBuys)
+    }
+
+    @Test fun reconciliationFlagsPossibleDuplicatesWithoutDeletingRows() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n"
+        val row = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv").single()
+        val review = CryptoTaxHistory.costBasisReview(listOf(row, row.copy(id = "other-source")), 80.0)
+        assertEquals(1, review.possibleDuplicateRows)
     }
