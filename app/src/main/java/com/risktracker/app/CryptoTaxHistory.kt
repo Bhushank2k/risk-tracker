@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.Locale
@@ -126,8 +127,7 @@ object CryptoTaxHistory {
                     var entry = zip.nextEntry
                     while (entry != null) {
                         if (!entry.isDirectory && entry.name.endsWith(".csv", true)) {
-                            val text = BufferedReader(InputStreamReader(zip, Charsets.UTF_8)).readText()
-                            runCatching { imported += parseCsv(text, entry.name) }
+                            val bytes = ByteArrayOutputStream()\n                            val buffer = ByteArray(8192)\n                            while (true) {\n                                val count = zip.read(buffer)\n                                if (count <= 0) break\n                                bytes.write(buffer, 0, count)\n                            }\n                            val text = bytes.toString(Charsets.UTF_8.name())\n                            runCatching { imported += parseCsv(text, entry.name) }
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
