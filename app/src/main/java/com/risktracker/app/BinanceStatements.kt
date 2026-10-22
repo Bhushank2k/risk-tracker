@@ -90,7 +90,11 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
                 val msg = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("$path: Binance API error ($status): $msg")
             }
-            return JSONArray(body)
+            return if (body.trimStart().startsWith("[")) JSONArray(body) else {
+                val obj = JSONObject(body)
+                obj.optJSONArray("rows") ?: obj.optJSONArray("data")
+                    ?: throw IllegalStateException("$path returned an unsupported statement response.")
+            }
         } finally { conn.disconnect() }
     }
 
@@ -122,10 +126,6 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
             return BinanceStatement(id, time, category, asset, amount, o.optString(statusKey), ref, details)
         }
         val timeParams = listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "1000")
-        bestEffort(rows, "Spot trades", "https://api.binance.com", "/api/v3/myTrades",
-            listOf("symbol" to "BTCUSDT", "startTime" to start.toString(), "endTime" to end.toString(), "limit" to "1000")) { o ->
-            map("Spot trades", o, listOf("time"), "quoteAsset", "quoteQty", detailKeys = listOf("symbol", "isBuyer", "qty", "price", "commission", "commissionAsset"))
-        }
         bestEffort(rows, "Deposits", "https://api.binance.com", "/sapi/v1/capital/deposit/hisrec", timeParams) { o ->
             map("Deposits", o, listOf("insertTime"), "coin", "amount", idKey = "txId", detailKeys = listOf("network", "address", "txId"))
         }
