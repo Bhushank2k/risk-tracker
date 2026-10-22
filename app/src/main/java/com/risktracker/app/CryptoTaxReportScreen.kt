@@ -63,7 +63,7 @@ fun CryptoTaxReportScreen() {
             val rate = rateText.toDouble()
             val summaries = CryptoTaxHistory.summaries(trades, rate)
             val csv = buildString {
-                appendLine("Tax year,Transactions,Realized P&L (INR),Fees (INR),Sell proceeds (INR),Buy value (INR),Rows missing realized P&L")
+                appendLine("Financial year (start year),Transactions,Exchange-reported realized P&L (INR),Fees (INR),Sell proceeds (INR),Buy value (INR),Rows missing realized P&L")
                 summaries.forEach { s -> appendLine("${s.year},${s.trades},${s.realizedPnlInr},${s.feesInr},${s.proceedsInr},${s.costBasisInr},${s.missingPnlRecords}") }
             }
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
@@ -80,7 +80,7 @@ fun CryptoTaxReportScreen() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Crypto tax reports · India", style = MaterialTheme.typography.headlineSmall)
-        Text("Historical Binance trade ledger from 2019 onward. Reports are estimates for review, not tax-filing advice. Confirm INR conversion rates and tax treatment for each financial year with a qualified Indian tax professional.", style = MaterialTheme.typography.bodyMedium)
+        Text("Historical Binance trade ledger from 2019 onward, grouped by Indian financial year (1 April–31 March). Imported realized P&L is not automatically the taxable VDA income under Indian law. Reports are review aids, not tax-filing advice; verify records, date-specific INR values and tax treatment with a qualified Indian tax professional."), style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Import historical trades", style = MaterialTheme.typography.titleMedium)
@@ -88,13 +88,23 @@ fun CryptoTaxReportScreen() {
                 Button(onClick = { importPicker.launch(arrayOf("text/*", "application/zip", "application/octet-stream", "application/vnd.ms-excel")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Importing…" else "Import Binance CSV / ZIP")
                 }
-                Text("Rows stored: ${trades.size} · Years found: ${trades.map { it.year }.distinct().size}", style = MaterialTheme.typography.bodyMedium)
+                Text("Rows stored: ${trades.size} · Financial years found: ${trades.map { it.year }.distinct().size}", style = MaterialTheme.typography.bodyMedium)
+                val quality = CryptoTaxHistory.dataQuality(trades)
+                Spacer(Modifier.height(4.dp))
+                Text("Data completeness check", style = MaterialTheme.typography.titleSmall)
+                Text("Review score: ${quality.score}/100", style = MaterialTheme.typography.titleMedium,
+                    color = if (quality.score < 70) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Text("This is a data-quality heuristic, not a tax-accuracy guarantee.", style = MaterialTheme.typography.bodySmall)
+                quality.warnings.forEach { warning ->
+                    Text("• $warning", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Year-wise summary", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(selectedYear, { selectedYear = it.filter(Char::isDigit).take(4) }, label = { Text("Calendar year (2019 onward)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(selectedYear, { selectedYear = it.filter(Char::isDigit).take(4) }, label = { Text("Financial year start year (e.g. 2025 = FY 2025-26)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(rateText, { rateText = it }, label = { Text("INR per USDT / quote currency (manual estimate)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("This rate is a single user-entered estimate for summary display. It is not a date-specific historical FX calculation.")
                 if (yearSummary != null) {
@@ -111,10 +121,10 @@ fun CryptoTaxReportScreen() {
         if (summaries.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Available years", style = MaterialTheme.typography.titleMedium)
+                    Text("Available financial years", style = MaterialTheme.typography.titleMedium)
                     summaries.forEach { s ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${s.year} · ${s.trades} rows")
+                            Text("FY ${s.year}-${(s.year + 1).toString().takeLast(2)} · ${s.trades} rows")
                             Text("₹${s.realizedPnlInr.num(0)}", color = pnlColor(s.realizedPnlInr))
                         }
                     }
@@ -122,7 +132,7 @@ fun CryptoTaxReportScreen() {
             }
         }
         if (yearTrades.isNotEmpty()) {
-            Text("Trade history for $selectedYear", style = MaterialTheme.typography.titleMedium)
+            Text("Trade history for FY $selectedYear-${((selectedYear.toIntOrNull() ?: 0) + 1).toString().takeLast(2)}", style = MaterialTheme.typography.titleMedium)
             yearTrades.takeLast(100).asReversed().forEach { t ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
