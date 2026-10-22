@@ -245,6 +245,30 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
+    /**
+     * Replace the selected year's Futures net-income values from a complete user-selected
+     * Binance export while preserving Spot totals and every other year.
+     */
+    fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
+        require(year in 2018..2026) { "Select a year from 2018 through 2026." }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val yearPrefix = "$year-"
+        merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
+            val previous = merged.getValue(day)
+            merged[day] = previous.copy(futuresPnl = daily[day] ?: 0.0)
+        }
+        daily.forEach { (day, amount) ->
+            val previous = merged[day]
+            merged[day] = BinanceDailyResult(day, previous?.spotPnl ?: 0.0, amount)
+        }
+        val array = JSONArray()
+        merged.values.sortedBy { it.date }.forEach {
+            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
+        }
+        prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
+    }
+
     /** Backward-compatible save for callers that provide complete combined daily rows. */
     fun save(context: Context, data: List<BinanceDailyResult>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
