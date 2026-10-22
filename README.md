@@ -27,8 +27,12 @@ gradle assembleDebug --no-daemon
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs the unit tests and builds the APK for pushes and pull requests.
 
-## Trade journal calculation notes
+## Binance sync and historical coverage
 
-P&L is estimated from entered entry/exit prices, quantity, side, and fees. It does not include funding, slippage, or exchange-specific contract multipliers. Journal entries are stored locally on the Android device and are not synchronized with Google Sheets. No exchange API is connected and the app does not execute trades.
+The app includes an optional read-only Binance API integration. Spot realized P&L is estimated using FIFO matching for the symbols discovered by the current account scan. USDⓈ-M Futures P&L imports recent `REALIZED_PNL`, `COMMISSION`, and `FUNDING_FEE` income records. The standard Futures income endpoint has a limited history window, so API sync alone cannot recover every record back to 2018.
 
-Never put exchange API secrets in source code or client-side builds.
+The Binance sync screen supports year-wise viewing of saved results and importing a year-scoped Binance USDⓈ-M Futures income-history CSV export. Use a complete export for the selected year: importing it replaces that year's saved Futures totals while preserving Spot results and other years. Years without recoverable export/API data must be treated as incomplete, not as zero P&L. The local daily summary remains separate from manually entered Daily P&L records.
+
+Trade-journal P&L is estimated from entered entry/exit prices, quantity, side, and fees. It does not include funding, slippage, or exchange-specific contract multipliers. Journal entries are stored locally and are not synchronized with Google Sheets. The app does not execute trades.
+
+Use a read-only Binance API key with no trading or withdrawal permissions. Never put exchange API secrets in source code, logs, exports, or client-side builds.

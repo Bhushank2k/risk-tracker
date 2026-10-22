@@ -1,5 +1,7 @@
 package com.risktracker.app
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +52,35 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var showStatements by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
+    var selectedYear by remember { mutableStateOf(2026) }
+    var yearMenuExpanded by remember { mutableStateOf(false) }
+    val yearRows = rows.filter { it.date.take(4).toIntOrNull() == selectedYear }
+    val yearSpot = yearRows.sumOf { it.spotPnl }
+    val yearFutures = yearRows.sumOf { it.futuresPnl }
+    val incomeCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            busy = true
+            status = "Importing the $selectedYear Futures income export…"
+            scope.launch {
+                try {
+                    val daily = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            BinanceIncomeCsvImporter.parse(it, selectedYear)
+                        } ?: error("Could not open the selected file.")
+                    }
+                    BinanceSyncData.replaceFuturesYear(context, selectedYear, daily)
+                    rows = BinanceSyncData.load(context)
+                    lastSync = BinanceSyncData.lastSync(context)
+                    onSynced()
+                    status = "Imported ${daily.size} daily totals for $selectedYear. Confirm the CSV is a complete full-year income export."
+                } catch (e: Exception) {
+                    status = "CSV import failed: " + (e.message ?: "check the export format")
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
     
 
     if (showStatements) {
@@ -67,7 +100,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
         Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
         OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.fillMaxWidth()) { Text("Historical trades & India tax reports") }
         OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.fillMaxWidth()) { Text("Automatic Binance account statements") }
-        Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries.", style = MaterialTheme.typography.bodyMedium)
+        Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries. The standard Futures income API exposes only recent history; older years require a Binance historical export/import workflow.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Read-only API credentials", style = MaterialTheme.typography.titleMedium)
@@ -113,16 +146,64 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
             }
         }
         if (lastSync > 0L) Text("Last sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall)
-        if (rows.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Imported history", style = MaterialTheme.typography.titleMedium)
-                    Text("Spot: " + rows.sumOf { it.spotPnl }.usd() + " · Futures: " + rows.sumOf { it.futuresPnl }.usd(), color = MaterialTheme.colorScheme.primary)
-                    rows.takeLast(10).reversed().forEach { row ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Year-wise imported history", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { yearMenuExpanded = true }, modifier = Modifier.weight(1f)) {
+                        Text("Year: $selectedYear")
+                    }
+                    DropdownMenu(expanded = yearMenuExpanded, onDismissRequest = { yearMenuExpanded = false }) {
+                        (2018..2026).forEach { year ->
+                            DropdownMenuItem(
+                                text = { Text(year.toString()) },
+                                onClick = { selectedYear = year; yearMenuExpanded = false }
+                            )
+                        }
+                    }
+                    OutlinedButton(onClick = {
+                        rows = BinanceSyncData.load(context)
+                        lastSync = BinanceSyncData.lastSync(context)
+                    }) { Text("Refresh") }
+                }
+                Button(
+                    onClick = { incomeCsvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "application/vnd.ms-excel")) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Import historical Futures income CSV for $selectedYear") }
+                Text(
+                    "Use a complete Binance USDⓈ-M Futures income-history export containing only $selectedYear. Import replaces that year's saved Futures totals, preserves Spot totals and other years, and includes REALIZED_PNL, COMMISSION and FUNDING_FEE rows.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text("Spot: " + yearSpot.usd() + " · Futures: " + yearFutures.usd(),
+                    color = MaterialTheme.colorScheme.primary)
+                Text("Combined total: " + (yearSpot + yearFutures).usd(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = pnlColor(yearSpot + yearFutures))
+                if (yearRows.isEmpty()) {
+                    Text(
+                        if (selectedYear < 2026) "No saved rows for $selectedYear. The standard Futures income endpoint cannot backfill old years; import an official Binance historical export to recover unavailable history."
+                        else "No imported rows for $selectedYear yet. Run Sync now to retrieve currently available records.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    yearRows.sortedByDescending { it.date }.take(31).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(row.date)
-                            Text(row.total.usd(), color = pnlColor(row.total))
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                                Text(row.total.usd(), color = pnlColor(row.total))
+                                Text("Spot ${row.spotPnl.usd()} · Futures ${row.futuresPnl.usd()}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
+                    }
+                    if (yearRows.size > 31) {
+                        Text("Showing 31 of ${yearRows.size} saved days for $selectedYear.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
