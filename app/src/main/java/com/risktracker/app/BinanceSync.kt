@@ -121,15 +121,20 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         }
         for (symbol in tradable.take(80)) {
             var cursor: Long? = null
-            repeat(100) {
+            var more = true
+            var pages = 0
+            while (more && pages < 100) {
+                pages++
                 val p = mutableListOf("symbol" to symbol, "limit" to "1000")
                 if (cursor != null) p += "fromId" to cursor.toString()
                 val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
-                if (page.length() == 0) return@repeat
-                for (i in 0 until page.length()) fills += page.getJSONObject(i).put("_symbol", symbol)
-                val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
-                if (page.length() < 1000 || lastId < 0) return@repeat
-                cursor = lastId + 1
+                if (page.length() == 0) {
+                    more = false
+                } else {
+                    for (i in 0 until page.length()) fills += page.getJSONObject(i).put("_symbol", symbol)
+                    val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
+                    if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
+                }
             }
         }
         // FIFO cost basis per pair. Only closed quantity contributes realized P&L; commissions are deducted.
@@ -172,24 +177,29 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
     fun futuresDailyPnl(): Map<String, Double> {
         val daily = mutableMapOf<String, Double>()
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-        val start = 0L
-        var cursor = start
-        repeat(1000) {
+        // Binance's income-history endpoint has a limited retention window; request the latest 90 days.
+        var cursor = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+        var more = true
+        var pages = 0
+        while (more && pages < 100) {
+            pages++
             val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/income", listOf("startTime" to cursor.toString(), "limit" to "1000"))
-            if (page.length() == 0) return@repeat
-            var maxTime = cursor
-            for (i in 0 until page.length()) {
-                val row = page.getJSONObject(i)
-                val type = row.optString("incomeType")
-                if (type in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")) {
-                    val day = sdf.format(Date(row.optLong("time")))
-                    val value = row.optString("income").toDoubleOrNull() ?: row.optDouble("income")
-                    daily[day] = (daily[day] ?: 0.0) + value
+            if (page.length() == 0) {
+                more = false
+            } else {
+                var maxTime = cursor
+                for (i in 0 until page.length()) {
+                    val row = page.getJSONObject(i)
+                    val type = row.optString("incomeType")
+                    if (type in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")) {
+                        val day = sdf.format(Date(row.optLong("time")))
+                        val value = row.optString("income").toDoubleOrNull() ?: row.optDouble("income")
+                        daily[day] = (daily[day] ?: 0.0) + value
+                    }
+                    maxTime = maxOf(maxTime, row.optLong("time"))
                 }
-                maxTime = maxOf(maxTime, row.optLong("time"))
+                if (page.length() < 1000 || maxTime <= cursor) more = false else cursor = maxTime + 1
             }
-            if (page.length() < 1000 || maxTime <= cursor) return@repeat
-            cursor = maxTime + 1
         }
         return daily
     }
