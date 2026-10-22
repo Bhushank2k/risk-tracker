@@ -224,18 +224,22 @@ object BinanceSyncData {
     fun lastSync(context: Context): Long = context.getSharedPreferences("binance_import_v1", Context.MODE_PRIVATE).getLong("last_sync", 0L)
 }
 
-class BinanceDailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        try {
-            val credentials = BinanceCredentialStore(applicationContext).read() ?: return@withContext Result.success()
-            val api = BinanceApi(credentials.first, credentials.second)
-            val spot = api.spotDailyPnl()
-            val futures = api.futuresDailyPnl()
-            val days = (spot.keys + futures.keys).toSortedSet()
-            BinanceSyncData.save(applicationContext, days.map { BinanceDailyResult(it, spot[it] ?: 0.0, futures[it] ?: 0.0) })
-            Result.success()
-        } catch (_: Exception) { Result.retry() }
+object BinanceSyncRunner {
+    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
+        val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
+        val api = BinanceApi(credentials.first, credentials.second)
+        val spot = api.spotDailyPnl()
+        val futures = api.futuresDailyPnl()
+        val days = (spot.keys + futures.keys).toSortedSet()
+        BinanceSyncData.save(context, days.map { BinanceDailyResult(it, spot[it] ?: 0.0, futures[it] ?: 0.0) })
     }
+}
+
+class BinanceDailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result = try {
+        if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
+        else { BinanceSyncRunner.sync(applicationContext); Result.success() }
+    } catch (_: Exception) { Result.retry() }
 
     companion object {
         fun schedule(context: Context) {
