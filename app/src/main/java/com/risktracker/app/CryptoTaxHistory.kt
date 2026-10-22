@@ -91,7 +91,8 @@ object CryptoTaxHistory {
         val quoteIdx = index("quoteqty", "quoteamount", "total", "funds")
         val feeIdx = index("fee", "commission")
         val feeAssetIdx = index("feeasset", "commissionasset")
-        val pnlIdx = index("realizedpnl", "realizedprofit", "pnl")\n        val tradeIdIdx = index("tradeid", "id", "executionid")
+        val pnlIdx = index("realizedpnl", "realizedprofit", "pnl")
+        val tradeIdIdx = index("tradeid", "id", "executionid")
         if (timeIdx < 0 || symbolIdx < 0) throw IllegalArgumentException("CSV needs date/time and symbol/pair columns. Choose a Binance trade-history export.")
         return lines.drop(1).mapIndexedNotNull { rowNo, line ->
             val c = csvRow(line)
@@ -127,7 +128,15 @@ object CryptoTaxHistory {
                     var entry = zip.nextEntry
                     while (entry != null) {
                         if (!entry.isDirectory && entry.name.endsWith(".csv", true)) {
-                            val bytes = ByteArrayOutputStream()\n                            val buffer = ByteArray(8192)\n                            while (true) {\n                                val count = zip.read(buffer)\n                                if (count <= 0) break\n                                bytes.write(buffer, 0, count)\n                            }\n                            val text = bytes.toString(Charsets.UTF_8.name())\n                            runCatching { imported += parseCsv(text, entry.name) }
+                            val bytes = ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val count = zip.read(buffer)
+                                if (count <= 0) break
+                                bytes.write(buffer, 0, count)
+                            }
+                            val text = bytes.toString(Charsets.UTF_8.name())
+                            runCatching { imported += parseCsv(text, entry.name) }
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
