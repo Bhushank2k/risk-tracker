@@ -108,17 +108,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var trades by remember { mutableStateOf(store.loadTrades()) }
     val titles = listOf("Home", "Journal", "Insights", "More")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Info)
-    val menuItems = listOf(
-        "Dashboard" to 0,
-        "Trade journal" to 1,
-        "Performance insights" to 8,
-        "Position calculator" to 2,
-        "Leverage & liquidation" to 3,
-        "Google Sheets sync" to 4,
-        "Binance trade history" to 6,
-        "Crypto tax report" to 9,
-        "Settings & backup" to 7,
-        "About Risk Tracker" to 5
+    val menuGroups = listOf(
+        "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8),
+        "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3),
+        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9),
+        "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
     )
 
     Scaffold(
@@ -136,17 +130,24 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        menuItems.forEach { (label, destination) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = { menuExpanded = false; tab = destination }
+                        menuGroups.forEachIndexed { groupIndex, (group, items) ->
+                            if (groupIndex > 0) HorizontalDivider(Modifier.padding(horizontal = 12.dp))
+                            Text(
+                                group,
+                                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            items.forEach { (label, destination) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = { menuExpanded = false; tab = destination }
+                                )
+                            }
                         }
                     }
                 },
-                actions = {
-                    TextButton(onClick = { tab = 7 }) { Text("Settings") }
-                }
+
             )
         },
         bottomBar = {
@@ -593,15 +594,23 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     val monthly = entries.filter { e -> try { val date = parseReportDate(e.date); monthKey.format(date) == monthKey.format(Date()) } catch (_: Exception) { false } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        listOf(Triple("Position calculator", "Position size, risk and target", 2), Triple("Leverage & liquidation", "Compare leverage risk", 3), Triple("Google Sheets sync", "Sync Daily P&L only", 4), Triple("Binance trade sync", "Read-only Spot & Futures history", 6), Triple("About Risk Tracker", "App details and risk disclaimer", 5)).forEach { (title, subtitle, destination) ->
-            Card(onClick = { onNavigate(destination) }, modifier = Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary) } }
-        }
+        Text("Trading tools", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Position calculator", "Position size, risk and target") { onNavigate(2) }
+        MoreDestinationCard("Leverage & liquidation", "Compare leverage risk") { onNavigate(3) }
+        Text("Imports & reports", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Google Sheets sync", "Sync Daily P&L only") { onNavigate(4) }
+        MoreDestinationCard("Binance trade history", "Read-only Spot & Futures history") { onNavigate(6) }
+        MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+        Text("About", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("About Risk Tracker", "App details and risk disclaimer") { onNavigate(5) }
         HorizontalDivider()
+        Text("Performance summaries", style = MaterialTheme.typography.titleMedium)
         Text("Weekly report · last 7 recorded days", style = MaterialTheme.typography.titleMedium)
         ReportSummary(weekly)
         Text("Monthly report · current month", style = MaterialTheme.typography.titleMedium)
         ReportSummary(monthly)
         HorizontalDivider()
+        Text("App settings", style = MaterialTheme.typography.titleMedium)
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
@@ -620,6 +629,18 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     }
 }
 
+@Composable
+private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
 private fun parseReportDate(value: String): Date {
     val formats = listOf("yyyy-MM-dd", "d/M/yyyy", "M/d/yyyy", "dd/MM/yyyy")
     formats.forEach { pattern -> try { return java.text.SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(value)!! } catch (_: Exception) {} }
