@@ -40,8 +40,6 @@ class CryptoTaxHistoryTest {
         assertEquals(1, summary.missingPnlRecords)
         assertTrue(summary.proceedsInr > 0)
     }
-}
-
 
     @Test fun groupsTradesByIndianFinancialYearAcrossAprilBoundary() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
