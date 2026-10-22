@@ -221,17 +221,48 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 }
 
 object BinanceSyncData {
-    fun save(context: Context, data: List<BinanceDailyResult>) {
+    private const val PREFS = "binance_import_v1"
+
+    /**
+     * Merge only dates returned by each source. A recent Futures API refresh must not erase
+     * older saved years merely because the income endpoint cannot return them.
+     */
+    fun merge(context: Context, spot: Map<String, Double>, futures: Map<String, Double>) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val merged = load(context).associateBy { it.date }.toMutableMap()
+        (spot.keys + futures.keys).forEach { day ->
+            val previous = merged[day]
+            merged[day] = BinanceDailyResult(
+                date = day,
+                spotPnl = spot[day] ?: previous?.spotPnl ?: 0.0,
+                futuresPnl = futures[day] ?: previous?.futuresPnl ?: 0.0
+            )
+        }
         val array = JSONArray()
-        data.forEach { array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl)) }
-        context.getSharedPreferences("binance_import_v1", Context.MODE_PRIVATE).edit().putString("daily", array.toString())
-            .putLong("last_sync", System.currentTimeMillis()).apply()
+        merged.values.sortedBy { it.date }.forEach {
+            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
+        }
+        prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
+
+    /** Backward-compatible save for callers that provide complete combined daily rows. */
+    fun save(context: Context, data: List<BinanceDailyResult>) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val merged = load(context).associateBy { it.date }.toMutableMap()
+        data.forEach { merged[it.date] = it }
+        val array = JSONArray()
+        merged.values.sortedBy { it.date }.forEach {
+            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
+        }
+        prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
+    }
+
     fun load(context: Context): List<BinanceDailyResult> = try {
-        val a = JSONArray(context.getSharedPreferences("binance_import_v1", Context.MODE_PRIVATE).getString("daily", "[]"))
+        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
         (0 until a.length()).map { i -> a.getJSONObject(i).let { BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl")) } }
     } catch (_: Exception) { emptyList() }
-    fun lastSync(context: Context): Long = context.getSharedPreferences("binance_import_v1", Context.MODE_PRIVATE).getLong("last_sync", 0L)
+
+    fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 }
 
 object BinanceSyncRunner {
@@ -240,8 +271,7 @@ object BinanceSyncRunner {
         val api = BinanceApi(credentials.first, credentials.second)
         val spot = api.spotDailyPnl()
         val futures = api.futuresDailyPnl()
-        val days = (spot.keys + futures.keys).toSortedSet()
-        BinanceSyncData.save(context, days.map { BinanceDailyResult(it, spot[it] ?: 0.0, futures[it] ?: 0.0) })
+        BinanceSyncData.merge(context, spot, futures)
     }
 }
 
