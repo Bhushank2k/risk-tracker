@@ -43,7 +43,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
+    var showTaxReports by remember { mutableStateOf(false) }\n    var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     
 
