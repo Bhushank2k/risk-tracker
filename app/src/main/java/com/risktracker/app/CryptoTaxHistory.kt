@@ -90,7 +90,7 @@ object CryptoTaxHistory {
         val quoteIdx = index("quoteqty", "quoteamount", "total", "funds")
         val feeIdx = index("fee", "commission")
         val feeAssetIdx = index("feeasset", "commissionasset")
-        val pnlIdx = index("realizedpnl", "realizedprofit", "pnl")
+        val pnlIdx = index("realizedpnl", "realizedprofit", "pnl")\n        val tradeIdIdx = index("tradeid", "id", "executionid")
         if (timeIdx < 0 || symbolIdx < 0) throw IllegalArgumentException("CSV needs date/time and symbol/pair columns. Choose a Binance trade-history export.")
         return lines.drop(1).mapIndexedNotNull { rowNo, line ->
             val c = csvRow(line)
