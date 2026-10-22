@@ -30,7 +30,7 @@ class CryptoTaxHistoryTest {
     @Test fun yearlySummaryFlagsMissingRealizedPnlAndConvertsAmountsToInr() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n" +
-            "2019-07-01 12:30:00,BTCUSDT,BUY,0.5,9000,4500,1,USDT,\n"
+            "2019-07-01 12:30:00,BTCUSDT,SELL,0.5,9000,4500,1,USDT,\n"
         val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         val summary = CryptoTaxHistory.summaries(rows, 80.0).single()
         assertEquals(2019, summary.year)
