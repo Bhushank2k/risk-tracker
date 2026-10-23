@@ -58,6 +58,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var pendingImportYear by remember { mutableStateOf(2026) }
     val auditStore = remember { BinanceImportAuditStore(context) }
     var importReport by remember { mutableStateOf(auditStore.load(2026)) }
+    val importBackupStore = remember { BinanceYearImportBackupStore(context) }
+    var pendingImportReport by remember { mutableStateOf<BinanceIncomeImportReport?>(null) }
+    var hasYearBackup by remember { mutableStateOf(importBackupStore.hasBackup(2026)) }
     val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
     var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
     val reconciliationPrefs = remember { context.getSharedPreferences("binance_year_reconciliation_v1", 0) }
@@ -79,13 +82,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                             BinanceIncomeCsvImporter.parseWithReport(it, importYear)
                         } ?: error("Could not open the selected file.")
                     }
-                    BinanceSyncData.replaceFuturesYear(context, importYear, report.daily)
-                    auditStore.save(importYear, report)
-                    if (selectedYear == importYear) importReport = report
-                    rows = BinanceSyncData.load(context)
-                    lastSync = BinanceSyncData.lastSync(context)
-                    onSynced()
-                    status = "Imported ${report.daily.size} daily totals for $importYear. Review the import audit below; activity dates alone cannot prove a full export."
+                    pendingImportYear = importYear
+                    pendingImportReport = report
+                    status = "Preview ready for $importYear. Review the totals and confirm to replace the yearly Futures data."
                 } catch (e: Exception) {
                     status = "CSV import failed: " + (e.message ?: "check the export format")
                 } finally {
@@ -170,7 +169,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         (2018..2026).forEach { year ->
                             DropdownMenuItem(
                                 text = { Text(year.toString()) },
-                                onClick = { selectedYear = year; importReport = auditStore.load(year); exportId = exportPrefs.getString("year_$year", null); sourceTotalText = reconciliationPrefs.getString("source_total_$year", "") ?: ""; reconciliationMessage = ""; yearMenuExpanded = false }
+                                onClick = { selectedYear = year; importReport = auditStore.load(year); exportId = exportPrefs.getString("year_$year", null); sourceTotalText = reconciliationPrefs.getString("source_total_$year", "") ?: ""; reconciliationMessage = ""; hasYearBackup = importBackupStore.hasBackup(year); yearMenuExpanded = false }
                             )
                         }
                     }
@@ -188,10 +187,68 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Import historical Futures income CSV for $selectedYear") }
                 Text(
-                    "Use a complete Binance USDⓈ-M Futures income-history export containing only $selectedYear. Import replaces that year's saved Futures totals, preserves Spot totals and other years, and includes REALIZED_PNL, COMMISSION and FUNDING_FEE rows.",
+                    "Use a complete Binance USDⓈ-M Futures income-history export containing only $selectedYear. The app previews the import first; confirming replaces that years Futures totals and preserves Spot totals and other years.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                pendingImportReport?.takeIf { pendingImportYear == selectedYear }?.let { preview ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Import preview — $selectedYear", style = MaterialTheme.typography.titleSmall)
+                            Text("Will replace Futures totals for $selectedYear only.")
+                            Text("Daily totals in file: ${preview.daily.size}")
+                            Text("Net total in file: ${preview.daily.values.sum().usd()}")
+                            Text("Included rows: ${preview.includedRows} · ignored rows: ${preview.ignoredRows} · exact duplicates skipped: ${preview.duplicateRows}")
+                            Text("Observed activity: ${preview.firstActivityDate} to ${preview.lastActivityDate}")
+                            Text("Existing saved Futures total: ${yearFutures.usd()}")
+                            Text("Confirming first saves a local recovery snapshot. Activity dates do not prove export completeness.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { pendingImportReport = null; status = "Import preview cancelled. Saved yearly data was not changed." }, modifier = Modifier.weight(1f), enabled = !busy) { Text("Cancel") }
+                                Button(onClick = {
+                                    busy = true
+                                    status = "Saving recovery snapshot and importing $selectedYear…"
+                                    scope.launch {
+                                        try {
+                                            val report = preview
+                                            val year = pendingImportYear
+                                            withContext(Dispatchers.IO) {
+                                                val existing = BinanceSyncData.load(context).filter { it.date.take(4).toIntOrNull() == year }.associate { it.date to it.futuresPnl }.filterValues { it != 0.0 }
+                                                importBackupStore.save(year, existing)
+                                                BinanceSyncData.replaceFuturesYear(context, year, report.daily)
+                                                auditStore.save(year, report)
+                                            }
+                                            rows = BinanceSyncData.load(context)
+                                            lastSync = BinanceSyncData.lastSync(context)
+                                            if (selectedYear == year) importReport = report
+                                            hasYearBackup = importBackupStore.hasBackup(year)
+                                            pendingImportReport = null
+                                            onSynced()
+                                            status = "Imported ${report.daily.size} daily totals for $year. A recovery snapshot is available below."
+                                        } catch (e: Exception) { status = "Import failed: " + (e.message ?: "could not save/import data") }
+                                        finally { busy = false }
+                                    }
+                                }, modifier = Modifier.weight(1f), enabled = !busy) { Text("Confirm import") }
+                            }
+                        }
+                    }
+                }
+                if (hasYearBackup) {
+                    OutlinedButton(onClick = {
+                        busy = true
+                        status = "Restoring the pre-import Futures snapshot for $selectedYear…"
+                        scope.launch {
+                            try {
+                                val backup = withContext(Dispatchers.IO) { importBackupStore.load(selectedYear) } ?: error("No recovery snapshot is available.")
+                                withContext(Dispatchers.IO) { BinanceSyncData.replaceFuturesYear(context, selectedYear, backup) }
+                                rows = BinanceSyncData.load(context)
+                                lastSync = BinanceSyncData.lastSync(context)
+                                onSynced()
+                                status = "Restored the pre-import Futures snapshot for $selectedYear. The snapshot remains available."
+                            } catch (e: Exception) { status = "Restore failed: " + (e.message ?: "could not restore snapshot") }
+                            finally { busy = false }
+                        }
+                    }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Restore pre-import Futures data for $selectedYear") }
+                }
                 importReport?.let { report ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
