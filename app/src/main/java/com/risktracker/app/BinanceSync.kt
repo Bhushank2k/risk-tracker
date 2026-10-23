@@ -32,6 +32,14 @@ data class BinanceDailyResult(val date: String, val spotPnl: Double, val futures
     val total: Double get() = spotPnl + futuresPnl
 }
 
+/** Current USDⓈ-M Futures account values returned directly by Binance. */
+data class FuturesAccountBalance(
+    val walletBalance: Double,
+    val availableBalance: Double,
+    val unrealizedPnl: Double,
+    val equity: Double
+)
+
 /** Encrypted with an Android Keystore AES-GCM key; credentials are never logged or exported. */
 class BinanceCredentialStore(context: Context) {
     private val prefs = context.getSharedPreferences("binance_credentials_v1", Context.MODE_PRIVATE)
@@ -206,6 +214,18 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             "https://fapi.binance.com",
             "/fapi/v1/income/asyn/id",
             listOf("downloadId" to downloadId)
+        )
+    }
+
+    /** Reads live USDⓈ-M Futures balances from Binance; this endpoint is read-only. */
+    fun futuresAccountBalance(): FuturesAccountBalance {
+        val account = signedGetObject("https://fapi.binance.com", "/fapi/v2/account", emptyList())
+        fun amount(key: String): Double = account.optString(key).toDoubleOrNull() ?: account.optDouble(key, 0.0)
+        return FuturesAccountBalance(
+            walletBalance = amount("totalWalletBalance"),
+            availableBalance = amount("availableBalance"),
+            unrealizedPnl = amount("totalUnrealizedProfit"),
+            equity = amount("totalMarginBalance")
         )
     }
 
