@@ -231,6 +231,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                                             withContext(Dispatchers.IO) {
                                                 val existing = BinanceSyncData.load(context).filter { it.date.take(4).toIntOrNull() == year }.associate { it.date to it.futuresPnl }.filterValues { it != 0.0 }
                                                 importBackupStore.save(year, existing)
+                                                auditStore.backup(year)
                                                 BinanceSyncData.replaceFuturesYear(context, year, report.daily)
                                                 auditStore.save(year, report)
                                             }
@@ -256,7 +257,11 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         scope.launch {
                             try {
                                 val backup = withContext(Dispatchers.IO) { importBackupStore.load(selectedYear) } ?: error("No recovery snapshot is available.")
-                                withContext(Dispatchers.IO) { BinanceSyncData.replaceFuturesYear(context, selectedYear, backup) }
+                                withContext(Dispatchers.IO) {
+                                    BinanceSyncData.replaceFuturesYear(context, selectedYear, backup)
+                                    auditStore.restoreBackup(selectedYear)
+                                }
+                                importReport = auditStore.load(selectedYear)
                                 rows = BinanceSyncData.load(context)
                                 lastSync = BinanceSyncData.lastSync(context)
                                 onSynced()
