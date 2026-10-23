@@ -83,7 +83,7 @@ fun CryptoTaxReportScreen() {
             val csv = historicalTradesToCsv(trades, selectedFinancialYear)
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
                 ?: throw IllegalStateException("Could not write to the selected destination.")
-            status = "Exported ${yearTrades.count { it.year == selectedFinancialYear }} transaction rows for FY ${selectedFinancialYear}-${(selectedFinancialYear + 1).toString().takeLast(2)}. Review source data before using for tax reporting."
+            status = "Exported ${trades.count { it.year == selectedFinancialYear }} transaction rows for FY ${selectedFinancialYear}-${(selectedFinancialYear + 1).toString().takeLast(2)}. Review source data before using for tax reporting."
         } catch (e: Exception) {
             status = "Transaction export failed: " + (e.message ?: "could not write CSV")
         }
