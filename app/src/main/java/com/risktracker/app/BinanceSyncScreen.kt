@@ -192,6 +192,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 pendingImportReport?.takeIf { pendingImportYear == selectedYear }?.let { preview ->
+                    val previousDaily = yearRows.filter { kotlin.math.abs(it.futuresPnl) > 0.005 }.associate { it.date to it.futuresPnl }
+                    val comparison = BinanceImportDiff.compare(previousDaily, preview.daily)
+
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Import preview — $selectedYear", style = MaterialTheme.typography.titleSmall)
@@ -201,6 +204,20 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                             Text("Included rows: ${preview.includedRows} · ignored rows: ${preview.ignoredRows} · exact duplicates skipped: ${preview.duplicateRows}")
                             Text("Observed activity: ${preview.firstActivityDate} to ${preview.lastActivityDate}")
                             Text("Existing saved Futures total: ${yearFutures.usd()}")
+                            Text("Change vs saved data: ${comparison.delta.usd()}", color = if (kotlin.math.abs(comparison.delta) <= 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            Text("Dates: ${comparison.newDates} new · ${comparison.changedDates} changed · ${comparison.removedDates} removed")
+                            comparison.changes.sortedByDescending { it.date }.take(10).forEach { change ->
+                                val before = change.previousAmount?.usd() ?: "—"
+                                val after = change.proposedAmount?.usd() ?: "—"
+                                val label = when (change.type) {
+                                    BinanceImportChangeType.NEW_DATE -> "NEW"
+                                    BinanceImportChangeType.CHANGED_AMOUNT -> "CHANGED"
+                                    BinanceImportChangeType.REMOVED_DATE -> "REMOVED"
+                                }
+                                Text("${change.date} · $label · $before → $after", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (comparison.changes.size > 10) Text("Showing 10 of ${comparison.changes.size} dates with changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                             Text("Confirming first saves a local recovery snapshot. Activity dates do not prove export completeness.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { pendingImportReport = null; status = "Import preview cancelled. Saved yearly data was not changed." }, modifier = Modifier.weight(1f), enabled = !busy) { Text("Cancel") }
