@@ -53,7 +53,8 @@ fun TradeJournalScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Closed trades · estimates from your recorded prices and fees", style = MaterialTheme.typography.bodySmall)
+                    Text("Closed trades · net results after recorded fees", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
@@ -62,18 +63,27 @@ fun TradeJournalScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Performance", style = MaterialTheme.typography.titleMedium)
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("FILTERED PERFORMANCE", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(stats.netPnl.usd(), style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (stats.netPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Net P&L after recorded fees", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        JournalMetric("Net P&L", stats.netPnl.usd(), pnlColor(stats.netPnl))
-                        JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.primary)
-                        JournalMetric("Trades", stats.count.toString(), MaterialTheme.colorScheme.onSurface)
+                        JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.onPrimaryContainer)
+                        JournalMetric("Trades", stats.count.toString(), MaterialTheme.colorScheme.onPrimaryContainer)
+                        JournalMetric("Wins / losses", "${stats.wins} / ${stats.losses}", MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        JournalMetric("Wins / losses", "${stats.wins} / ${stats.losses}", MaterialTheme.colorScheme.onSurface)
-                        JournalMetric("Profit factor", if (stats.profitFactor.isInfinite()) "∞" else "%.2f".format(stats.profitFactor), MaterialTheme.colorScheme.onSurface)
-                        JournalMetric("Max drawdown", stats.maxDrawdown.usd(), MaterialTheme.colorScheme.error)
+                        JournalMetric("Profit factor", if (stats.profitFactor.isInfinite()) "∞" else "%.2f".format(stats.profitFactor), MaterialTheme.colorScheme.onPrimaryContainer)
+                        JournalMetric("Max drawdown", stats.maxDrawdown.usd(), MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
@@ -119,7 +129,7 @@ fun TradeJournalScreen(
                 }
             }
         } else {
-            item { Text("Closed trades", style = MaterialTheme.typography.titleMedium) }
+            item { Text("Trade history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             items(filteredTrades, key = { it.id }) { trade ->
                 Card(Modifier.fillMaxWidth()) {
                     Row(
