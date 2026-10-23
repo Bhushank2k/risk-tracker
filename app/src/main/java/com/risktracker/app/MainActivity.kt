@@ -261,7 +261,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                             }
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Daily loss limit", style = MaterialTheme.typography.labelMedium,
+                            Text("Latest entry vs loss limit", style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer)
                             Text(if (maxDailyLoss > 0) "${(lossLimitUsed * 100).toInt()}% used" else "Not set",
                                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
@@ -397,28 +397,57 @@ fun Stat(label: String, value: String, color: Color) {
 @Composable
 fun BalanceChart(entries: List<PnlEntry>) {
     if (entries.size < 2) return
-    val points = entries.map { it.closing }
-    val lo = points.min()
-    val hi = points.max()
+    var metric by remember { mutableStateOf("Balance") }
+    var range by remember { mutableStateOf("All") }
+    val datedEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
+    var cumulative = 0.0
+    val allPoints = datedEntries.map { entry ->
+        cumulative += entry.pnl
+        entry to if (metric == "Balance") entry.closing else cumulative
+    }
+    val latestDate = datedEntries.mapNotNull { reportDate(it.date) }.maxByOrNull { it.time }
+    val rangeDays = when (range) { "1W" -> 7; "1M" -> 30; "3M" -> 90; else -> null }
+    val filteredPoints = if (rangeDays == null || latestDate == null) allPoints else {
+        val cutoff = latestDate.time - rangeDays * 24L * 60L * 60L * 1000L
+        allPoints.filter { (entry, _) -> reportDate(entry.date)?.time?.let { it >= cutoff } == true }
+            .ifEmpty { allPoints }
+    }
+    val points = filteredPoints.map { it.second }
+    val lo = points.minOrNull() ?: 0.0
+    val hi = points.maxOrNull() ?: 0.0
     val line = MaterialTheme.colorScheme.primary
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Balance over time", style = MaterialTheme.typography.labelMedium)
-            Canvas(Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp)) {
-                val range = (hi - lo).takeIf { it > 0 } ?: 1.0
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Balance", "Net P&L").forEach { option ->
+                    FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
+                }
+                Spacer(Modifier.weight(1f))
+                listOf("1W", "1M", "3M", "All").forEach { option ->
+                    FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
+                }
+            }
+            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+                val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
                 val path = Path()
-                points.forEachIndexed { i, v ->
-                    val x = size.width * i / (points.size - 1)
-                    val y = (size.height * (1 - (v - lo) / range)).toFloat()
+                points.forEachIndexed { i, value ->
+                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
+                    val y = (size.height * (1 - (value - lo) / rangeValue)).toFloat()
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
                 drawPath(path, line, style = Stroke(width = 4f))
-                drawLine(Color.LightGray, Offset(0f, size.height), Offset(size.width, size.height))
+                drawLine(Color.LightGray.copy(alpha = 0.5f), Offset(0f, size.height), Offset(size.width, size.height))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall)
-                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall)
+                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Text(
+                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
