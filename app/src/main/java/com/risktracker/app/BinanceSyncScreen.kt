@@ -277,7 +277,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                 Text("Combined total: " + (yearSpot + yearFutures).usd(),
                     style = MaterialTheme.typography.titleMedium,
                     color = pnlColor(yearSpot + yearFutures))
-                Divider()
+                Spacer(Modifier.height(8.dp))
                 Text("Year reconciliation", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Optional cross-check: enter the net Futures income total from a Binance statement/export for exactly $selectedYear and the same income categories. This is a manual comparison, not proof that the underlying file is complete.",
