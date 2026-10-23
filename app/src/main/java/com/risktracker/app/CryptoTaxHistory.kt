@@ -262,7 +262,7 @@ object CryptoTaxHistory {
 
         return buildList {
             add("RISK TRACKER — INDIA CRYPTO TAX REVIEW")
-            add("Review aid only. Not tax advice or a tax-filing determination.")
+            add("Review aid only. Not a tax-filing determination. Not tax advice.")
             add("FX assumption: one manual INR-per-quote-currency rate of ${n(inrPerQuote)} applied to every row.")
             add("Exchange-reported realized P&L is not automatically the taxable VDA income.")
             add("Imported records: ${trades.size}")
