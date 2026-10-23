@@ -186,16 +186,17 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         if (pair == null) {
                             status = "Save read-only Binance API credentials first."
                         } else {
+                            val requestYear = selectedYear
                             busy = true
-                            status = "Requesting Binance's historical income export for $selectedYear…"
+                            status = "Requesting Binance's historical income export for $requestYear…"
                             scope.launch {
                                 try {
                                     val id = withContext(Dispatchers.IO) {
-                                        BinanceApi(pair.first, pair.second).requestFuturesIncomeExport(selectedYear)
+                                        BinanceApi(pair.first, pair.second).requestFuturesIncomeExport(requestYear)
                                     }
-                                    exportPrefs.edit().putString("year_$selectedYear", id).apply()
-                                    exportId = id
-                                    status = "Export request saved for $selectedYear (ID: $id). Use Check export status when Binance has prepared it."
+                                    exportPrefs.edit().putString("year_$requestYear", id).apply()
+                                    if (selectedYear == requestYear) exportId = id
+                                    status = "Export request saved for $requestYear (ID: $id). Use Check export status when Binance has prepared it."
                                 } catch (e: Exception) {
                                     status = "Export request failed: " + (e.message ?: "check API permissions")
                                 } finally { busy = false }
