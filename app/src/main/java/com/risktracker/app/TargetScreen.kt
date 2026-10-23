@@ -34,10 +34,10 @@ import kotlin.math.ceil
 fun TargetScreen() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("profit_target_planner_v1", Context.MODE_PRIVATE) }
-    var startingText by remember { mutableStateOf(prefs.getString("starting_balance", "1000") ?: "1000") }
-    var goalText by remember { mutableStateOf(prefs.getString("goal_balance", "1500") ?: "1500") }
+    var startingText by remember { mutableStateOf(prefs.getString("starting_balance", "") ?: "") }
+    var goalText by remember { mutableStateOf(prefs.getString("goal_balance", "") ?: "") }
     var daysText by remember { mutableStateOf(prefs.getString("target_days", "30") ?: "30") }
-    var dailyText by remember { mutableStateOf(prefs.getString("daily_target", "25") ?: "25") }
+    var dailyText by remember { mutableStateOf(prefs.getString("daily_target", "") ?: "") }
 
     fun save(key: String, value: String) { prefs.edit().putString(key, value).apply() }
     val starting = startingText.toDoubleOrNull()?.takeIf { it >= 0 && it.isFinite() }
