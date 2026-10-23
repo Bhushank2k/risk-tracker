@@ -424,7 +424,8 @@ fun BalanceChart(entries: List<PnlEntry>) {
                 listOf("Balance", "Net P&L").forEach { option ->
                     FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
                 }
-                Spacer(Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("1W", "1M", "3M", "All").forEach { option ->
                     FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
                 }
