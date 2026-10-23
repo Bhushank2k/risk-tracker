@@ -77,6 +77,41 @@ fun CryptoTaxReportScreen() {
         } catch (e: Exception) { status = "Export failed: " + (e.message ?: "invalid INR rate") }
     }
 
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) {
+            val document = android.graphics.pdf.PdfDocument()
+            try {
+                val rate = rateText.toDoubleOrNull() ?: error("Enter a valid INR conversion rate.")
+                val reportLines = CryptoTaxHistory.printableReportLines(trades, rate).flatMap { wrapTaxReportLine(it) }
+                reportLines.chunked(47).ifEmpty { listOf(emptyList()) }.forEachIndexed { pageIndex, pageLines ->
+                    val page = document.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, pageIndex + 1).create())
+                    val titlePaint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.BLACK
+                        textSize = 14f
+                        isFakeBoldText = true
+                    }
+                    val bodyPaint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.BLACK
+                        textSize = 9f
+                    }
+                    page.canvas.drawText("Risk Tracker - India crypto tax review", 36f, 32f, titlePaint)
+                    pageLines.forEachIndexed { lineIndex, line ->
+                        page.canvas.drawText(line, 36f, 56f + lineIndex * 15f, bodyPaint)
+                    }
+                    page.canvas.drawText("Page ${pageIndex + 1}", 520f, 820f, bodyPaint)
+                    document.finishPage(page)
+                }
+                val output = context.contentResolver.openOutputStream(uri) ?: error("Could not write the PDF.")
+                output.use { document.writeTo(it) }
+                status = "Printable tax review exported. Verify source statements, missing records and INR assumptions before use."
+            } catch (e: Exception) {
+                status = "PDF export failed: " + (e.message ?: "could not generate report")
+            } finally {
+                document.close()
+            }
+        }
+    }
+
     val summaries = remember(trades, rateText) {
         runCatching { CryptoTaxHistory.summaries(trades, rateText.toDouble()) }.getOrDefault(emptyList())
     }
@@ -125,6 +160,9 @@ fun CryptoTaxReportScreen() {
                     Text("Rows missing realized P&L: ${yearSummary.missingPnlRecords}", color = if (yearSummary.missingPnlRecords > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 } else Text("No imported records found for this year.")
                 OutlinedButton(onClick = { exportPicker.launch("risk-tracker-india-crypto-tax-years.csv") }, modifier = Modifier.fillMaxWidth(), enabled = trades.isNotEmpty()) { Text("Export year-wise CSV report") }
+                OutlinedButton(onClick = { pdfLauncher.launch("risk-tracker-india-crypto-tax-review.pdf") }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Export printable PDF review")
+                }
             }
         }
         Card(Modifier.fillMaxWidth()) {
@@ -175,4 +213,29 @@ fun CryptoTaxReportScreen() {
         Spacer(Modifier.height(12.dp))
         Text(status, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+
+private fun wrapTaxReportLine(line: String, maxChars: Int = 88): List<String> {
+    if (line.length <= maxChars) return listOf(line)
+    val out = mutableListOf<String>()
+    var current = StringBuilder()
+    line.trim().split(" ").filter { it.isNotBlank() }.forEach { word ->
+        if (word.length > maxChars) {
+            if (current.isNotEmpty()) {
+                out += current.toString()
+                current = StringBuilder()
+            }
+            word.chunked(maxChars).forEach { out += it }
+        } else if (current.isEmpty()) {
+            current.append(word)
+        } else if (current.length + 1 + word.length <= maxChars) {
+            current.append(' ').append(word)
+        } else {
+            out += current.toString()
+            current = StringBuilder(word)
+        }
+    }
+    if (current.isNotEmpty()) out += current.toString()
+    return out.ifEmpty { listOf("") }
 }
