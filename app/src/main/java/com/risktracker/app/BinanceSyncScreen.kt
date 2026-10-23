@@ -59,6 +59,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var importReport by remember { mutableStateOf<BinanceIncomeImportReport?>(null) }
     val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
     var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
+    val reconciliationPrefs = remember { context.getSharedPreferences("binance_year_reconciliation_v1", 0) }
+    var sourceTotalText by remember { mutableStateOf(reconciliationPrefs.getString("source_total_2026", "") ?: "") }
+    var reconciliationMessage by remember { mutableStateOf("") }
     var yearMenuExpanded by remember { mutableStateOf(false) }
     val yearRows = rows.filter { it.date.take(4).toIntOrNull() == selectedYear }
     val yearSpot = yearRows.sumOf { it.spotPnl }
@@ -165,7 +168,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         (2018..2026).forEach { year ->
                             DropdownMenuItem(
                                 text = { Text(year.toString()) },
-                                onClick = { selectedYear = year; exportId = exportPrefs.getString("year_$year", null); yearMenuExpanded = false }
+                                onClick = { selectedYear = year; exportId = exportPrefs.getString("year_$year", null); sourceTotalText = reconciliationPrefs.getString("source_total_$year", "") ?: ""; reconciliationMessage = ""; yearMenuExpanded = false }
                             )
                         }
                     }
@@ -274,6 +277,56 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                 Text("Combined total: " + (yearSpot + yearFutures).usd(),
                     style = MaterialTheme.typography.titleMedium,
                     color = pnlColor(yearSpot + yearFutures))
+                Divider()
+                Text("Year reconciliation", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Optional cross-check: enter the net Futures income total from a Binance statement/export for exactly $selectedYear and the same income categories. This is a manual comparison, not proof that the underlying file is complete.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = sourceTotalText,
+                    onValueChange = { sourceTotalText = it; reconciliationMessage = "" },
+                    label = { Text("Binance source net total (USDT)") },
+                    placeholder = { Text("e.g. 1234.56") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = {
+                        val sourceTotal = sourceTotalText.trim().toDoubleOrNull()
+                        if (sourceTotal == null || !sourceTotal.isFinite()) {
+                            reconciliationMessage = "Enter a valid numeric source total first."
+                        } else {
+                            reconciliationPrefs.edit().putString("source_total_$selectedYear", sourceTotal.toString()).apply()
+                            val importedTotal = yearFutures
+                            val delta = importedTotal - sourceTotal
+                            reconciliationMessage = if (kotlin.math.abs(delta) <= 0.01) {
+                                "Totals match within 0.01 USDT. This confirms only the totals compared, not export completeness."
+                            } else {
+                                "Discrepancy: imported total differs from source by ${delta.usd()}. Check year, currency, categories and export coverage."
+                            }
+                        }
+                    },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save & compare $selectedYear totals") }
+                if (sourceTotalText.isNotBlank()) {
+                    val sourceTotal = sourceTotalText.trim().toDoubleOrNull()
+                    if (sourceTotal != null && sourceTotal.isFinite()) {
+                        val delta = yearFutures - sourceTotal
+                        Text(
+                            if (kotlin.math.abs(delta) <= 0.01) "Current status: totals match (≤ 0.01 USDT)" else "Current status: discrepancy (${delta.usd()})",
+                            color = if (kotlin.math.abs(delta) <= 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    } else {
+                        Text("Current status: source total needs a valid number.", color = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    Text("Current status: not reconciled", style = MaterialTheme.typography.bodySmall)
+                }
+                if (reconciliationMessage.isNotBlank()) Text(reconciliationMessage, style = MaterialTheme.typography.bodySmall)
                 if (yearRows.isEmpty()) {
                     Text(
                         if (selectedYear < 2026) "No saved rows for $selectedYear. The standard Futures income endpoint cannot backfill old years; import an official Binance historical export to recover unavailable history."
