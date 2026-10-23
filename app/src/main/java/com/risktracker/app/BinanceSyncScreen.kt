@@ -1,5 +1,7 @@
 package com.risktracker.app
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +55,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
+    val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
+    var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
     var yearMenuExpanded by remember { mutableStateOf(false) }
     val yearRows = rows.filter { it.date.take(4).toIntOrNull() == selectedYear }
     val yearSpot = yearRows.sumOf { it.spotPnl }
@@ -157,7 +161,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         (2018..2026).forEach { year ->
                             DropdownMenuItem(
                                 text = { Text(year.toString()) },
-                                onClick = { selectedYear = year; yearMenuExpanded = false }
+                                onClick = { selectedYear = year; exportId = exportPrefs.getString("year_$year", null); yearMenuExpanded = false }
                             )
                         }
                     }
@@ -175,6 +179,73 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     "Use a complete Binance USDⓈ-M Futures income-history export containing only $selectedYear. Import replaces that year's saved Futures totals, preserves Spot totals and other years, and includes REALIZED_PNL, COMMISSION and FUNDING_FEE rows.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = {
+                        val pair = credentials.read()
+                        if (pair == null) {
+                            status = "Save read-only Binance API credentials first."
+                        } else {
+                            busy = true
+                            status = "Requesting Binance's historical income export for $selectedYear…"
+                            scope.launch {
+                                try {
+                                    val id = withContext(Dispatchers.IO) {
+                                        BinanceApi(pair.first, pair.second).requestFuturesIncomeExport(selectedYear)
+                                    }
+                                    exportPrefs.edit().putString("year_$selectedYear", id).apply()
+                                    exportId = id
+                                    status = "Export request saved for $selectedYear (ID: $id). Use Check export status when Binance has prepared it."
+                                } catch (e: Exception) {
+                                    status = "Export request failed: " + (e.message ?: "check API permissions")
+                                } finally { busy = false }
+                            }
+                        }
+                    },
+                    enabled = !busy && exportId == null,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (exportId == null) "Request official Binance income export for $selectedYear" else "Export request saved for $selectedYear") }
+                OutlinedButton(
+                    onClick = {
+                        val pair = credentials.read()
+                        val id = exportId
+                        if (pair == null) {
+                            status = "Save read-only Binance API credentials first."
+                        } else if (id.isNullOrBlank()) {
+                            status = "Request an export for $selectedYear first."
+                        } else {
+                            busy = true
+                            status = "Checking Binance export status…"
+                            scope.launch {
+                                try {
+                                    val response = withContext(Dispatchers.IO) {
+                                        BinanceApi(pair.first, pair.second).futuresIncomeExportStatus(id)
+                                    }
+                                    val link = listOf("downloadLink", "url", "link")
+                                        .firstNotNullOfOrNull { key -> response.optString(key).takeIf { it.startsWith("https://") } }
+                                    if (link != null) {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                                        status = "Opened Binance's export download link. Save/extract the CSV, then import it above. Download links expire; keep this export private."
+                                    } else {
+                                        val exportStatus = response.optString("status").ifBlank { "not ready" }
+                                        status = "Binance export status: $exportStatus. Check again later. Response did not contain a download link yet."
+                                    }
+                                } catch (e: Exception) {
+                                    status = "Could not check export: " + (e.message ?: "the request may still be processing")
+                                } finally { busy = false }
+                            }
+                        }
+                    },
+                    enabled = !busy && exportId != null,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Check export status / open download link") }
+                if (exportId != null) {
+                    Text("Saved request ID for $selectedYear: $exportId", style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    "Quota warning: Binance limits asynchronous income-export requests to five per month, shared with the website, and each request can cover at most one year. The request ID is saved on this device to avoid requesting the same year again. A download link is temporary.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
                 )
                 Text("Spot: " + yearSpot.usd() + " · Futures: " + yearFutures.usd(),
                     color = MaterialTheme.colorScheme.primary)
