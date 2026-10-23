@@ -27,6 +27,32 @@ class CryptoTaxHistoryTest {
         assertEquals(0, added)
     }
 
+    @Test fun stableExchangeTradeIdsDeduplicateAcrossRenamedAndReorderedExports() {
+        val header = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId,Realized PnL\n"
+        val firstCsv = header +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101,120\n" +
+            "2019-06-01 12:31:00,ETHUSDT,BUY,2,200,400,0.4,USDT,tx-202,\n"
+        val reorderedCsv = header +
+            "2019-06-01 12:31:00,ETHUSDT,BUY,2,200,400,0.4,USDT,tx-202,\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101,120\n"
+
+        val first = CryptoTaxHistory.parseCsv(firstCsv, "spot-export.csv")
+        val second = CryptoTaxHistory.parseCsv(reorderedCsv, "renamed-spot-export.csv")
+        assertEquals(first.map { it.id }.toSet(), second.map { it.id }.toSet())
+        val (merged, added) = CryptoTaxHistory.deduplicate(first, second)
+        assertEquals(2, merged.size)
+        assertEquals(0, added)
+    }
+
+    @Test fun fallbackTradeFingerprintDoesNotDependOnFilenameOrRowNumber() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n"
+        val first = CryptoTaxHistory.parseCsv(csv, "spot-export-a.csv").single()
+        val second = CryptoTaxHistory.parseCsv(csv, "spot-export-b.csv").single()
+        assertEquals(first.id, second.id)
+        assertEquals(first.id, CryptoTaxHistory.deduplicate(listOf(first), listOf(second)).first.single().id)
+    }
+
     @Test fun yearlySummaryFlagsMissingRealizedPnlAndConvertsAmountsToInr() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n" +
