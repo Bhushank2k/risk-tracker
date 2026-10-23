@@ -26,7 +26,7 @@ class BinanceImportAuditStore(context: Context) {
     fun load(year: Int): BinanceIncomeImportReport? {
         if (year !in 2018..2026) return null
         return try {
-            val payload = prefs.getString("year_$year", null)?.let(::JSONObject) ?: return null
+            val payload = prefs.getString("year_$year", null)?.let { JSONObject(it) } ?: return null
             val dailyJson = payload.getJSONObject("daily")
             val daily = buildMap {
                 val keys = dailyJson.keys()
