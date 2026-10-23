@@ -112,6 +112,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8),
         "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3),
         "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9),
+        "GOAL PLANNING" to listOf("Target" to 10),
         "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
     )
 
@@ -189,6 +190,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) })
                 8 -> InsightsScreen(entries, trades.size)
                 9 -> CryptoTaxReportScreen()
+                10 -> TargetScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
