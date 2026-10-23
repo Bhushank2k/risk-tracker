@@ -12,14 +12,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.text.ParsePosition
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 data class PerformanceSnapshot(
     val netPnl: Double,
@@ -56,10 +65,48 @@ fun buildPerformanceSnapshot(pnlValues: List<Double>, closingBalances: List<Doub
     )
 }
 
+private val INSIGHTS_DATE_FORMATS = listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "M/d/yyyy")
+
+private fun parseInsightsDate(value: String): Date? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return null
+    for (pattern in INSIGHTS_DATE_FORMATS) {
+        val format = SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }
+        val position = ParsePosition(0)
+        val parsed = format.parse(trimmed, position)
+        if (parsed != null && position.index == trimmed.length) return parsed
+    }
+    return null
+}
+
+/** Filters daily P&L rows by local calendar days, including today. A null window means all history. */
+fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Long): List<PnlEntry> {
+    if (days == null) return entries
+    if (days <= 0) return emptyList()
+
+    val today = Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val start = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -(days - 1)) }
+    val endExclusive = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+    return entries.filter { entry ->
+        val time = parseInsightsDate(entry.date)?.time
+        time != null && time >= start.timeInMillis && time < endExclusive.timeInMillis
+    }
+}
+
 @Composable
 fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
-    val snapshot = remember(entries, tradeCount) {
-        buildPerformanceSnapshot(entries.map { it.pnl }, entries.map { it.closing }, tradeCount)
+    var periodDays by remember { mutableStateOf<Int?>(null) }
+    val filteredEntries = remember(entries, periodDays) {
+        filterPnlEntriesForPeriod(entries, periodDays, System.currentTimeMillis())
+    }
+    val snapshot = remember(filteredEntries, tradeCount) {
+        buildPerformanceSnapshot(filteredEntries.map { it.pnl }, filteredEntries.map { it.closing }, tradeCount)
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -72,6 +119,26 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
                 Text("Your trading results", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Review recorded P&L, consistency and drawdown in one place.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Daily P&L period", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf<Pair<String, Int?>>("All" to null, "7 days" to 7, "30 days" to 30, "90 days" to 90).forEach { (label, days) ->
+                        FilterChip(
+                            selected = periodDays == days,
+                            onClick = { periodDays = days },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                Text(
+                    if (periodDays == null) "Showing all recorded daily results."
+                    else "Showing the last $periodDays calendar days, including today. Journal trade count remains all-time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         item {
@@ -98,7 +165,7 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard("Average day", snapshot.averagePnl.usd(), Modifier.weight(1f))
-                MetricCard("Journal trades", snapshot.tradeCount.toString(), Modifier.weight(1f))
+                MetricCard("Journal trades · all time", snapshot.tradeCount.toString(), Modifier.weight(1f))
             }
         }
         item {
@@ -107,12 +174,12 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
                     Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
                     InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
-                    InsightRow("Recorded days", entries.size.toString())
+                    InsightRow("Recorded days in period", filteredEntries.size.toString())
                 }
             }
         }
         item {
-            if (entries.size >= 2) BalanceChart(entries)
+            if (filteredEntries.size >= 2) BalanceChart(filteredEntries)
             else Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -123,7 +190,6 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
         }
         item {
             Text(
-                "Data note: metrics use manually recorded daily P&L and balances. Journal trade count is based on saved records, not live exchange positions.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

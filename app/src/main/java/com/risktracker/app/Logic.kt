@@ -190,6 +190,30 @@ fun computeTradeStats(trades: List<TradeEntry>): TradeStats {
     )
 }
 
+/**
+ * Exports closed journal trades as RFC-4180-style CSV.
+ * User-entered text is quoted and embedded quotes are doubled so commas,
+ * quotes, and newlines do not corrupt adjacent columns.
+ */
+fun tradesToCsv(trades: List<TradeEntry>): String = buildString {
+    append("Date,Symbol,Side,Entry,Exit,Quantity,Fees,Net PNL,Strategy,Mistake,Risk USD,Notes\n")
+    trades.sortedBy { it.date }.forEach { trade ->
+        fun textCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
+        append(textCell(trade.date)).append(',')
+        append(textCell(trade.symbol)).append(',')
+        append(textCell(trade.side)).append(',')
+        append(trade.entry).append(',')
+        append(trade.exit).append(',')
+        append(trade.quantity).append(',')
+        append(trade.fees).append(',')
+        append(trade.pnl).append(',')
+        append(textCell(trade.strategy)).append(',')
+        append(textCell(trade.mistake)).append(',')
+        append(trade.riskUsd).append(',')
+        append(textCell(trade.notes)).append('\n')
+    }
+}
+
 // ---------- Storage (SharedPreferences, JSON) ----------
 
 class Store(context: Context) {
