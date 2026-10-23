@@ -106,8 +106,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
-    val titles = listOf("Home", "Journal", "Insights", "More")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Info)
+    val titles = listOf("Home", "Journal", "Insights", "Tools")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     val menuGroups = listOf(
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8),
         "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3),
@@ -203,6 +203,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
+    val todayPnl = entries.lastOrNull()?.pnl ?: 0.0
+    val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
     val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
             val document = PdfDocument()
@@ -231,21 +233,46 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Current balance", style = MaterialTheme.typography.labelMedium)
-                        Text(stats.currentBalance.usd(), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(stats.currentBalance.usd(), style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text("₹" + (stats.currentBalance * inrRate).num(0),
-                            style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(12.dp))
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Stat("Total win", stats.totalWin.usd(), Green)
-                            Stat("Total loss", stats.totalLoss.usd(), Red)
-                            Stat("Net", stats.net.usd(), pnlColor(stats.net))
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Latest recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                Text((if (todayPnl > 0) "+" else "") + todayPnl.usd(),
+                                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    color = if (todayPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Net recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                Text(stats.net.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    color = if (stats.net < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        Text("${stats.winDays}W / ${stats.lossDays}L  •  win rate ${stats.winRate.pct(0)}",
-                            style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Daily loss limit", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text(if (maxDailyLoss > 0) "${(lossLimitUsed * 100).toInt()}% used" else "Not set",
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Box(Modifier.fillMaxWidth().height(7.dp).background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f))) {
+                            Box(Modifier.fillMaxWidth(lossLimitUsed).height(7.dp)
+                                .background(if (lossLimitUsed >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary))
+                        }
+                        Text("${stats.winDays} winning days · ${stats.lossDays} losing days · win rate ${stats.winRate.pct(0)}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
