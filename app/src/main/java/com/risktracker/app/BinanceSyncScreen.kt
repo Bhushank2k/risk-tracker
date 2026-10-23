@@ -300,8 +300,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         } else {
                             reconciliationPrefs.edit().putString("source_total_$selectedYear", sourceTotal.toString()).apply()
                             val importedTotal = yearFutures
-                            val delta = importedTotal - sourceTotal
-                            reconciliationMessage = if (kotlin.math.abs(delta) <= 0.01) {
+                            val comparison = BinanceYearReconciliation.compare(importedTotal, sourceTotal)
+                            val delta = comparison.delta
+                            reconciliationMessage = if (comparison.status == BinanceReconciliationStatus.MATCHED_TOTALS) {
                                 "Totals match within 0.01 USDT. This confirms only the totals compared, not export completeness."
                             } else {
                                 "Discrepancy: imported total differs from source by ${delta.usd()}. Check year, currency, categories and export coverage."
@@ -314,10 +315,11 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                 if (sourceTotalText.isNotBlank()) {
                     val sourceTotal = sourceTotalText.trim().toDoubleOrNull()
                     if (sourceTotal != null && sourceTotal.isFinite()) {
-                        val delta = yearFutures - sourceTotal
+                        val comparison = BinanceYearReconciliation.compare(yearFutures, sourceTotal)
+                        val delta = comparison.delta
                         Text(
-                            if (kotlin.math.abs(delta) <= 0.01) "Current status: totals match (≤ 0.01 USDT)" else "Current status: discrepancy (${delta.usd()})",
-                            color = if (kotlin.math.abs(delta) <= 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            if (comparison.status == BinanceReconciliationStatus.MATCHED_TOTALS) "Current status: totals match (≤ 0.01 USDT)" else "Current status: discrepancy (${delta.usd()})",
+                            color = if (comparison.status == BinanceReconciliationStatus.MATCHED_TOTALS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     } else {
