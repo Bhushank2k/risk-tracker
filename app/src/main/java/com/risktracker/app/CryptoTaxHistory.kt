@@ -247,6 +247,57 @@ object CryptoTaxHistory {
         return CostBasisReview(matchedCost, unmatchedQty, unmatchedRows, duplicateCount, warnings)
     }
 
+    /**
+     * Content for a printable review report. Labels assumptions and missing values explicitly;
+     * this output is not a determination of taxable income or filing-ready tax advice.
+     */
+    fun printableReportLines(trades: List<HistoricalCryptoTrade>, inrPerQuote: Double): List<String> {
+        val yearly = summaries(trades, inrPerQuote)
+        val quality = dataQuality(trades)
+        val costReview = costBasisReview(trades, inrPerQuote)
+        fun n(value: Double) = String.format(Locale.US, "%.8f", value)
+        val utcFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss 'UTC'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+
+        return buildList {
+            add("RISK TRACKER — INDIA CRYPTO TAX REVIEW")
+            add("Review aid only. Not tax advice or a tax-filing determination.")
+            add("FX assumption: one manual INR-per-quote-currency rate of ${n(inrPerQuote)} applied to every row.")
+            add("Exchange-reported realized P&L is not automatically the taxable VDA income.")
+            add("Imported records: ${trades.size}")
+            add("Data-quality heuristic: ${quality.score}/100 (not a tax-accuracy guarantee)")
+            quality.warnings.forEach { add("Data warning: $it") }
+            add(" ")
+            add("YEAR-WISE SUMMARY (Indian financial year: 1 April–31 March)")
+            if (yearly.isEmpty()) add("No historical trade records imported.")
+            yearly.forEach { row ->
+                add("FY ${row.year}-${(row.year + 1).toString().takeLast(2)}: ${row.trades} records")
+                add("Known exchange-reported realized P&L (INR): ${n(row.realizedPnlInr)}")
+                add("Recorded fees (INR): ${n(row.feesInr)}")
+                add("Sell proceeds (INR): ${n(row.proceedsInr)}")
+                add("Buy value, not tax cost basis (INR): ${n(row.costBasisInr)}")
+                add("Sell rows missing realized P&L: ${row.missingPnlRecords}")
+            }
+            add(" ")
+            add("INDICATIVE FIFO / COST-BASIS REVIEW")
+            add("Matched historical buy cost estimate (INR): ${n(costReview.estimatedMatchedCostInr)}")
+            add("Sell quantity without earlier imported buys: ${n(costReview.unmatchedSellQuantity)}")
+            add("Sell rows needing earlier-history review: ${costReview.sellRowsWithoutPriorBuys}")
+            add("Possible duplicate rows: ${costReview.possibleDuplicateRows}")
+            costReview.warnings.forEach { add("Cost-basis warning: $it") }
+            add(" ")
+            add("TRANSACTION DETAILS")
+            add("Timestamp UTC | Exchange / Market | Symbol | Side | Quantity | Price | Quote amount | Fee / asset | Realized P&L | Source")
+            trades.sortedBy { it.timestamp }.forEach { trade ->
+                val pnl = trade.realizedPnl?.let(::n) ?: "MISSING"
+                add("${utcFormat.format(java.util.Date(trade.timestamp))} | ${trade.exchange} / ${trade.market} | ${trade.symbol} | ${trade.side} | qty ${n(trade.quantity)} | price ${n(trade.price)} | quote ${n(trade.quoteAmount)} | fee ${n(trade.fee)} ${trade.feeAsset.ifBlank { "ASSET UNKNOWN" }} | realized P&L $pnl | source ${trade.source}")
+            }
+            add(" ")
+            add("Verify the original exchange statements, transaction coverage, fee assets, transfers, and date-specific INR values with a qualified tax professional.")
+        }
+    }
+
     /** All money amounts are explicitly converted to INR by the caller; no implicit USD/USDT=INR assumption. */
     fun summaries(trades: List<HistoricalCryptoTrade>, inrPerUsdt: Double): List<IndiaTaxYearSummary> {
         require(inrPerUsdt > 0.0 && inrPerUsdt.isFinite()) { "Enter a valid INR per USDT conversion rate." }
