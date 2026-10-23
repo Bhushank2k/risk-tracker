@@ -174,6 +174,41 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         return daily
     }
 
+    /**
+     * Requests Binance's official asynchronous USDⓈ-M Futures transaction-history export.
+     * This endpoint is quota-limited (five requests per month) and accepts at most one year.
+     * The caller must persist the returned download ID and avoid duplicate requests.
+     */
+    fun requestFuturesIncomeExport(year: Int): String {
+        require(year in 2018..2026) { "Select a year from 2018 through 2026." }
+        val utc = TimeZone.getTimeZone("UTC")
+        val start = java.util.Calendar.getInstance(utc).apply {
+            clear()
+            set(year, java.util.Calendar.JANUARY, 1, 0, 0, 0)
+        }.timeInMillis
+        val end = java.util.Calendar.getInstance(utc).apply {
+            clear()
+            set(year + 1, java.util.Calendar.JANUARY, 1, 0, 0, 0)
+        }.timeInMillis
+        val response = signedGetObject(
+            "https://fapi.binance.com",
+            "/fapi/v1/income/asyn",
+            listOf("startTime" to start.toString(), "endTime" to end.toString())
+        )
+        return response.optString("downloadId").takeIf { it.isNotBlank() }
+            ?: error("Binance did not return a download ID. Try checking the API permissions and request status.")
+    }
+
+    /** Fetches status/link for an existing export request; does not consume a new export request. */
+    fun futuresIncomeExportStatus(downloadId: String): JSONObject {
+        require(downloadId.isNotBlank()) { "No saved export request ID for this year." }
+        return signedGetObject(
+            "https://fapi.binance.com",
+            "/fapi/v1/income/asyn/id",
+            listOf("downloadId" to downloadId)
+        )
+    }
+
     fun futuresDailyPnl(): Map<String, Double> {
         val daily = mutableMapOf<String, Double>()
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
