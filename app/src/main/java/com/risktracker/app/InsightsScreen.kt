@@ -115,8 +115,9 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Performance", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("A clear view of your recorded results. Only data saved in this app is included.",
+                Text("PERFORMANCE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text("Your trading results", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Review recorded P&L, consistency and drawdown in one place.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -146,10 +147,12 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Net realized daily P&L", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("NET RECORDED P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Based on manually recorded daily results", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                 }
             }
         }
@@ -168,7 +171,7 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Highlights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
                     InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
                     InsightRow("Recorded days in period", filteredEntries.size.toString())
@@ -187,7 +190,6 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
         }
         item {
             Text(
-                "P&L metrics and balance trend use the selected daily-record period. Journal trade count is all-time and is not an exchange-confirmed live position count.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
