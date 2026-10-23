@@ -77,9 +77,9 @@ class CryptoTaxHistoryTest {
     }
 
     @Test fun printableTaxReportIncludesAssumptionsMissingPnlAndTransactionDetails() {
-        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL,TradeId\\n" +
-            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120,tx-1\\n" +
-            "2019-07-01 12:30:00,ETHUSDT,SELL,1,200,200,1,USDT,,tx-2\\n"
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL,TradeId\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120,tx-1\n" +
+            "2019-07-01 12:30:00,ETHUSDT,SELL,1,200,200,1,USDT,,tx-2\n"
         val trades = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         val report = CryptoTaxHistory.printableReportLines(trades, 80.0)
         assertTrue(report.any { it.contains("RISK TRACKER") })
