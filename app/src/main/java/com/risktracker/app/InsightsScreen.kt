@@ -120,7 +120,7 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
         }
         item {
             Text(
-                "Metrics are based on manually recorded daily P&L and balances. Trade count is the number of journal records; it is not an exchange-confirmed live position count.",
+                "P&L metrics and balance trend use the selected daily-record period. Journal trade count is all-time and is not an exchange-confirmed live position count.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
