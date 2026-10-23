@@ -161,6 +161,40 @@ class LogicTest {
     }
 
     @Test
+    fun tradeJournalCsvIncludesStrategyMistakeAndPlannedRisk() {
+        val trade = TradeEntry(
+            id = "csv-1", date = "2026-10-23", symbol = "BTCUSDT", side = "Long",
+            entry = 100.0, exit = 110.0, quantity = 1.0, fees = 0.5,
+            notes = "followed plan", strategy = "Opening range", mistake = "FOMO", riskUsd = 2.0
+        )
+        val csv = tradesToCsv(listOf(trade))
+        assertTrue(csv.startsWith("Date,Symbol,Side,Entry,Exit,Quantity,Fees,Net PNL,Strategy,Mistake,Risk USD,Notes"))
+        assertTrue(csv.contains("\"Opening range\",\"FOMO\",2.0,\"followed plan\""))
+        assertTrue(csv.contains(",9.5,"))
+    }
+
+    @Test
+    fun tradeJournalCsvEscapesCommasQuotesAndNewlines() {
+        val trade = TradeEntry(
+            id = "csv-2", date = "2026-10-23", symbol = "BTC,USDT", side = "Long",
+            entry = 100.0, exit = 101.0, quantity = 1.0,
+            notes = "Took \"breakout\",\nthen waited", strategy = "Range, breakout"
+        )
+        val csv = tradesToCsv(listOf(trade))
+        assertTrue(csv.contains("\"BTC,USDT\""))
+        assertTrue(csv.contains("\"Range, breakout\""))
+        assertTrue(csv.contains("\"Took \"\"breakout\"\",\nthen waited\""))
+    }
+
+    @Test
+    fun tradeJournalCsvOrdersRecordsByDate() {
+        val later = TradeEntry("later", "2026-10-24", "ETH", "Short", 100.0, 99.0, 1.0)
+        val earlier = TradeEntry("earlier", "2026-10-22", "BTC", "Long", 100.0, 101.0, 1.0)
+        val csv = tradesToCsv(listOf(later, earlier))
+        assertTrue(csv.indexOf("\"2026-10-22\"") < csv.indexOf("\"2026-10-24\""))
+    }
+
+    @Test
     fun tradeStatsComputeWinRateProfitFactorAndDrawdown() {
         val trades = listOf(
             TradeEntry("1", "2026-01-01", "BTC", "Long", 100.0, 110.0, 1.0),
