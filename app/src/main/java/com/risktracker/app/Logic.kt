@@ -69,6 +69,11 @@ data class SideResult(
 )
 
 fun calcSide(i: CalcInput, long: Boolean): SideResult {
+    val numericInputs = listOf(i.balance, i.riskPercent, i.entry, i.stopLoss, i.target, i.leverage, i.mmrPercent)
+    if (numericInputs.any { !it.isFinite() }) {
+        return SideResult(false, "Enter finite numeric values", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    }
+
     val risk = i.balance * i.riskPercent / 100
     val slDist = if (i.entry > 0) abs(i.entry - i.stopLoss) / i.entry else 0.0
     val tpDist = if (i.entry > 0) abs(i.target - i.entry) / i.entry else 0.0
@@ -85,7 +90,11 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
     else i.stopLoss > i.entry && i.target < i.entry
     val slBeyondLiq = if (long) i.stopLoss <= liqExact else i.stopLoss >= liqExact
     val message = when {
-        i.entry <= 0 || i.balance <= 0 -> "Enter a balance and entry price"
+        i.balance <= 0 || i.entry <= 0 -> "Enter a balance and entry price greater than zero"
+        i.riskPercent <= 0 || i.riskPercent > 100 -> "Risk per trade must be greater than 0% and at most 100%"
+        i.stopLoss <= 0 || i.target <= 0 -> "Stop loss and target prices must be greater than zero"
+        i.leverage < 1 || i.leverage > 125 -> "Leverage must be between 1x and 125x"
+        i.mmrPercent < 0 || i.mmrPercent >= 100 -> "Maintenance margin rate must be at least 0% and below 100%"
         !validDirection -> if (long) "Long needs stop loss below entry and target above entry"
         else "Short needs stop loss above entry and target below entry"
         slBeyondLiq -> "Stop loss is beyond the liquidation price"
