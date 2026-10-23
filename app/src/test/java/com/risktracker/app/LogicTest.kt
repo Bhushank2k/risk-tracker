@@ -62,6 +62,46 @@ class LogicTest {
     }
 
     @Test
+    fun rejectsRiskPercentOutsideSupportedRange() {
+        val zero = calcSide(base.copy(riskPercent = 0.0), long = true)
+        val excessive = calcSide(base.copy(riskPercent = 100.01), long = true)
+        assertFalse(zero.valid)
+        assertTrue(zero.message!!.contains("Risk per trade"))
+        assertFalse(excessive.valid)
+        assertTrue(excessive.message!!.contains("Risk per trade"))
+    }
+
+    @Test
+    fun rejectsInvalidLeverageAndMaintenanceMargin() {
+        val noLeverage = calcSide(base.copy(leverage = 0.0), long = true)
+        val excessiveLeverage = calcSide(base.copy(leverage = 126.0), long = true)
+        val invalidMmr = calcSide(base.copy(mmrPercent = 100.0), long = true)
+        assertFalse(noLeverage.valid)
+        assertTrue(noLeverage.message!!.contains("Leverage"))
+        assertFalse(excessiveLeverage.valid)
+        assertTrue(excessiveLeverage.message!!.contains("Leverage"))
+        assertFalse(invalidMmr.valid)
+        assertTrue(invalidMmr.message!!.contains("margin rate"))
+    }
+
+    @Test
+    fun rejectsNonFiniteInputsWithoutReturningNan() {
+        val result = calcSide(base.copy(entry = Double.NaN), long = true)
+        assertFalse(result.valid)
+        assertTrue(result.message!!.contains("finite"))
+        assertFalse(result.positionSize.isNaN())
+        assertFalse(result.roiPercent.isNaN())
+        assertEquals(0.0, result.positionSize, eps)
+    }
+
+    @Test
+    fun rejectsNonPositiveStopAndTargetPrices() {
+        val result = calcSide(base.copy(stopLoss = 0.0), long = true)
+        assertFalse(result.valid)
+        assertTrue(result.message!!.contains("greater than zero"))
+    }
+
+    @Test
     fun leverageMatrixLiquidationBoundaries() {
         val row10 = leverageMatrix(100.0).first { it.lev == 10 }
         assertEquals(10.0, row10.movePercent, eps)
