@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -22,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +63,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     val importBackupStore = remember { BinanceYearImportBackupStore(context) }
     var pendingImportReport by remember { mutableStateOf<BinanceIncomeImportReport?>(null) }
     var hasYearBackup by remember { mutableStateOf(importBackupStore.hasBackup(2026)) }
+    var showRestoreConfirmation by remember { mutableStateOf(false) }
+    var restoreConfirmationYear by remember { mutableStateOf(2026) }
     val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
     var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
     val reconciliationPrefs = remember { context.getSharedPreferences("binance_year_reconciliation_v1", 0) }
@@ -252,24 +256,51 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                 }
                 if (hasYearBackup) {
                     OutlinedButton(onClick = {
-                        busy = true
-                        status = "Restoring the pre-import Futures snapshot for $selectedYear…"
-                        scope.launch {
-                            try {
-                                val backup = withContext(Dispatchers.IO) { importBackupStore.load(selectedYear) } ?: error("No recovery snapshot is available.")
-                                withContext(Dispatchers.IO) {
-                                    BinanceSyncData.replaceFuturesYear(context, selectedYear, backup)
-                                    auditStore.restoreBackup(selectedYear)
+                        restoreConfirmationYear = selectedYear
+                        showRestoreConfirmation = true
+                    }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("Restore pre-import Futures data for $selectedYear")
+                    }
+                }
+                if (showRestoreConfirmation) {
+                    AlertDialog(
+                        onDismissRequest = { if (!busy) showRestoreConfirmation = false },
+                        title = { Text("Restore previous Futures data?") },
+                        text = { Text("This replaces the currently saved Futures values for $restoreConfirmationYear with the local pre-import snapshot and restores its matching audit. Spot values and other years are not changed. Continue?") },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !busy,
+                                onClick = {
+                                    val year = restoreConfirmationYear
+                                    showRestoreConfirmation = false
+                                    busy = true
+                                    status = "Restoring the pre-import Futures snapshot for $year…"
+                                    scope.launch {
+                                        try {
+                                            val backup = withContext(Dispatchers.IO) {
+                                                importBackupStore.load(year)
+                                            } ?: error("No recovery snapshot is available.")
+                                            withContext(Dispatchers.IO) {
+                                                BinanceSyncData.replaceFuturesYear(context, year, backup)
+                                                auditStore.restoreBackup(year)
+                                            }
+                                            if (selectedYear == year) importReport = auditStore.load(year)
+                                            rows = BinanceSyncData.load(context)
+                                            lastSync = BinanceSyncData.lastSync(context)
+                                            hasYearBackup = importBackupStore.hasBackup(selectedYear)
+                                            onSynced()
+                                            status = "Restored the pre-import Futures snapshot for $year. The snapshot remains available."
+                                        } catch (e: Exception) {
+                                            status = "Restore failed: " + (e.message ?: "could not restore snapshot")
+                                        } finally { busy = false }
+                                    }
                                 }
-                                importReport = auditStore.load(selectedYear)
-                                rows = BinanceSyncData.load(context)
-                                lastSync = BinanceSyncData.lastSync(context)
-                                onSynced()
-                                status = "Restored the pre-import Futures snapshot for $selectedYear. The snapshot remains available."
-                            } catch (e: Exception) { status = "Restore failed: " + (e.message ?: "could not restore snapshot") }
-                            finally { busy = false }
+                            ) { Text("Restore data") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showRestoreConfirmation = false }, enabled = !busy) { Text("Cancel") }
                         }
-                    }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Restore pre-import Futures data for $selectedYear") }
+                    )
                 }
                 importReport?.let { report ->
                     Card(Modifier.fillMaxWidth()) {
