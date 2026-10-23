@@ -89,9 +89,9 @@ fun TargetScreen() {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Additional net profit needed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(money(profitNeeded!!), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("Starting balance → target: \${money(start!!)} → \${money(goal!!)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Starting balance → target: ${money(start!!)} → ${money(goal!!)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                    Text("Starting balance is \${String.format(Locale.US, "%.1f", progress * 100)}% of the target balance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Starting balance is ${String.format(Locale.US, "%.1f", progress * 100)}% of the target balance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
 
@@ -150,4 +150,4 @@ private fun TargetMetric(label: String, value: String) {
     }
 }
 
-private fun money(value: Double): String = String.format(Locale.US, "\\$%,.2f", value)
+private fun money(value: Double): String = String.format(Locale.US, "\$%,.2f", value)
