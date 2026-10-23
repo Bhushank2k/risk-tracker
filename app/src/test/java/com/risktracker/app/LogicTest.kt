@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class LogicTest {
     private val eps = 1e-6
@@ -107,6 +109,23 @@ class LogicTest {
         assertEquals(10.0, row10.movePercent, eps)
         assertEquals(90.0, row10.longLiq, eps)
         assertEquals(110.0, row10.shortLiq, eps)
+    }
+
+    @Test
+    fun dailyPnlAlertLooksUpTodayInsteadOfLastRecordedEntry() {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse("2026-10-23")!!
+        val entries = listOf(
+            PnlEntry("23/10/2026", 100.0, -25.0),
+            PnlEntry("24/10/2026", 75.0, 4.0)
+        )
+        assertEquals(-25.0, pnlEntryForDate(entries, today)?.pnl ?: 0.0, eps)
+    }
+
+    @Test
+    fun dailyPnlAlertSupportsIsoDatesAndReturnsNullWhenTodayIsMissing() {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse("2026-10-23")!!
+        assertEquals(12.0, pnlEntryForDate(listOf(PnlEntry("2026-10-23", 100.0, 12.0)), today)?.pnl ?: 0.0, eps)
+        assertEquals(null, pnlEntryForDate(listOf(PnlEntry("22/10/2026", 100.0, -50.0)), today))
     }
 
     @Test
