@@ -22,16 +22,19 @@ data class BinanceIncomeImportReport(
     val ignoredRows: Int,
     val rowsByType: Map<String, Int>,
     val firstActivityDate: String,
-    val lastActivityDate: String
+    val lastActivityDate: String,
+    val duplicateRows: Int = 0
 )
 
 object BinanceIncomeCsvImporter {
     private val utc = TimeZone.getTimeZone("UTC")
+    private val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE")
 
     fun parse(input: InputStream, selectedYear: Int): Map<String, Double> =
         parseWithReport(input, selectedYear).daily
 
     fun parseWithReport(input: InputStream, selectedYear: Int): BinanceIncomeImportReport {
+        require(selectedYear in 2018..2026) { "Selected year must be between 2018 and 2026." }
         val lines = BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { it.readLines() }
             .filter { it.isNotBlank() }
         require(lines.size >= 2) { "The CSV must contain a header and at least one data row." }
@@ -45,28 +48,52 @@ object BinanceIncomeCsvImporter {
 
         val daily = linkedMapOf<String, Double>()
         val rowsByType = linkedMapOf<String, Int>()
+        val seenRows = mutableSetOf<String>()
         var accepted = 0
         var ignored = 0
+        var duplicates = 0
         val activityDates = mutableListOf<String>()
         lines.drop(1).forEachIndexed { rowIndex, line ->
-            val columns = splitCsvLine(line)
-            if (columns.all { it.isBlank() }) return@forEachIndexed
-            require(columns.size > maxOf(timeIndex, typeIndex, amountIndex)) {
-                "Malformed CSV row ${rowIndex + 2}: missing expected columns."
+            val rowNumber = rowIndex + 2
+            val columns = try {
+                splitCsvLine(line)
+            } catch (e: IllegalArgumentException) {
+                throw IllegalArgumentException("Malformed CSV row $rowNumber: ${e.message}", e)
             }
-            val timestamp = parseTimestamp(columns[timeIndex].trim())
-                ?: error("Could not parse timestamp on CSV row ${rowIndex + 2}.")
+            if (columns.all { it.isBlank() }) return@forEachIndexed
+            require(columns.size == headers.size) {
+                "Malformed CSV row $rowNumber: expected ${headers.size} columns but found ${columns.size}."
+            }
+            val timeValue = columns[timeIndex].trim()
+            val typeValue = columns[typeIndex].trim()
+            val amountValue = columns[amountIndex].trim()
+            require(timeValue.isNotEmpty()) { "Missing required time/date on CSV row $rowNumber." }
+            require(typeValue.isNotEmpty()) { "Missing required income type on CSV row $rowNumber." }
+            require(amountValue.isNotEmpty()) { "Missing required income amount on CSV row $rowNumber." }
+
+            val timestamp = parseTimestamp(timeValue)
+                ?: throw IllegalArgumentException("Could not parse timestamp on CSV row $rowNumber.")
             val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = utc }.format(Date(timestamp))
             require(day.take(4).toIntOrNull() == selectedYear) {
                 "CSV contains a row outside $selectedYear ($day). Export only the selected year and retry."
             }
-            val type = columns[typeIndex].trim().uppercase(Locale.US).replace(' ', '_')
-            if (type !in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE")) {
+            val amount = amountValue.replace(",", "").toDoubleOrNull()
+            require(amount != null && amount.isFinite()) {
+                "Invalid or non-finite income amount on CSV row $rowNumber."
+            }
+
+            // Exact duplicate records are skipped. Distinct rows with the same amount/date remain separate.
+            val fingerprint = columns.map { it.trim() }.joinToString("\u001F")
+            if (!seenRows.add(fingerprint)) {
+                duplicates++
+                return@forEachIndexed
+            }
+
+            val type = typeValue.uppercase(Locale.US).replace(' ', '_')
+            if (type !in includedTypes) {
                 ignored++
                 return@forEachIndexed
             }
-            val amount = columns[amountIndex].trim().replace(",", "").toDoubleOrNull()
-                ?: error("Invalid income amount on CSV row ${rowIndex + 2}.")
             daily[day] = (daily[day] ?: 0.0) + amount
             rowsByType[type] = (rowsByType[type] ?: 0) + 1
             activityDates += day
@@ -81,7 +108,8 @@ object BinanceIncomeCsvImporter {
             ignoredRows = ignored,
             rowsByType = rowsByType.toMap(),
             firstActivityDate = activityDates.minOrNull() ?: error("No activity dates found."),
-            lastActivityDate = activityDates.maxOrNull() ?: error("No activity dates found.")
+            lastActivityDate = activityDates.maxOrNull() ?: error("No activity dates found."),
+            duplicateRows = duplicates
         )
     }
 
@@ -131,7 +159,7 @@ object BinanceIncomeCsvImporter {
             }
             i++
         }
-        require(!quoted) { "Malformed CSV: an unclosed quoted field was found." }
+        require(!quoted) { "an unclosed quoted field was found." }
         fields += field.toString()
         return fields
     }
