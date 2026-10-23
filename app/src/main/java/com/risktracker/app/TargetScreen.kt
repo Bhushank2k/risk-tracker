@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import kotlin.math.ceil
 
 private const val TARGET_PREFS = "profit_target_planner_v1"
 
@@ -56,11 +55,12 @@ fun TargetScreen() {
     val goal = targetBalance.toDoubleOrNull()
     val days = daysText.toIntOrNull()
     val plannedDaily = dailyTarget.toDoubleOrNull()
-    val validBalances = start != null && goal != null && start >= 0.0 && goal > start
-    val profitNeeded = if (validBalances) goal!! - start!! else null
-    val requiredDaily = if (profitNeeded != null && days != null && days > 0) profitNeeded / days else null
-    val estimatedDays = if (profitNeeded != null && plannedDaily != null && plannedDaily > 0) ceil(profitNeeded / plannedDaily).toInt() else null
-    val progress = if (start != null && goal != null && goal > 0.0) (start / goal).toFloat().coerceIn(0f, 1f) else 0f
+    val plan = calculateTargetPlan(start, goal, days, plannedDaily)
+    val validBalances = plan.validBalances
+    val profitNeeded = plan.profitNeeded
+    val requiredDaily = plan.requiredDailyProfit
+    val estimatedDays = plan.estimatedDays
+    val progress = plan.progress
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
