@@ -106,8 +106,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
-    val titles = listOf("Home", "Journal", "Insights", "More")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Info)
+    val titles = listOf("Home", "Journal", "Insights", "Tools")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     val menuGroups = listOf(
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8),
         "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3),
@@ -206,6 +206,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
     val todayEntry = pnlEntryForDate(entries)
+    val todayPnl = todayEntry?.pnl ?: 0.0
+    val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
     val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
             val document = PdfDocument()
@@ -234,37 +236,76 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Current balance", style = MaterialTheme.typography.labelMedium)
-                        Text(stats.currentBalance.usd(), fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(stats.currentBalance.usd(), style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text("₹" + (stats.currentBalance * inrRate).num(0),
-                            style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(12.dp))
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Stat("Total win", stats.totalWin.usd(), Green)
-                            Stat("Total loss", stats.totalLoss.usd(), Red)
-                            Stat("Net", stats.net.usd(), pnlColor(stats.net))
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Latest recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                Text((if (todayPnl > 0) "+" else "") + todayPnl.usd(),
+                                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    color = if (todayPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Net recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                Text(stats.net.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    color = if (stats.net < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        Text("${stats.winDays}W / ${stats.lossDays}L  •  win rate ${stats.winRate.pct(0)}",
-                            style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Latest entry vs loss limit", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text(if (maxDailyLoss > 0) "${(lossLimitUsed * 100).toInt()}% used" else "Not set",
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Box(Modifier.fillMaxWidth().height(7.dp).background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f))) {
+                            Box(Modifier.fillMaxWidth(lossLimitUsed).height(7.dp)
+                                .background(if (lossLimitUsed >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary))
+                        }
+                        Text("${stats.winDays} winning days · ${stats.lossDays} losing days · win rate ${stats.winRate.pct(0)}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
             if (importedPnl.isNotEmpty()) {
                 item {
+                    val manualByDate = entries.associateBy { it.date }
+                    val importedByDate = importedPnl.associateBy { it.date }
+                    val allDates = (manualByDate.keys + importedByDate.keys).toSortedSet()
+                    val combinedRows = allDates.mapNotNull { date ->
+                        val manual = manualByDate[date]
+                        val imported = importedByDate[date]
+                        if (manual != null) Triple(date, manual.pnl, if (imported != null) "Manual · Binance available separately" else "Manual")
+                        else imported?.let { Triple(date, it.total, "Binance") }
+                    }
+                    val combinedNet = combinedRows.sumOf { it.second }
                     Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("Binance imported P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Spot FIFO realized: " + importedPnl.sumOf { it.spotPnl }.usd(), color = pnlColor(importedPnl.sumOf { it.spotPnl }))
-                            Text("Futures realized P&L, commissions & funding: " + importedPnl.sumOf { it.futuresPnl }.usd(), color = pnlColor(importedPnl.sumOf { it.futuresPnl }))
-                            Text("Combined imported result: " + importedPnl.sumOf { it.total }.usd(), fontWeight = FontWeight.Bold, color = pnlColor(importedPnl.sumOf { it.total }))
-                            Text("Kept separate from manual daily entries to prevent overwriting or double-counting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            importedPnl.takeLast(7).reversed().forEach { row ->
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Daily P&L by date", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Combined net across unique dates: " + combinedNet.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNet))
+                            Text("Spot FIFO: " + importedPnl.sumOf { it.spotPnl }.usd() + " · Futures net: " + importedPnl.sumOf { it.futuresPnl }.usd(),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("For dates with both sources, the manual entry is shown and Binance is not added again. Current balance and balance-chart statistics continue to use your manual balance ledger.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            combinedRows.takeLast(10).reversed().forEach { row ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(row.date, style = MaterialTheme.typography.bodySmall)
-                                    Text("Spot " + row.spotPnl.usd() + " · Futures " + row.futuresPnl.usd(), style = MaterialTheme.typography.bodySmall)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(row.first, style = MaterialTheme.typography.bodySmall)
+                                        Text(row.third, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text(row.second.usd(), color = pnlColor(row.second))
                                 }
                             }
                         }
@@ -359,28 +400,58 @@ fun Stat(label: String, value: String, color: Color) {
 @Composable
 fun BalanceChart(entries: List<PnlEntry>) {
     if (entries.size < 2) return
-    val points = entries.map { it.closing }
-    val lo = points.min()
-    val hi = points.max()
+    var metric by remember { mutableStateOf("Balance") }
+    var range by remember { mutableStateOf("All") }
+    val datedEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
+    var cumulative = 0.0
+    val allPoints = datedEntries.map { entry ->
+        cumulative += entry.pnl
+        entry to if (metric == "Balance") entry.closing else cumulative
+    }
+    val latestDate = datedEntries.mapNotNull { reportDate(it.date) }.maxByOrNull { it.time }
+    val rangeDays = when (range) { "1W" -> 7; "1M" -> 30; "3M" -> 90; else -> null }
+    val filteredPoints = if (rangeDays == null || latestDate == null) allPoints else {
+        val cutoff = latestDate.time - rangeDays * 24L * 60L * 60L * 1000L
+        allPoints.filter { (entry, _) -> reportDate(entry.date)?.time?.let { it >= cutoff } == true }
+            .ifEmpty { allPoints }
+    }
+    val points = filteredPoints.map { it.second }
+    val lo = points.minOrNull() ?: 0.0
+    val hi = points.maxOrNull() ?: 0.0
     val line = MaterialTheme.colorScheme.primary
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Balance over time", style = MaterialTheme.typography.labelMedium)
-            Canvas(Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp)) {
-                val range = (hi - lo).takeIf { it > 0 } ?: 1.0
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Balance", "Net P&L").forEach { option ->
+                    FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("1W", "1M", "3M", "All").forEach { option ->
+                    FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
+                }
+            }
+            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+                val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
                 val path = Path()
-                points.forEachIndexed { i, v ->
-                    val x = size.width * i / (points.size - 1)
-                    val y = (size.height * (1 - (v - lo) / range)).toFloat()
+                points.forEachIndexed { i, value ->
+                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
+                    val y = (size.height * (1 - (value - lo) / rangeValue)).toFloat()
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
                 drawPath(path, line, style = Stroke(width = 4f))
-                drawLine(Color.LightGray, Offset(0f, size.height), Offset(size.width, size.height))
+                drawLine(Color.LightGray.copy(alpha = 0.5f), Offset(0f, size.height), Offset(size.width, size.height))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall)
-                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall)
+                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Text(
+                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
