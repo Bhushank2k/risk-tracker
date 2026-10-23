@@ -205,6 +205,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val ctx = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
+    val todayEntry = pnlEntryForDate(entries)
     val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
             val document = PdfDocument()
@@ -270,18 +271,18 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     }
                 }
             }
-            if (entries.lastOrNull()?.pnl?.let { it >= dailyProfitTarget } == true) {
+            if (todayEntry?.pnl?.let { it >= dailyProfitTarget } == true) {
                 item {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Text("Daily profit target reached: " + entries.last().pnl.usd() + " of " + dailyProfitTarget.usd() + ". Protect your gains and follow your plan.",
+                        Text("Daily profit target reached: " + todayEntry!!.pnl.usd() + " of " + dailyProfitTarget.usd() + ". Protect your gains and follow your plan.",
                             Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-            if (entries.lastOrNull()?.pnl?.let { it <= -maxDailyLoss } == true) {
+            if (todayEntry?.pnl?.let { it <= -maxDailyLoss } == true) {
                 item {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                        Text("Daily loss limit reached: " + entries.last().pnl.usd() + " loss meets/exceeds your " + maxDailyLoss.usd() + " limit. Consider stopping for the day.",
+                        Text("Daily loss limit reached: " + todayEntry!!.pnl.usd() + " loss meets/exceeds your " + maxDailyLoss.usd() + " limit. Consider stopping for the day.",
                             Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold)
                     }
                 }

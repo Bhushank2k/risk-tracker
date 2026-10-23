@@ -3,6 +3,9 @@ package com.risktracker.app
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 
 // ---------- Daily PNL ----------
@@ -22,6 +25,19 @@ data class PnlStats(
     val winRate: Double,
     val currentBalance: Double
 )
+
+/**
+ * Finds the recorded daily result for a specific local calendar date.
+ * Daily P&L entries have historically used d/M/yyyy; ISO dates are also accepted
+ * for imported or restored records. Missing today's record must not trigger a
+ * stale daily profit/loss warning.
+ */
+fun pnlEntryForDate(entries: List<PnlEntry>, date: Date = Date()): PnlEntry? {
+    val dateKeys = listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd")
+        .map { SimpleDateFormat(it, Locale.US).format(date) }
+        .toSet()
+    return entries.lastOrNull { it.date.trim() in dateKeys }
+}
 
 fun computeStats(entries: List<PnlEntry>): PnlStats {
     val win = entries.filter { it.pnl > 0 }.sumOf { it.pnl }
