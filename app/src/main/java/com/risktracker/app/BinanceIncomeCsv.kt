@@ -16,10 +16,22 @@ import java.util.TimeZone
  * asset, time, tranId, tradeId); header aliases are accepted for common export variants.
  * Only realized P&L, commission and funding income affect daily net P&L.
  */
+data class BinanceIncomeImportReport(
+    val daily: Map<String, Double>,
+    val includedRows: Int,
+    val ignoredRows: Int,
+    val rowsByType: Map<String, Int>,
+    val firstActivityDate: String,
+    val lastActivityDate: String
+)
+
 object BinanceIncomeCsvImporter {
     private val utc = TimeZone.getTimeZone("UTC")
 
-    fun parse(input: InputStream, selectedYear: Int): Map<String, Double> {
+    fun parse(input: InputStream, selectedYear: Int): Map<String, Double> =
+        parseWithReport(input, selectedYear).daily
+
+    fun parseWithReport(input: InputStream, selectedYear: Int): BinanceIncomeImportReport {
         val lines = BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { it.readLines() }
             .filter { it.isNotBlank() }
         require(lines.size >= 2) { "The CSV must contain a header and at least one data row." }
@@ -32,7 +44,10 @@ object BinanceIncomeCsvImporter {
         }
 
         val daily = linkedMapOf<String, Double>()
+        val rowsByType = linkedMapOf<String, Int>()
         var accepted = 0
+        var ignored = 0
+        val activityDates = mutableListOf<String>()
         lines.drop(1).forEachIndexed { rowIndex, line ->
             val columns = splitCsvLine(line)
             if (columns.all { it.isBlank() }) return@forEachIndexed
@@ -46,16 +61,28 @@ object BinanceIncomeCsvImporter {
                 "CSV contains a row outside $selectedYear ($day). Export only the selected year and retry."
             }
             val type = columns[typeIndex].trim().uppercase(Locale.US).replace(' ', '_')
-            if (type !in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE")) return@forEachIndexed
+            if (type !in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE")) {
+                ignored++
+                return@forEachIndexed
+            }
             val amount = columns[amountIndex].trim().replace(",", "").toDoubleOrNull()
                 ?: error("Invalid income amount on CSV row ${rowIndex + 2}.")
             daily[day] = (daily[day] ?: 0.0) + amount
+            rowsByType[type] = (rowsByType[type] ?: 0) + 1
+            activityDates += day
             accepted++
         }
         require(accepted > 0) {
             "No REALIZED_PNL, COMMISSION, or FUNDING_FEE rows were found. Choose a Binance USDⓈ-M Futures income-history export."
         }
-        return daily
+        return BinanceIncomeImportReport(
+            daily = daily,
+            includedRows = accepted,
+            ignoredRows = ignored,
+            rowsByType = rowsByType.toMap(),
+            firstActivityDate = activityDates.minOrNull() ?: error("No activity dates found."),
+            lastActivityDate = activityDates.maxOrNull() ?: error("No activity dates found.")
+        )
     }
 
     private fun parseTimestamp(value: String): Long? {

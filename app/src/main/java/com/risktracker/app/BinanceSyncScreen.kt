@@ -55,6 +55,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
+    var pendingImportYear by remember { mutableStateOf(2026) }
+    var importReport by remember { mutableStateOf<BinanceIncomeImportReport?>(null) }
     val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
     var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
     var yearMenuExpanded by remember { mutableStateOf(false) }
@@ -64,19 +66,21 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     val incomeCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             busy = true
-            status = "Importing the $selectedYear Futures income export…"
+            val importYear = pendingImportYear
+            status = "Importing the $importYear Futures income export…"
             scope.launch {
                 try {
-                    val daily = withContext(Dispatchers.IO) {
+                    val report = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.use {
-                            BinanceIncomeCsvImporter.parse(it, selectedYear)
+                            BinanceIncomeCsvImporter.parseWithReport(it, importYear)
                         } ?: error("Could not open the selected file.")
                     }
-                    BinanceSyncData.replaceFuturesYear(context, selectedYear, daily)
+                    BinanceSyncData.replaceFuturesYear(context, importYear, report.daily)
+                    importReport = report
                     rows = BinanceSyncData.load(context)
                     lastSync = BinanceSyncData.lastSync(context)
                     onSynced()
-                    status = "Imported ${daily.size} daily totals for $selectedYear. Confirm the CSV is a complete full-year income export."
+                    status = "Imported ${report.daily.size} daily totals for $importYear. Review the import audit below; activity dates alone cannot prove a full export."
                 } catch (e: Exception) {
                     status = "CSV import failed: " + (e.message ?: "check the export format")
                 } finally {
@@ -171,7 +175,10 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     }) { Text("Refresh") }
                 }
                 Button(
-                    onClick = { incomeCsvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "application/vnd.ms-excel")) },
+                    onClick = {
+                        pendingImportYear = selectedYear
+                        incomeCsvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "application/vnd.ms-excel"))
+                    },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Import historical Futures income CSV for $selectedYear") }
@@ -180,6 +187,20 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                importReport?.let { report ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Last import audit", style = MaterialTheme.typography.titleSmall)
+                            Text("Activity dates: ${report.firstActivityDate} to ${report.lastActivityDate}")
+                            Text("Included income rows: ${report.includedRows} · ignored other income rows: ${report.ignoredRows}")
+                            Text("Realized P&L: ${report.rowsByType["REALIZED_PNL"] ?: 0} rows · commissions: ${report.rowsByType["COMMISSION"] ?: 0} · funding: ${report.rowsByType["FUNDING_FEE"] ?: 0}")
+                            Text("Net imported Futures P&L: ${report.daily.values.sum().usd()}")
+                            Text("Audit limitation: these dates describe rows present in the file, not the full coverage of the export. Compare the file with Binance's export period and statements before treating this year as complete.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
                 Button(
                     onClick = {
                         val pair = credentials.read()
