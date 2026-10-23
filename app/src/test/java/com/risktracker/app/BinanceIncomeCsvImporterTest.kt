@@ -38,6 +38,38 @@ BTCUSDT,FUNDING_FEE,-2,USDT,2024-11-20 08:00:00,4
     }
 
     @Test
+    fun skipsExactDuplicateRowsAndReportsCount() {
+        val csv = """symbol,incomeType,income,asset,time,tranId
+BTCUSDT,REALIZED_PNL,10,USDT,2024-02-03 10:00:00,1
+BTCUSDT,REALIZED_PNL,10,USDT,2024-02-03 10:00:00,1
+BTCUSDT,REALIZED_PNL,10,USDT,2024-02-03 10:01:00,2
+"""
+        val report = BinanceIncomeCsvImporter.parseWithReport(ByteArrayInputStream(csv.toByteArray()), 2024)
+        assertEquals(2, report.includedRows)
+        assertEquals(1, report.duplicateRows)
+        assertEquals(20.0, report.daily.values.sum(), 0.0000001)
+    }
+
+    @Test
+    fun rejectsMalformedAmountsAndMissingRequiredFieldsWithRowNumbers() {
+        val badAmount = """symbol,incomeType,income,asset,time
+BTCUSDT,REALIZED_PNL,NaN,USDT,2024-02-03 10:00:00
+"""
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            BinanceIncomeCsvImporter.parse(ByteArrayInputStream(badAmount.toByteArray()), 2024)
+        }
+        org.junit.Assert.assertTrue(error.message!!.contains("row 2"))
+
+        val missingType = """symbol,incomeType,income,asset,time
+BTCUSDT,,10,USDT,2024-02-03 10:00:00
+"""
+        val missingError = assertThrows(IllegalArgumentException::class.java) {
+            BinanceIncomeCsvImporter.parse(ByteArrayInputStream(missingType.toByteArray()), 2024)
+        }
+        org.junit.Assert.assertTrue(missingError.message!!.contains("Missing required income type"))
+    }
+
+    @Test
     fun rejectsRowsOutsideSelectedYear() {
         val csv = """symbol,incomeType,income,asset,time,tranId
 BTCUSDT,REALIZED_PNL,5,USDT,2023-12-31 23:59:59,1

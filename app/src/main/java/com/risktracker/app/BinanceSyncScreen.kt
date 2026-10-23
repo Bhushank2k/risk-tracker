@@ -198,6 +198,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                             Text("Last import audit", style = MaterialTheme.typography.titleSmall)
                             Text("Activity dates: ${report.firstActivityDate} to ${report.lastActivityDate}")
                             Text("Included income rows: ${report.includedRows} · ignored other income rows: ${report.ignoredRows}")
+                            Text("Exact duplicate rows skipped: ${report.duplicateRows}")
                             Text("Realized P&L: ${report.rowsByType["REALIZED_PNL"] ?: 0} rows · commissions: ${report.rowsByType["COMMISSION"] ?: 0} · funding: ${report.rowsByType["FUNDING_FEE"] ?: 0}")
                             Text("Net imported Futures P&L: ${report.daily.values.sum().usd()}")
                             Text("Audit limitation: these dates describe rows present in the file, not the full coverage of the export. Compare the file with Binance's export period and statements before treating this year as complete.",

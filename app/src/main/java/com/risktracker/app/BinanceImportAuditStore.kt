@@ -20,6 +20,7 @@ class BinanceImportAuditStore(context: Context) {
             .put("rowsByType", rowsByType)
             .put("firstActivityDate", report.firstActivityDate)
             .put("lastActivityDate", report.lastActivityDate)
+            .put("duplicateRows", report.duplicateRows)
         prefs.edit().putString("year_$year", payload.toString()).apply()
     }
 
@@ -49,10 +50,10 @@ class BinanceImportAuditStore(context: Context) {
                 ignoredRows = payload.getInt("ignoredRows"),
                 rowsByType = rowsByType,
                 firstActivityDate = payload.getString("firstActivityDate"),
-                lastActivityDate = payload.getString("lastActivityDate")
+                lastActivityDate = payload.getString("lastActivityDate"),
+                duplicateRows = payload.optInt("duplicateRows", 0)
             )
         } catch (_: Exception) {
-            // Corrupt or older stored audit metadata should not break the sync screen.
             null
         }
     }
