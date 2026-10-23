@@ -56,7 +56,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
     var pendingImportYear by remember { mutableStateOf(2026) }
-    var importReport by remember { mutableStateOf<BinanceIncomeImportReport?>(null) }
+    val auditStore = remember { BinanceImportAuditStore(context) }
+    var importReport by remember { mutableStateOf(auditStore.load(2026)) }
     val exportPrefs = remember { context.getSharedPreferences("binance_income_exports_v1", 0) }
     var exportId by remember { mutableStateOf(exportPrefs.getString("year_2026", null)) }
     val reconciliationPrefs = remember { context.getSharedPreferences("binance_year_reconciliation_v1", 0) }
@@ -79,7 +80,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         } ?: error("Could not open the selected file.")
                     }
                     BinanceSyncData.replaceFuturesYear(context, importYear, report.daily)
-                    importReport = report
+                    auditStore.save(importYear, report)
+                    if (selectedYear == importYear) importReport = report
                     rows = BinanceSyncData.load(context)
                     lastSync = BinanceSyncData.lastSync(context)
                     onSynced()
@@ -168,7 +170,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         (2018..2026).forEach { year ->
                             DropdownMenuItem(
                                 text = { Text(year.toString()) },
-                                onClick = { selectedYear = year; exportId = exportPrefs.getString("year_$year", null); sourceTotalText = reconciliationPrefs.getString("source_total_$year", "") ?: ""; reconciliationMessage = ""; yearMenuExpanded = false }
+                                onClick = { selectedYear = year; importReport = auditStore.load(year); exportId = exportPrefs.getString("year_$year", null); sourceTotalText = reconciliationPrefs.getString("source_total_$year", "") ?: ""; reconciliationMessage = ""; yearMenuExpanded = false }
                             )
                         }
                     }
