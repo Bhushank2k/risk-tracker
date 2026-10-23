@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -112,13 +114,45 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
         return
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Binance trade sync", style = MaterialTheme.typography.headlineSmall)
-        OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.fillMaxWidth()) { Text("Historical trades & India tax reports") }
-        OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.fillMaxWidth()) { Text("Automatic Binance account statements") }
-        Text("Imports Spot realized P&L using FIFO matching and Futures realized P&L, commissions and funding income. Imported results remain separate from manual Daily P&L entries. The standard Futures income API exposes only recent history; older years require a Binance historical export/import workflow.", style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("DATA & IMPORTS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Binance data", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Sync recent account activity or safely import historical Futures results by year.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.weight(1f)) { Text("Tax reports") }
+            OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.weight(1f)) { Text("Statements") }
+        }
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Historical import workflow", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("1", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Column(Modifier.weight(1f)) {
+                        Text("Choose a year", fontWeight = FontWeight.Medium)
+                        Text("Download the complete Binance USDⓈ-M Futures income export for that year.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("2", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Column(Modifier.weight(1f)) {
+                        Text("Review the preview", fontWeight = FontWeight.Medium)
+                        Text("Check totals, duplicate rows and changed dates before applying anything.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("3", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Column(Modifier.weight(1f)) {
+                        Text("Confirm or restore", fontWeight = FontWeight.Medium)
+                        Text("Only the selected year's Futures totals are replaced; Spot and other years stay unchanged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Read-only API credentials", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(apiKey, { apiKey = it }, label = { Text("Binance API key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(secret, { secret = it }, label = { Text(if (hasSaved) "API secret (enter again to rotate)" else "Binance API secret") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
@@ -163,8 +197,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
         }
         if (lastSync > 0L) Text("Last sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall)
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Year-wise imported history", style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { yearMenuExpanded = true }, modifier = Modifier.weight(1f)) {
                         Text("Year: $selectedYear")
