@@ -52,6 +52,10 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var secret by remember { mutableStateOf("") }
     var hasSaved by remember { mutableStateOf(saved != null) }
     var status by remember { mutableStateOf("") }
+    var futuresBalance by remember { mutableStateOf<FuturesAccountBalance?>(null) }
+    var balanceBusy by remember { mutableStateOf(false) }
+    var balanceStatus by remember { mutableStateOf("") }
+    var balanceUpdatedAt by remember { mutableStateOf(0L) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var showTaxReports by remember { mutableStateOf(false) }
@@ -149,6 +153,66 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         Text("Only the selected year's Futures totals are replaced; Spot and other years stay unchanged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            }
+        }
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("USDⓈ-M FUTURES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Account balance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    OutlinedButton(onClick = {
+                        val pair = credentials.read()
+                        if (pair == null) {
+                            balanceStatus = "Save your read-only Binance API credentials below first."
+                        } else {
+                            balanceBusy = true
+                            balanceStatus = "Fetching live Futures account values…"
+                            scope.launch {
+                                try {
+                                    val result = withContext(Dispatchers.IO) {
+                                        BinanceApi(pair.first, pair.second).futuresAccountBalance()
+                                    }
+                                    futuresBalance = result
+                                    balanceUpdatedAt = System.currentTimeMillis()
+                                    balanceStatus = "Balance refreshed from Binance."
+                                } catch (e: Exception) {
+                                    balanceStatus = "Could not load Futures balance: " + (e.message ?: "check read permissions")
+                                } finally { balanceBusy = false }
+                            }
+                        }
+                    }, enabled = !balanceBusy) { Text(if (balanceBusy) "Loading…" else "Refresh") }
+                }
+                if (futuresBalance != null) {
+                    val snapshot = futuresBalance!!
+                    Text(snapshot.equity.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Futures equity · wallet balance plus unrealized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Wallet balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            Text(snapshot.walletBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Available balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            Text(snapshot.availableBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Unrealized P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            Text((if (snapshot.unrealizedPnl > 0) "+" else "") + snapshot.unrealizedPnl.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = if (snapshot.unrealizedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Last updated", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            Text(SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(balanceUpdatedAt)), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+                } else {
+                    Text("Refresh to fetch your live USDⓈ-M Futures wallet, equity, available margin and unrealized P&L. Requires saved read-only API credentials.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                if (balanceStatus.isNotBlank()) Text(balanceStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f))
             }
         }
         Card(Modifier.fillMaxWidth()) {
