@@ -90,7 +90,6 @@ fun TradeReviewScreen(trades: List<TradeEntry>) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trade result: " + trade.pnl.usd())
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected == null, {}, label = { Text(" ") }, enabled = false)
                         FilterChip(selected = followed == true, onClick = { followed = true }, label = { Text("Followed plan") })
                         FilterChip(selected = followed == false, onClick = { followed = false }, label = { Text("Broke plan") })
                     }
