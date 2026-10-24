@@ -26,6 +26,8 @@ data class TradeReview(
 
 class TradeReviewStore(context: Context) {
     private val prefs = context.getSharedPreferences("risk_tracker_reviews", Context.MODE_PRIVATE)
+    fun exportJson(): String = prefs.getString("reviews_v1", "[]") ?: "[]"
+    fun importJson(raw: String) { val parsed = JSONArray(raw); prefs.edit().putString("reviews_v1", parsed.toString()).apply() }
     fun load(): Map<String, TradeReview> = runCatching {
         val a = JSONArray(prefs.getString("reviews_v1", "[]") ?: "[]")
         (0 until a.length()).map { i ->
