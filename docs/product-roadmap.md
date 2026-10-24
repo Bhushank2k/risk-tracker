@@ -27,7 +27,7 @@ This roadmap extends existing Risk Tracker functionality without replacing Daily
 - [x] Explainable behavioral insight screen using existing strategy/mistake tags; review metadata is stored separately.
 - [x] Deterministic loss-streak scenarios and seeded historical R-multiple simulation engine.
 - [x] Local post-trade review notes and plan-adherence tracking for closed journal trades.
-- [x] Source-aware provenance and duplicate-ID audit primitives; integration with imported ledger and reconciliation UI remains future work.
+- [x] Source-aware provenance primitives and a year-by-year Binance Futures import audit/reconciliation screen with coverage, duplicate and income-type metadata. Journal estimates remain explicitly separate from imported exchange totals.
 - [ ] Optional AI summaries after analytics and data-completeness checks are established.
 
 Checklist items should only be marked complete after integration and passing tests/builds.
