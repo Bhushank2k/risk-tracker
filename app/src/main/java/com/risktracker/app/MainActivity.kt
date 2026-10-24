@@ -111,7 +111,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val menuGroups = listOf(
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8, "Trade reviews" to 14),
         "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3, "Trade Risk Gate" to 11, "Behavioral intelligence" to 12, "Risk Scenario Lab" to 13),
-        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9),
+        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9, "Ledger audit" to 15),
         "GOAL PLANNING" to listOf("Target" to 10),
         "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
     )
@@ -201,6 +201,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 12 -> BehavioralInsightsScreen(trades)
                 13 -> RiskScenarioLabScreen()
                 14 -> TradeReviewScreen(trades)
+                15 -> LedgerAuditScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
