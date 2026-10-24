@@ -24,10 +24,10 @@ This roadmap extends existing Risk Tracker functionality without replacing Daily
 
 - [x] Trade Risk Gate evaluation and local saved plans (initial implementation).
 - [ ] Wire configurable settings to existing app preferences and add plan-to-journal linking.
-- [ ] Behavioral insight engine and opt-in review metadata.
-- [ ] Risk Scenario Lab and deterministic simulations.
-- [ ] Trade review lifecycle.
-- [ ] Ledger provenance and reconciliation UX.
-- [ ] Optional AI summaries.
+- [x] Explainable behavioral insight screen using existing strategy/mistake tags; review metadata is stored separately.
+- [x] Deterministic loss-streak scenarios and seeded historical R-multiple simulation engine.
+- [x] Local post-trade review notes and plan-adherence tracking for closed journal trades.
+- [x] Source-aware provenance and duplicate-ID audit primitives; integration with imported ledger and reconciliation UI remains future work.
+- [ ] Optional AI summaries after analytics and data-completeness checks are established.
 
 Checklist items should only be marked complete after integration and passing tests/builds.
