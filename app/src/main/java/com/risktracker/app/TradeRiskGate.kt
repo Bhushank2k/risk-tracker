@@ -74,7 +74,7 @@ fun evaluateTradeRisk(
     val plannedRisk = quantity * distance + estimatedFees
     val reward = target?.let { abs(it - entry) * quantity }
     val rr = if (plannedRisk > 0.0 && reward != null) reward / plannedRisk else null
-    val remainingDailyBudget = (settings.maxDailyLoss + settings.dailyPnl).coerceAtLeast(0.0)
+    val remainingDailyBudget = (settings.maxDailyLoss + minOf(settings.dailyPnl, 0.0)).coerceAtLeast(0.0)
     val checks = listOf(
         RiskCheck("Per-trade risk", plannedRisk <= settings.maxTradeRisk,
             "Estimated loss at stop: " + "%.2f".format(Locale.US, plannedRisk) + "; limit " + "%.2f".format(Locale.US, settings.maxTradeRisk)),
@@ -127,7 +127,7 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
     var stop by remember { mutableStateOf("98") }
     var target by remember { mutableStateOf("104") }
     var fees by remember { mutableStateOf("0.5") }
-    val parsedTarget = target.trim().takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+    val parsedTarget = target.trim().takeIf { it.isNotEmpty() }?.let { it.toDoubleOrNull() ?: Double.NaN }
     val evaluation = evaluateTradeRisk(side, balance.toDoubleOrNull() ?: Double.NaN,
         risk.toDoubleOrNull() ?: Double.NaN, entry.toDoubleOrNull() ?: Double.NaN,
         stop.toDoubleOrNull() ?: Double.NaN, parsedTarget, fees.toDoubleOrNull() ?: Double.NaN, settings)
