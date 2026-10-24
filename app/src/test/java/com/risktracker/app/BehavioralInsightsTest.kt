@@ -7,7 +7,7 @@ class BehavioralInsightsTest {
     @Test fun groupsStrategiesAndCalculatesResults() {
         val rows = listOf(
             TradeEntry("1", "2026-01-01", "BTC", "Long", 100.0, 110.0, 1.0, strategy = "Breakout", riskUsd = 1.0),
-            TradeEntry("2", "2026-01-02", "BTC", "Long", 100.0, 105.0, 1.0, strategy = "Breakout"),
+            TradeEntry("2", "2026-01-02", "BTC", "Long", 100.0, 105.0, 1.0, strategy = "Breakout", riskUsd = 1.0),
             TradeEntry("3", "2026-01-03", "BTC", "Short", 100.0, 110.0, 1.0, strategy = "Breakout", mistake = "FOMO", riskUsd = 1.0)
         )
         val result = analyzeTradeBehavior(rows)
