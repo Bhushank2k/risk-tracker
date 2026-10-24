@@ -18,7 +18,7 @@ class TradeRiskGateTest {
         val r = evaluateTradeRisk("Short", 1000.0, 1.0, 100.0, 102.0, 96.0, 0.0, settings)
         assertTrue(r.valid)
         assertEquals(5.0, r.quantity, 1e-8)
-        assertEquals(3.0, r.riskReward!!, 1e-8)
+        assertEquals(2.0, r.riskReward!!, 1e-8)
     }
 
     @Test fun invalidStopAndTargetDirectionsAreRejected() {
