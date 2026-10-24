@@ -44,4 +44,4 @@ Use a read-only Binance API key with no trading or withdrawal permissions. Never
 
 ## Product roadmap
 
-See [docs/product-roadmap.md](docs/product-roadmap.md) for the staged feature roadmap and engineering guardrails. The new features are under review in [pull request #45](https://github.com/Bhushank2k/risk-tracker/pull/45). Trade plans and review notes currently use separate local storage and are not included in the existing backup bundle yet.
+See [docs/product-roadmap.md](docs/product-roadmap.md) for the staged feature roadmap and engineering guardrails. The new features are under review in [pull request #45](https://github.com/Bhushank2k/risk-tracker/pull/45). Trade plans and review notes use separate local storage and are included in newly exported backup bundles. Older backup files remain importable; because they predate these fields, importing an older bundle leaves existing trade plans and reviews unchanged.
