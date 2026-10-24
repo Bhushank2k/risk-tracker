@@ -13,6 +13,10 @@ A native Android app built with Kotlin and Jetpack Compose for crypto-futures ri
 - Optional Google Sheets sync for Daily P&L
 - Premium dashboard with hybrid bottom navigation and a full destination menu
 - Target planner for balance goals, daily net-profit pace, progress and estimated completion time
+- Trade Risk Gate for advisory pre-trade risk checks and locally saved trade plans
+- Behavioral intelligence by strategy and mistake tags, with sample-size and data-quality caveats
+- Risk Scenario Lab for consecutive-loss drawdown stress tests and seeded historical-outcome simulations
+- Post-trade reviews for plan adherence, setup, pre-trade state and lessons learned
 - Performance insights: net daily P&L, win rate, best/worst day, average daily P&L, and peak-to-trough drawdown
 - Custom light and dark palettes with System / Light / Dark appearance selection
 - Light/dark theme support
@@ -37,3 +41,7 @@ The Binance sync screen supports year-wise viewing of saved results, requesting 
 Trade-journal P&L is estimated from entered entry/exit prices, quantity, side, and fees. It does not include funding, slippage, or exchange-specific contract multipliers. Journal entries are stored locally and are not synchronized with Google Sheets. The app does not execute trades.
 
 Use a read-only Binance API key with no trading or withdrawal permissions. Never put exchange API secrets in source code, logs, exports, or client-side builds.
+
+## Product roadmap
+
+See [docs/product-roadmap.md](docs/product-roadmap.md) for the staged feature roadmap and engineering guardrails. The new features are under review in [pull request #45](https://github.com/Bhushank2k/risk-tracker/pull/45). Trade plans and review notes currently use separate local storage and are not included in the existing backup bundle yet.
