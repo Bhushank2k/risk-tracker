@@ -90,6 +90,8 @@ fun evaluateTradeRisk(
 
 class TradePlanStore(context: Context) {
     private val prefs = context.getSharedPreferences("risk_tracker_trade_plans", Context.MODE_PRIVATE)
+    fun exportJson(): String = prefs.getString("plans_v1", "[]") ?: "[]"
+    fun importJson(raw: String) { val parsed = JSONArray(raw); prefs.edit().putString("plans_v1", parsed.toString()).apply() }
     fun load(): List<TradePlan> = runCatching {
         val array = JSONArray(prefs.getString("plans_v1", "[]") ?: "[]")
         (0 until array.length()).map { i ->
