@@ -110,7 +110,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     val menuGroups = listOf(
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8),
-        "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3),
+        "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3, "Trade Risk Gate" to 11),
         "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9),
         "GOAL PLANNING" to listOf("Target" to 10),
         "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
@@ -191,6 +191,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 8 -> InsightsScreen(entries, trades.size)
                 9 -> CryptoTaxReportScreen()
                 10 -> TargetScreen()
+                11 -> TradeRiskGateScreen(TradeRiskSettings(
+                    maxTradeRisk = store.maxTradeRisk,
+                    maxDailyLoss = store.maxDailyLoss,
+                    dailyPnl = pnlEntryForDate(entries)?.pnl ?: 0.0,
+                    maxTradesPerDay = 10,
+                    tradesTakenToday = trades.count { it.date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+                ))
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
