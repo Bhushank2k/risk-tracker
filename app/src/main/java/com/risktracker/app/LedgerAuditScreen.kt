@@ -3,7 +3,6 @@ package com.risktracker.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -116,7 +115,7 @@ fun LedgerAuditScreen() {
                         sourceTotal == null || !sourceTotal.isFinite() -> Text("Enter a finite number to compare totals.", color = MaterialTheme.colorScheme.error)
                         reconciliation == null -> Text("No saved import report is available for comparison.")
                         reconciliation.status == BinanceReconciliationStatus.MATCHED_TOTALS -> Text(
-                            "Totals match within $0.01. Export completeness still needs independent verification.",
+                            "Totals match within 0.01 USD. Export completeness still needs independent verification.",
                             color = MaterialTheme.colorScheme.primary
                         )
                         else -> Text(
@@ -127,7 +126,6 @@ fun LedgerAuditScreen() {
                 }
             }
         }
-        Spacer(Modifier.padding(top = 2.dp))
         Text(
             "Provenance guardrail: Binance imports and journal estimates are different sources and must not be added together automatically.",
             style = MaterialTheme.typography.bodySmall,
