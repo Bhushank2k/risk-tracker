@@ -216,10 +216,20 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
+    var liveBinanceBalance by remember { mutableStateOf<BinancePortfolioBalance?>(null) }
     var liveBinanceLoading by remember { mutableStateOf(false) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
+    val latestManualEntry = entries.maxByOrNull { it.date }
+    val latestImportedEntry = importedPnl.maxByOrNull { it.date }
+    val latestRecordedPnl = when {
+        latestManualEntry == null -> latestImportedEntry?.total ?: 0.0
+        latestImportedEntry == null -> latestManualEntry.pnl
+        latestManualEntry.date >= latestImportedEntry.date -> latestManualEntry.pnl
+        else -> latestImportedEntry.total
+    }
+    val latestPnlDate = maxOf(latestManualEntry?.date.orEmpty(), latestImportedEntry?.date.orEmpty()).ifBlank { "No recorded entries" }
     val todayEntry = pnlEntryForDate(entries)
     val todayPnl = todayEntry?.pnl ?: 0.0
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
@@ -258,18 +268,18 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text(stats.currentBalance.usd(), style = MaterialTheme.typography.headlineLarge,
+                        Text((liveBinanceBalance?.valueUsdt ?: stats.currentBalance).usd(), style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("₹" + (stats.currentBalance * inrRate).num(0),
+                        Text((if (liveBinanceBalance != null) "Binance Spot estimate · " else "Manual ledger · ") + "₹" + ((liveBinanceBalance?.valueUsdt ?: stats.currentBalance) * inrRate).num(0),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Latest recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                Text("Latest recorded P&L · $latestPnlDate", style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                Text((if (todayPnl > 0) "+" else "") + todayPnl.usd(),
+                                Text((if (latestRecordedPnl > 0) "+" else "") + latestRecordedPnl.usd(),
                                     style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                                    color = if (todayPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                                    color = if (latestRecordedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("Net recorded P&L", style = MaterialTheme.typography.labelSmall,
@@ -309,16 +319,21 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                                     try {
                                         val fetched = withContext(Dispatchers.IO) {
                                             val pair = BinanceCredentialStore(ctx).read() ?: error("Add read-only API credentials in Binance trade history first.")
-                                            BinanceApi(pair.first, pair.second).recentSpotTransactions()
+                                            val api = BinanceApi(pair.first, pair.second)
+                                            api.spotPortfolioBalance() to api.recentSpotTransactions()
                                         }
-                                        liveBinanceTrades = fetched
-                                        liveBinanceStatus = if (fetched.isEmpty()) "No recent Spot fills found for currently held assets. Futures fills and assets with zero balances may not appear here." else "Updated just now · ${fetched.size} fills"
+                                        liveBinanceBalance = fetched.first
+                                        liveBinanceTrades = fetched.second
+                                        liveBinanceStatus = "Balance refreshed · ${fetched.first.valueUsdt.usd()} USDT estimated · ${fetched.second.size} recent Spot fills" + if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} asset(s) not priced and excluded" else ""
                                     } catch (e: Exception) { liveBinanceStatus = e.message ?: "Could not refresh Binance activity." }
                                     finally { liveBinanceLoading = false }
                                 }
                             }) { Text(if (liveBinanceLoading) "Loading…" else "Refresh") }
                         }
                         Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        liveBinanceBalance?.let { balance ->
+                            Text("Spot account: ${balance.assetsHeld} assets with positive balances · unpriced assets excluded. Refresh to update.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         liveBinanceTrades.take(8).forEach { trade ->
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
