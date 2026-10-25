@@ -49,6 +49,7 @@ fun TradeJournalScreen(
         (fromDate.isBlank() || t.date >= fromDate) && (toDate.isBlank() || t.date <= toDate)
     }
     val stats = computeTradeStats(filteredTrades)
+    val exchangeSummary = remember(exchangeFills) { TradeJournalAnalytics.summarize(exchangeFills) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
@@ -94,6 +95,34 @@ fun TradeJournalScreen(
                         OutlinedButton(onClick = onSyncExchange) { Text("Sync now") }
                     }
                     Text("Exchange fills are stored separately from manually recorded closed trades. Each row retains its exchange trade ID, timestamp and fee. Futures realized P&L is reported by Binance; Spot fills are not assigned an invented closed-trade P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (exchangeFills.isNotEmpty()) {
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Realized P&L analysis", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text("Spot uses FIFO cost basis. Sales without enough imported buy history are marked incomplete rather than assigned guessed P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val knownSpotSales = exchangeSummary.spotClosedSales.filter { it.netPnlQuote != null }
+                                val unknownBasis = exchangeSummary.spotClosedSales.count { !it.basisComplete }
+                                val unknownFee = exchangeSummary.spotClosedSales.count { it.basisComplete && it.feeConversionNeeded }
+                                if (knownSpotSales.isNotEmpty()) {
+                                    knownSpotSales.groupBy { TradeJournalAnalytics.quoteAsset(it.symbol) ?: "quote units" }.forEach { (quote, rows) ->
+                                        val net = rows.sumOf { it.netPnlQuote ?: 0.0 }
+                                        Text("Spot realized net (${quote}): ${net.num(4)} · ${rows.size} sales", color = pnlColor(net), fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                                if (unknownBasis > 0) Text("Spot sales with incomplete cost basis: $unknownBasis", style = MaterialTheme.typography.bodySmall)
+                                if (unknownFee > 0) Text("Spot sales with fees not converted to quote currency: $unknownFee (gross P&L shown only)", style = MaterialTheme.typography.bodySmall)
+                                exchangeSummary.futuresPnlByQuoteAsset.forEach { (quote, values) ->
+                                    val net = values.first - values.second
+                                    Text("Futures realized P&L (${quote}): gross ${values.first.num(4)} · known quote fees ${values.second.num(4)} · adjusted ${net.num(4)}",
+                                        color = pnlColor(net), fontWeight = FontWeight.Medium)
+                                }
+                                if (exchangeSummary.futuresRowsWithUnknownFeeConversion > 0) {
+                                    Text("Futures fills with fees in a different asset than the symbol quote: ${exchangeSummary.futuresRowsWithUnknownFeeConversion}. Adjusted P&L excludes converting those fees.", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("P&L is grouped by quote asset; different currencies are never added together. Import full relevant Spot history for the most complete FIFO cost basis.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                     if (exchangeFills.isEmpty()) {
                         Text("No exchange fills imported yet. Connect Binance under Tools → Binance trade history, then preview a historical range or wait for automatic sync.", style = MaterialTheme.typography.bodyMedium)
                     } else {
