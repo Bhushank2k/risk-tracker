@@ -41,6 +41,17 @@ class TradeRiskGateTest {
         assertTrue(atLimit.errors.any { it.contains("trade-count") })
     }
 
+    @Test fun feesMeetingOrExceedingRiskBudgetRejectsThePlan() {
+        val atBudget = evaluateTradeRisk("Long", 1000.0, 1.0, 100.0, 98.0, 104.0, 10.0, settings)
+        assertFalse(atBudget.valid)
+        assertEquals(0.0, atBudget.quantity, 1e-8)
+        assertTrue(atBudget.errors.any { it.contains("meet or exceed") })
+
+        val overBudget = evaluateTradeRisk("Long", 1000.0, 1.0, 100.0, 98.0, 104.0, 12.0, settings)
+        assertFalse(overBudget.valid)
+        assertEquals(0.0, overBudget.quantity, 1e-8)
+    }
+
     @Test fun missingTargetDoesNotInventReward() {
         val r = evaluateTradeRisk("Long", 1000.0, 1.0, 100.0, 98.0, null, 0.0, settings)
         assertTrue(r.valid)
