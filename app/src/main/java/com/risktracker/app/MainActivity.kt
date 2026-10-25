@@ -500,6 +500,27 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                 }
             }
             item {
+                val suggestion = when {
+                    maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss ->
+                        "Your recorded daily loss has reached the configured limit (" + todayPnl.usd() + " of " + maxDailyLoss.usd() + "). Consider stopping for the day and reviewing your plan."
+                    maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss * 0.75 ->
+                        "You've used " + ((-todayPnl / maxDailyLoss) * 100).toInt() + "% of your daily loss limit. Consider reducing risk or pausing before taking another trade."
+                    dailyProfitTarget > 0.0 && todayPnl >= dailyProfitTarget ->
+                        "Your recorded daily profit target is reached (" + todayPnl.usd() + " of " + dailyProfitTarget.usd() + "). Consider protecting gains and sticking to your plan."
+                    todayPnl > 0.0 ->
+                        "Today's recorded P&L is " + todayPnl.usd() + ". Keep position risk within your saved limits and avoid increasing size just because you're up."
+                    else ->
+                        "No daily profit or loss threshold has been reached from today's manual ledger entry. Keep planned risk within your saved limits and verify synced exchange data separately."
+                }
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("Today's suggestion", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("Based on today's manual P&L and your configured limits; advisory only.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                    }
+                }
+            }
+            item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -1119,6 +1140,26 @@ fun CalculatorScreen(input: CalcInput, onChange: (CalcInput) -> Unit) {
                 ResultRow("Profit", long.profit.usd(), short.profit.usd())
                 ResultRow("ROI", long.roiPercent.pct(0), short.roiPercent.pct(0))
                 ResultRow("R:R", long.rr.num(2), short.rr.num(2))
+            }
+        }
+        val validSides = listOf(long, short).filter { it.message == null }
+        val suggestion = when {
+            parsed.riskPercent > 2.0 ->
+                "Your selected risk is " + parsed.riskPercent.pct(1) + " of balance. Consider lowering it to 1–2% if that matches your trading plan."
+            validSides.isEmpty() ->
+                "These inputs do not currently produce a valid Long or Short setup. Review entry, stop-loss, target, leverage and balance before relying on the estimates."
+            validSides.map { it.rr }.filter { it.isFinite() && it > 0.0 }.minOrNull()?.let { it < 1.0 } == true ->
+                "At least one valid side has a reward-to-risk ratio below 1:1. Review whether the target justifies the planned risk before trading."
+            validSides.all { it.margin > parsed.balance * 0.8 } ->
+                "The estimated margin uses more than 80% of your account balance. Consider reducing position size or leverage to leave a buffer for fees and price movement."
+            else ->
+                "Your current inputs estimate " + parsed.balance.usd() + " balance with " + parsed.riskPercent.pct(1) + " risk per trade. Recheck fees, slippage, funding and exchange margin rules before using this estimate."
+        }
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("Suggestion from current inputs", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Updates with your inputs. Advisory only; liquidation and position-size values are estimates.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
             }
         }
         long.message?.let { Warn("Long: $it") }
