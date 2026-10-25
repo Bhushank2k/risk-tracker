@@ -202,7 +202,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     ),
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
                 tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
                 titles.forEachIndexed { i, title ->
                     NavigationBarItem(
