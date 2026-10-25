@@ -351,7 +351,7 @@ private fun JournalField(label: String, value: String, onValue: (String) -> Unit
 private fun exchangeFillsToCsv(fills: List<BinanceJournalFill>): String {
     fun cell(value: String): String {
         val escaped = value.replace("\"", "\"\"")
-        return if (escaped.any { it == ',' || it == '\"' || it == '\\n' || it == '\\r' }) "\"$escaped\"" else escaped
+        return if (escaped.any { it == ',' || it == '\"' || it == '\n' || it == '\r' }) "\"$escaped\"" else escaped
     }
     return buildString {
         appendLine("exchange,market,trade_id,symbol,side,time_ms,quantity,price,quote_amount,fee,fee_asset,realized_pnl,order_id")
