@@ -87,6 +87,11 @@ fun evaluateTradeRisk(
     val reward = target?.let { abs(it - entry) * quantity }
     val rr = if (plannedRisk > 0.0 && reward != null) reward / plannedRisk else null
     val remainingDailyBudget = (settings.maxDailyLoss + minOf(settings.dailyPnl, 0.0)).coerceAtLeast(0.0)
+    if ((reward != null && !reward.isFinite()) || (rr != null && !rr.isFinite()) ||
+        !remainingDailyBudget.isFinite()) {
+        return TradeRiskEvaluation(false, 0.0, 0.0, null, emptyList(),
+            listOf("Calculated reward or daily risk values are outside the supported numeric range."))
+    }
     val checks = listOf(
         RiskCheck("Per-trade risk", plannedRisk <= settings.maxTradeRisk,
             "Estimated loss at stop: " + "%.2f".format(Locale.US, plannedRisk) + "; limit " + "%.2f".format(Locale.US, settings.maxTradeRisk)),
