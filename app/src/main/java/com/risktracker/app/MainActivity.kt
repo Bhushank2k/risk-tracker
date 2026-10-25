@@ -111,7 +111,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val menuGroups = listOf(
         "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8, "Trade reviews" to 14),
         "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3, "Trade Risk Gate" to 11, "Behavioral intelligence" to 12, "Risk Scenario Lab" to 13),
-        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Crypto tax report" to 9, "Ledger audit" to 15),
+        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Live trades" to 16, "Crypto tax report" to 9, "Ledger audit" to 15),
         "GOAL PLANNING" to listOf("Target" to 10),
         "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
     )
@@ -202,8 +202,134 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 13 -> RiskScenarioLabScreen()
                 14 -> TradeReviewScreen(trades)
                 15 -> LedgerAuditScreen()
+                16 -> LiveTradesScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
+            }
+        }
+    }
+}
+
+// ---------------- Live trades ----------------
+
+@Composable
+fun LiveTradesScreen() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var liveTrades by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var lastUpdated by remember { mutableStateOf<Long?>(null) }
+    var status by remember { mutableStateOf("Connect Binance with read-only API credentials, then refresh to load open positions and orders.") }
+
+    fun refresh() {
+        val credentials = BinanceCredentialStore(context).read()
+        if (credentials == null) {
+            status = "Binance is not connected. Open Binance trade history and save read-only API credentials first."
+            return
+        }
+        loading = true
+        status = "Loading open positions and orders…"
+        scope.launch {
+            try {
+                val rows = withContext(Dispatchers.IO) {
+                    BinanceApi(credentials.first, credentials.second).liveTrades()
+                }
+                liveTrades = rows
+                lastUpdated = System.currentTimeMillis()
+                status = if (rows.isEmpty()) "No open Futures positions or Spot orders found." else "Loaded " + rows.size + " open positions/orders."
+            } catch (e: Exception) {
+                status = e.message ?: "Could not load live trades. Check API permissions and connection."
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Read-only snapshot from Binance: open USDⓈ-M Futures positions and pending Spot orders. This does not place, edit, or close orders.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                        if (loading) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (loading) "Refreshing…" else "Refresh live trades")
+                    }
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    lastUpdated?.let {
+                        Text("Updated " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it)),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (liveTrades.isEmpty() && !loading) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Nothing open yet", fontWeight = FontWeight.SemiBold)
+                        Text("After connecting Binance, tap Refresh. Only currently open Futures positions and unfilled Spot orders appear here; completed trades remain in trade history.",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        items(liveTrades, key = { it.id }) { trade ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(trade.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(trade.market, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(trade.side, color = if (trade.side == "LONG" || trade.side == "BUY") Green else Red, fontWeight = FontWeight.Bold)
+                    }
+                    HorizontalDivider()
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Quantity", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(trade.quantity.num(6))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(if (trade.market == "Spot order") "Limit price" else "Entry price", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(trade.entryPrice.usd(4))
+                    }
+                    if (trade.market == "USDⓈ-M Futures") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Mark price", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(trade.markPrice.usd(4))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Unrealized P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(trade.unrealizedPnl.usd(), color = pnlColor(trade.unrealizedPnl), fontWeight = FontWeight.SemiBold)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Leverage", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(trade.leverage.toString() + "×")
+                        }
+                        if (trade.liquidationPrice > 0.0) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Liquidation price", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(trade.liquidationPrice.usd(4), color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Order status", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(trade.status)
+                        }
+                    }
+                }
             }
         }
     }
