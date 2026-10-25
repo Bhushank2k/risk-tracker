@@ -94,6 +94,7 @@ object BinanceAutoJournalRunner {
 
         runCatching { api.recentSpotTransactions().forEach { knownSpot += it.symbol } }
         runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
+        runCatching { knownFutures += api.recentFuturesSymbols(start, end) }
 
         val fetched = mutableListOf<BinanceJournalFill>()
         knownSpot.take(100).forEach { symbol ->
