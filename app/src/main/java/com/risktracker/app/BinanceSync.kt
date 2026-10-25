@@ -297,62 +297,45 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Enter a valid Binance symbol, such as BTCUSDT." }
         require(startTime <= endTime) { "Start date must be before end date." }
         val output = mutableListOf<BinanceJournalFill>()
-        var cursor = startTime
-        var pages = 0
-        while (cursor <= endTime && pages < 100) {
-            pages++
-            val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", listOf(
-                "symbol" to symbol, "startTime" to cursor.toString(), "endTime" to endTime.toString(), "limit" to "1000"
-            ))
-            if (page.length() == 0) break
-            var maxTime = cursor
-            var lastId = -1L
-            for (i in 0 until page.length()) {
-                val row = page.getJSONObject(i)
-                val time = row.optLong("time")
-                maxTime = maxOf(maxTime, time)
-                lastId = maxOf(lastId, row.optLong("id", -1))
-                output += BinanceJournalFill(
-                    id = "binance:spot:$symbol:" + row.optString("id"),
-                    exchange = "Binance", market = "Spot", symbol = symbol,
-                    side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
-                    quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
-                    price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
-                    quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
-                    fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
-                    feeAsset = row.optString("commissionAsset"), realizedPnl = null,
-                    time = time, orderId = row.optString("orderId")
+        var windowStart = startTime
+        var windows = 0
+        val windowSize = 24L * 60 * 60 * 1000
+        while (windowStart <= endTime && windows++ < 4000) {
+            val windowEnd = minOf(endTime, windowStart + windowSize - 1)
+            var fromId: Long? = null
+            var pages = 0
+            while (pages++ < 100) {
+                val params = mutableListOf(
+                    "symbol" to symbol, "startTime" to windowStart.toString(),
+                    "endTime" to windowEnd.toString(), "limit" to "1000"
                 )
+                fromId?.let { params += "fromId" to it.toString() }
+                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
+                if (page.length() == 0) break
+                var lastId = -1L
+                for (i in 0 until page.length()) {
+                    val row = page.getJSONObject(i)
+                    val id = row.optLong("id", -1)
+                    lastId = maxOf(lastId, id)
+                    val time = row.optLong("time")
+                    if (time !in windowStart..windowEnd) continue
+                    output += BinanceJournalFill(
+                        id = "binance:spot:$symbol:$id", exchange = "Binance", market = "Spot", symbol = symbol,
+                        side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
+                        quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
+                        price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
+                        quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
+                        fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
+                        feeAsset = row.optString("commissionAsset"), realizedPnl = null,
+                        time = time, orderId = row.optString("orderId")
+                    )
+                }
+                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
+                fromId = lastId + 1
             }
-            if (page.length() < 1000 || lastId < 0 || maxTime >= endTime) break
-            // fromId is inclusive; advance by trade ID to avoid repeating the last page.
-            val next = signedGetArray("https://api.binance.com", "/api/v3/myTrades", listOf(
-                "symbol" to symbol, "fromId" to (lastId + 1).toString(), "limit" to "1000"
-            ))
-            if (next.length() == 0) break
-            var nextMaxTime = cursor
-            for (i in 0 until next.length()) {
-                val row = next.getJSONObject(i)
-                val time = row.optLong("time")
-                if (time > endTime) continue
-                nextMaxTime = maxOf(nextMaxTime, time)
-                output += BinanceJournalFill(
-                    id = "binance:spot:$symbol:" + row.optString("id"),
-                    exchange = "Binance", market = "Spot", symbol = symbol,
-                    side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
-                    quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
-                    price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
-                    quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
-                    fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
-                    feeAsset = row.optString("commissionAsset"), realizedPnl = null,
-                    time = time, orderId = row.optString("orderId")
-                )
-            }
-            if (nextMaxTime <= cursor) break
-            cursor = nextMaxTime + 1
-            // Once fromId paging has begun, the next loop uses the time-range endpoint again.
+            windowStart = windowEnd + 1
         }
-        return output.distinctBy { it.id }.filter { it.time in startTime..endTime }.sortedBy { it.time }
+        return output.distinctBy { it.id }.sortedBy { it.time }
     }
 
     /** Raw USDⓈ-M Futures execution fills; realized P&L and commission come from Binance. */
@@ -360,49 +343,30 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Enter a valid Binance symbol, such as BTCUSDT." }
         require(startTime <= endTime) { "Start date must be before end date." }
         val output = mutableListOf<BinanceJournalFill>()
-        var cursor = startTime
-        var pages = 0
-        while (cursor <= endTime && pages < 100) {
-            pages++
-            val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", listOf(
-                "symbol" to symbol, "startTime" to cursor.toString(), "endTime" to minOf(endTime, cursor + 7L * 24 * 60 * 60 * 1000 - 1).toString(), "limit" to "1000"
-            ))
-            if (page.length() == 0) {
-                cursor += 7L * 24 * 60 * 60 * 1000
-                continue
-            }
-            var maxTime = cursor
-            var lastId = -1L
-            for (i in 0 until page.length()) {
-                val row = page.getJSONObject(i)
-                val time = row.optLong("time")
-                maxTime = maxOf(maxTime, time)
-                lastId = maxOf(lastId, row.optLong("id", -1))
-                output += BinanceJournalFill(
-                    id = "binance:futures:$symbol:" + row.optString("id"),
-                    exchange = "Binance", market = "USDⓈ-M Futures", symbol = symbol,
-                    side = row.optString("side").uppercase(Locale.ROOT),
-                    quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
-                    price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
-                    quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("qty") * row.optDouble("price"),
-                    fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
-                    feeAsset = row.optString("commissionAsset"),
-                    realizedPnl = row.optString("realizedPnl").toDoubleOrNull() ?: row.optDouble("realizedPnl"),
-                    time = time, orderId = row.optString("orderId")
+        var windowStart = startTime
+        var windows = 0
+        val windowSize = 7L * 24 * 60 * 60 * 1000
+        while (windowStart <= endTime && windows++ < 600) {
+            val windowEnd = minOf(endTime, windowStart + windowSize - 1)
+            var fromId: Long? = null
+            var pages = 0
+            while (pages++ < 100) {
+                val params = mutableListOf(
+                    "symbol" to symbol, "startTime" to windowStart.toString(),
+                    "endTime" to windowEnd.toString(), "limit" to "1000"
                 )
-            }
-            val windowEnd = minOf(endTime, cursor + 7L * 24 * 60 * 60 * 1000 - 1)
-            if (page.length() >= 1000 && lastId >= 0 && maxTime < windowEnd) {
-                val next = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", listOf(
-                    "symbol" to symbol, "fromId" to (lastId + 1).toString(), "limit" to "1000"
-                ))
-                for (i in 0 until next.length()) {
-                    val row = next.getJSONObject(i)
+                fromId?.let { params += "fromId" to it.toString() }
+                val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", params)
+                if (page.length() == 0) break
+                var lastId = -1L
+                for (i in 0 until page.length()) {
+                    val row = page.getJSONObject(i)
+                    val id = row.optLong("id", -1)
+                    lastId = maxOf(lastId, id)
                     val time = row.optLong("time")
-                    if (time !in cursor..windowEnd) continue
+                    if (time !in windowStart..windowEnd) continue
                     output += BinanceJournalFill(
-                        id = "binance:futures:$symbol:" + row.optString("id"),
-                        exchange = "Binance", market = "USDⓈ-M Futures", symbol = symbol,
+                        id = "binance:futures:$symbol:$id", exchange = "Binance", market = "USDⓈ-M Futures", symbol = symbol,
                         side = row.optString("side").uppercase(Locale.ROOT),
                         quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
                         price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
@@ -413,10 +377,12 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                         time = time, orderId = row.optString("orderId")
                     )
                 }
+                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
+                fromId = lastId + 1
             }
-            cursor = windowEnd + 1
+            windowStart = windowEnd + 1
         }
-        return output.distinctBy { it.id }.filter { it.time in startTime..endTime }.sortedBy { it.time }
+        return output.distinctBy { it.id }.sortedBy { it.time }
     }
 
     /** Recent Spot fills for currently held non-stable assets. Read-only endpoint; no orders are placed. */
