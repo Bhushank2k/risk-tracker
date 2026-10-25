@@ -60,6 +60,20 @@ class TradeJournalAnalyticsTest {
     }
 
     @Test
+    fun thirdAssetFeeOnBuyPreventsFalseNetPnlOnLaterSale() {
+        val sale = TradeJournalAnalytics.summarize(
+            listOf(
+                fill("buy", "BUY", 1.0, 100.0, fee = 0.01, feeAsset = "BNB", time = 1),
+                fill("sell", "SELL", 1.0, 120.0, time = 2)
+            )
+        ).spotClosedSales.single()
+        assertTrue(sale.basisComplete)
+        assertEquals(20.0, sale.grossPnlQuote!!, 1e-9)
+        assertNull(sale.netPnlQuote)
+        assertTrue(sale.feeConversionNeeded)
+    }
+
+    @Test
     fun futuresSummarySubtractsKnownQuoteFees() {
         val summary = TradeJournalAnalytics.summarize(
             listOf(fill("f1", "BUY", 1.0, 100.0, fee = 0.2, time = 1, market = "USDⓈ-M Futures", pnl = 10.0))
