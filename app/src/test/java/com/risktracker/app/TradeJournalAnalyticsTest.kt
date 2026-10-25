@@ -64,8 +64,9 @@ class TradeJournalAnalyticsTest {
         val summary = TradeJournalAnalytics.summarize(
             listOf(fill("f1", "BUY", 1.0, 100.0, fee = 0.2, time = 1, market = "USDⓈ-M Futures", pnl = 10.0))
         )
-        assertEquals(10.0, summary.futuresGrossRealizedPnl, 1e-9)
-        assertEquals(0.2, summary.futuresKnownQuoteFees, 1e-9)
-        assertEquals(9.8, summary.futuresNetKnownQuotePnl, 1e-9)
+        val usdt = summary.futuresPnlByQuoteAsset.getValue("USDT")
+        assertEquals(10.0, usdt.first, 1e-9)
+        assertEquals(0.2, usdt.second, 1e-9)
+        assertEquals(9.8, usdt.first - usdt.second, 1e-9)
     }
 }
