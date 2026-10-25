@@ -155,7 +155,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 markPrice = p.optString("markPrice").toDoubleOrNull() ?: p.optDouble("markPrice"),
                 unrealizedPnl = p.optString("unRealizedProfit").toDoubleOrNull() ?: p.optDouble("unRealizedProfit"),
                 leverage = p.optString("leverage").toIntOrNull() ?: p.optInt("leverage"),
-                liquidationPrice = p.optString(" liquidationPrice").toDoubleOrNull() ?: p.optString("liquidationPrice").toDoubleOrNull() ?: p.optDouble("liquidationPrice"),
+                liquidationPrice = p.optString("liquidationPrice").toDoubleOrNull() ?: p.optDouble("liquidationPrice"),
                 status = "OPEN"
             )
         }
