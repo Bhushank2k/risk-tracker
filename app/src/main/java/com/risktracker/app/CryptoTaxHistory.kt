@@ -131,11 +131,23 @@ object CryptoTaxHistory {
             val sideRaw = value(sideIdx).uppercase(Locale.US)
             val side = when { sideRaw.contains("BUY") -> "BUY"; sideRaw.contains("SELL") -> "SELL"; else -> sideRaw.ifBlank { "UNKNOWN" } }
             val pnl = value(pnlIdx).replace(",", "").toDoubleOrNull()
+            val feeAsset = value(feeAssetIdx).uppercase(Locale.US)
+            val market = if (source.contains("futures", true)) "Futures" else "Spot"
+            val exchangeTradeId = value(tradeIdIdx)
+            // Prefer an exchange-provided trade/execution ID. If an export lacks one,
+            // fall back to a deterministic transaction fingerprint that is independent
+            // of the filename and row ordering so re-imports can be deduplicated.
+            val identity = if (exchangeTradeId.isNotBlank()) {
+                "Binance|$market|$symbol|$exchangeTradeId"
+            } else {
+                listOf("Binance", market, timestamp.toString(), symbol, side, qty.toString(),
+                    price.toString(), quote.toString(), fee.toString(), feeAsset).joinToString("|")
+            }
             HistoricalCryptoTrade(
-                id = "csv:" + sha256("$source|$timestamp|$symbol|$side|$qty|$price|$quote|$fee|$rowNo"),
-                timestamp = timestamp, exchange = "Binance", market = if (source.contains("futures", true)) "Futures" else "Spot",
+                id = "csv:" + sha256(identity),
+                timestamp = timestamp, exchange = "Binance", market = market,
                 symbol = symbol, side = side, quantity = qty, price = price, quoteAmount = quote,
-                fee = fee, feeAsset = value(feeAssetIdx), realizedPnl = pnl, source = source
+                fee = fee, feeAsset = feeAsset, realizedPnl = pnl, source = source
             )
         }
     }

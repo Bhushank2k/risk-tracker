@@ -76,6 +76,18 @@ fun CryptoTaxReportScreen() {
             status = "Year-wise CSV report exported. Review missing P&L rows before relying on totals."
         } catch (e: Exception) { status = "Export failed: " + (e.message ?: "invalid INR rate") }
     }
+    val transactionExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) try {
+            val selectedFinancialYear = selectedYear.toIntOrNull()
+                ?: throw IllegalArgumentException("Enter a valid financial-year start year.")
+            val csv = historicalTradesToCsv(trades, selectedFinancialYear)
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+                ?: throw IllegalStateException("Could not write to the selected destination.")
+            status = "Exported ${trades.count { it.year == selectedFinancialYear }} transaction rows for FY ${selectedFinancialYear}-${(selectedFinancialYear + 1).toString().takeLast(2)}. Review source data before using for tax reporting."
+        } catch (e: Exception) {
+            status = "Transaction export failed: " + (e.message ?: "could not write CSV")
+        }
+    }
 
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
@@ -160,9 +172,7 @@ fun CryptoTaxReportScreen() {
                     Text("Rows missing realized P&L: ${yearSummary.missingPnlRecords}", color = if (yearSummary.missingPnlRecords > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 } else Text("No imported records found for this year.")
                 OutlinedButton(onClick = { exportPicker.launch("risk-tracker-india-crypto-tax-years.csv") }, modifier = Modifier.fillMaxWidth(), enabled = trades.isNotEmpty()) { Text("Export year-wise CSV report") }
-                OutlinedButton(onClick = { pdfLauncher.launch("risk-tracker-india-crypto-tax-review.pdf") }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Export printable PDF review")
-                }
+
             }
         }
         Card(Modifier.fillMaxWidth()) {

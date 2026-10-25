@@ -190,10 +190,35 @@ fun computeTradeStats(trades: List<TradeEntry>): TradeStats {
     )
 }
 
+/**
+ * Exports closed journal trades as RFC-4180-style CSV.
+ * User-entered text is quoted and embedded quotes are doubled so commas,
+ * quotes, and newlines do not corrupt adjacent columns.
+ */
+fun tradesToCsv(trades: List<TradeEntry>): String = buildString {
+    append("Date,Symbol,Side,Entry,Exit,Quantity,Fees,Net PNL,Strategy,Mistake,Risk USD,Notes\n")
+    trades.sortedBy { it.date }.forEach { trade ->
+        fun textCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
+        append(textCell(trade.date)).append(',')
+        append(textCell(trade.symbol)).append(',')
+        append(textCell(trade.side)).append(',')
+        append(trade.entry).append(',')
+        append(trade.exit).append(',')
+        append(trade.quantity).append(',')
+        append(trade.fees).append(',')
+        append(trade.pnl).append(',')
+        append(textCell(trade.strategy)).append(',')
+        append(textCell(trade.mistake)).append(',')
+        append(trade.riskUsd).append(',')
+        append(textCell(trade.notes)).append('\n')
+    }
+}
+
 // ---------- Storage (SharedPreferences, JSON) ----------
 
 class Store(context: Context) {
-    private val prefs = context.getSharedPreferences("risk_tracker", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("risk_tracker", Context.MODE_PRIVATE)
 
     var webUrl: String
         get() = prefs.getString("sync_url", "") ?: ""
@@ -279,6 +304,8 @@ class Store(context: Context) {
         loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl).put("notes",it.notes).put("disciplineScore",it.disciplineScore)) }
         val journal = JSONArray()
         loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
+        root.put("tradePlans", JSONArray(TradePlanStore(appContext).exportJson()))
+        root.put("tradeReviews", JSONArray(TradeReviewStore(appContext).exportJson()))
         return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
@@ -290,6 +317,8 @@ class Store(context: Context) {
         val b = root.getJSONArray("trades")
         val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
         saveEntries(daily); saveTrades(journal)
+        if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
+        if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
         return daily to journal
     }

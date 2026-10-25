@@ -81,13 +81,7 @@ fun TradeJournalScreen(
         item {
             OutlinedButton(
                 onClick = {
-                    val csv = buildString {
-                        append("Date,Symbol,Side,Entry,Exit,Quantity,Fees,Net PNL,Notes\n")
-                        trades.sortedBy { it.date }.forEach { t ->
-                            val safeNotes = t.notes.replace("\"", "\"\"")
-                            append("\"${t.date}\",\"${t.symbol}\",\"${t.side}\",${t.entry},${t.exit},${t.quantity},${t.fees},${t.pnl},\"${safeNotes}\"\n")
-                        }
-                    }
+                    val csv = tradesToCsv(trades)
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = "text/csv"
                         putExtra(Intent.EXTRA_SUBJECT, "Risk Tracker trade journal")
