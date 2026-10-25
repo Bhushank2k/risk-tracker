@@ -184,7 +184,7 @@ class LogicTest {
         assertEquals(0.0, stats.netPnl, eps)
         val csv = tradesToCsv(listOf(invalid))
         assertFalse(csv.contains("NaN"))
-        assertTrue(csv.contains(",Buy,100.0,90.0,1.0,0.0,,"))
+        assertTrue(csv.contains(",\"Buy\",100.0,90.0,1.0,0.0,,"))
     }
 
     @Test
