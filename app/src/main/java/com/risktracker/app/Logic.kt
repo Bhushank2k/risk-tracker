@@ -224,7 +224,7 @@ fun tradesToCsv(trades: List<TradeEntry>): String = buildString {
         append(trade.exit).append(',')
         append(trade.quantity).append(',')
         append(trade.fees).append(',')
-        append(trade.pnl).append(',')
+        append(if (trade.pnl.isFinite()) trade.pnl.toString() else "").append(',')
         append(textCell(trade.strategy)).append(',')
         append(textCell(trade.mistake)).append(',')
         append(trade.riskUsd).append(',')
