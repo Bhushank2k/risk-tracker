@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun BinanceSyncScreen(onSynced: () -> Unit) {
+fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) {
     val context = LocalContext.current
     val credentials = remember { BinanceCredentialStore(context) }
     val saved = remember { credentials.read() }
@@ -53,6 +54,13 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
     var hasSaved by remember { mutableStateOf(saved != null) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var historySymbols by remember { mutableStateOf("BTCUSDT, ETHUSDT") }
+    var historyMarket by remember { mutableStateOf("USDⓈ-M Futures") }
+    var historyStart by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000))) }
+    var historyEnd by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
+    var historyPreview by remember { mutableStateOf<List<BinanceJournalFill>?>(null) }
+    var historyBusy by remember { mutableStateOf(false) }
+
     val scope = rememberCoroutineScope()
     var showTaxReports by remember { mutableStateOf(false) }
     var showStatements by remember { mutableStateOf(false) }
@@ -162,6 +170,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         else if (!hasSaved) error("Enter the API secret.")
                         BinanceDailyWorker.schedule(context)
                         BinanceStatementWorker.schedule(context)
+                        BinanceJournalWorker.schedule(context)
                         hasSaved = true
                         secret = ""
                         status = "Credentials saved encrypted on this device. Daily background sync is scheduled."
@@ -173,6 +182,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                         credentials.clear()
                         BinanceDailyWorker.cancel(context)
                         BinanceStatementWorker.cancel(context)
+                        BinanceJournalWorker.cancel(context)
                         apiKey = ""; secret = ""; hasSaved = false
                         status = "Credentials cleared and scheduled sync disabled."
                     }, modifier = Modifier.weight(1f)) { Text("Disconnect") }
@@ -192,6 +202,84 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                             } finally { busy = false }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !busy) { Text(if (busy) "Syncing…" else "Sync now") }
+                }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Trade journal sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Executed fills are saved as exchange execution records with their exchange trade IDs, timestamps and fees. Futures fills include Binance-reported realized P&L. Spot fills remain fill-level records; they are not falsely presented as closed-position P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(historySymbols, { historySymbols = it; historyPreview = null }, label = { Text("Symbols (comma-separated, e.g. BTCUSDT, ETHUSDT)") }, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = historyMarket == "Spot", onClick = { historyMarket = "Spot"; historyPreview = null }, label = { Text("Spot") })
+                    FilterChip(selected = historyMarket == "USDⓈ-M Futures", onClick = { historyMarket = "USDⓈ-M Futures"; historyPreview = null }, label = { Text("USDⓈ-M Futures") })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(historyStart, { historyStart = it; historyPreview = null }, label = { Text("From (YYYY-MM-DD)") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedTextField(historyEnd, { historyEnd = it; historyPreview = null }, label = { Text("To (YYYY-MM-DD)") }, modifier = Modifier.weight(1f), singleLine = true)
+                }
+                Button(enabled = !historyBusy && !busy, onClick = {
+                    val credentialsNow = credentials.read()
+                    if (credentialsNow == null) {
+                        status = "Save Binance read-only API credentials first."
+                    } else {
+                        historyBusy = true
+                        historyPreview = null
+                        status = "Fetching execution history for preview…"
+                        scope.launch {
+                            try {
+                                val symbols = historySymbols.split(",").map { it.trim().uppercase(Locale.ROOT) }.filter { it.isNotBlank() }.distinct()
+                                require(symbols.isNotEmpty()) { "Enter at least one symbol." }
+                                require(symbols.size <= 20) { "Preview up to 20 symbols at a time." }
+                                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+                                val startDate = dateFormat.parse(historyStart.trim()) ?: error("Enter a valid start date.")
+                                val endDate = dateFormat.parse(historyEnd.trim()) ?: error("Enter a valid end date.")
+                                require(!startDate.after(endDate)) { "From date must be on or before To date." }
+                                val startMs = startDate.time
+                                val endMs = endDate.time + 24L * 60 * 60 * 1000 - 1
+                                val rows = withContext(Dispatchers.IO) {
+                                    val api = BinanceApi(credentialsNow.first, credentialsNow.second)
+                                    symbols.flatMap { symbol ->
+                                        if (historyMarket == "Spot") api.spotExecutionHistory(symbol, startMs, endMs)
+                                        else api.futuresExecutionHistory(symbol, startMs, endMs)
+                                    }.distinctBy { it.id }.sortedByDescending { it.time }
+                                }
+                                historyPreview = rows
+                                status = "Preview ready: ${rows.size} execution fill(s). Nothing has been imported yet."
+                            } catch (e: Exception) {
+                                status = "History preview failed: " + (e.message ?: "check dates, symbols and read-only API permissions")
+                            } finally { historyBusy = false }
+                        }
+                    }
+                }, modifier = Modifier.fillMaxWidth()) { Text(if (historyBusy) "Fetching preview…" else "Preview historical trades") }
+                historyPreview?.let { preview ->
+                    val fees = preview.sumOf { if (it.feeAsset in setOf("USDT", "USDC")) it.fee else 0.0 }
+                    val realized = preview.mapNotNull { it.realizedPnl }.sum()
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("Import preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("${preview.size} fills · ${preview.map { it.symbol }.distinct().size} symbols")
+                            Text("Fees in USDT/USDC: ${fees.usd()} (fees in other assets are shown per fill and not converted)")
+                            if (historyMarket == "USDⓈ-M Futures") Text("Sum of exchange-reported realized P&L: ${realized.usd()}")
+                            preview.take(30).forEach { fill ->
+                                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time))
+                                Text("${time} · ${fill.symbol} ${fill.side} · Qty ${fill.quantity.num(6)} @ ${fill.price.num(6)} · Fee ${fill.fee.num(6)} ${fill.feeAsset}" +
+                                    (fill.realizedPnl?.let { " · Realized ${it.usd()}" } ?: ""),
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (preview.size > 30) Text("Showing 30 of ${preview.size} fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Confirming adds only unseen exchange trade IDs; repeat imports won't duplicate fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = { historyPreview = null; status = "Historical import cancelled. No fills were added." }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                                Button(onClick = {
+                                    val inserted = BinanceAutoJournalStore.merge(context, preview)
+                                    historyPreview = null
+                                    onJournalImported()
+                                    status = "Imported ${inserted} new execution fill(s) to the journal. Existing trade IDs were skipped."
+                                }, modifier = Modifier.weight(1f)) { Text("Confirm import") }
+                            }
+                        }
+                    }
                 }
             }
         }

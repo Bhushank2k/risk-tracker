@@ -106,6 +106,17 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
+    var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
+    val appScope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        if (BinanceCredentialStore(context).read() != null) {
+            BinanceJournalWorker.schedule(context)
+            runCatching {
+                withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
+                exchangeFills = BinanceAutoJournalStore.load(context)
+            }
+        }
+    }
     val titles = listOf("Home", "Journal", "Insights", "Tools")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     val menuGroups = listOf(
@@ -176,7 +187,14 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 }, onDelete = { trade ->
                     trades = trades.filterNot { it.id == trade.id }
                     store.saveTrades(trades)
-                }, maxTradeRisk = store.maxTradeRisk)
+                }, maxTradeRisk = store.maxTradeRisk, exchangeFills = exchangeFills, onSyncExchange = {
+                    if (BinanceCredentialStore(context).read() != null) {
+                        appScope.launch {
+                            runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
+                            exchangeFills = BinanceAutoJournalStore.load(context)
+                        }
+                    }
+                })
                 2 -> CalculatorScreen(input) {
                     input = it
                     store.saveInput(it)
@@ -187,7 +205,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     syncedCount = synced.size
                 }
                 5 -> AboutScreen()
-                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) })
+                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
                 8 -> InsightsScreen(entries, trades.size)
                 9 -> CryptoTaxReportScreen()
                 10 -> TargetScreen()

@@ -22,13 +22,18 @@ import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TradeJournalScreen(
     trades: List<TradeEntry>,
     onAdd: (TradeEntry) -> Unit,
     onDelete: (TradeEntry) -> Unit,
-    maxTradeRisk: Double = 5.0
+    maxTradeRisk: Double = 5.0,
+    exchangeFills: List<BinanceJournalFill> = emptyList(),
+    onSyncExchange: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
@@ -74,6 +79,40 @@ fun TradeJournalScreen(
                         JournalMetric("Wins / losses", "${stats.wins} / ${stats.losses}", MaterialTheme.colorScheme.onSurface)
                         JournalMetric("Profit factor", if (stats.profitFactor.isInfinite()) "∞" else "%.2f".format(stats.profitFactor), MaterialTheme.colorScheme.onSurface)
                         JournalMetric("Max drawdown", stats.maxDrawdown.usd(), MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Exchange execution journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("${exchangeFills.size} imported fills · Binance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(onClick = onSyncExchange) { Text("Sync now") }
+                    }
+                    Text("Exchange fills are stored separately from manually recorded closed trades. Each row retains its exchange trade ID, timestamp and fee. Futures realized P&L is reported by Binance; Spot fills are not assigned an invented closed-trade P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (exchangeFills.isEmpty()) {
+                        Text("No exchange fills imported yet. Connect Binance under Tools → Binance trade history, then preview a historical range or wait for automatic sync.", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        exchangeFills.take(100).forEach { fill ->
+                            HorizontalDivider()
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("${fill.symbol} · ${fill.side}", fontWeight = FontWeight.SemiBold)
+                                    Text("${fill.market} · " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Qty ${fill.quantity.num(6)} @ ${fill.price.num(6)} · Notional ${fill.quoteAmount.usd()}", style = MaterialTheme.typography.bodySmall)
+                                    Text("Fee ${fill.fee.num(6)} ${fill.feeAsset} · Order ${fill.orderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    fill.realizedPnl?.let { Text(it.usd(), color = pnlColor(it), fontWeight = FontWeight.SemiBold) }
+                                    Text("Trade ID " + fill.id.substringAfterLast(":"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        if (exchangeFills.size > 100) Text("Showing the latest 100 of ${exchangeFills.size} fills. Export support for exchange fills can be added separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
