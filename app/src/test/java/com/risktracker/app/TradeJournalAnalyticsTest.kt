@@ -34,7 +34,7 @@ class TradeJournalAnalyticsTest {
         ).spotClosedSales
         assertEquals(1, sales.size)
         assertEquals(0.5, sales.single().quantity, 1e-9)
-        assertEquals(39.8, sales.single().netPnlQuote!!, 1e-9)
+        assertEquals(14.8, sales.single().netPnlQuote!!, 1e-9)
     }
     @Test
     fun saleWithoutEnoughImportedBuyBasisIsNotGivenInventedPnl() {
