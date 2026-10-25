@@ -102,6 +102,20 @@ class CryptoTaxHistoryTest {
         assertEquals(1, review.sellRowsWithoutPriorBuys)
     }
 
+    @Test fun printableTaxReportIncludesAssumptionsMissingPnlAndTransactionDetails() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL,TradeId\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120,tx-1\n" +
+            "2019-07-01 12:30:00,ETHUSDT,SELL,1,200,200,1,USDT,,tx-2\n"
+        val trades = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
+        val report = CryptoTaxHistory.printableReportLines(trades, 80.0)
+        assertTrue(report.any { it.contains("RISK TRACKER") })
+        assertTrue(report.any { it.contains("not a tax-filing determination") })
+        assertTrue(report.any { it.contains("FY 2019-20") })
+        assertTrue(report.any { it.contains("Sell rows missing realized P&L: 1") })
+        assertTrue(report.any { it.contains("realized P&L MISSING") })
+        assertTrue(report.any { it.contains("transaction coverage") })
+    }
+
     @Test fun reconciliationFlagsPossibleDuplicatesWithoutDeletingRows() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n"
