@@ -45,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun BinanceSyncScreen(onSynced: () -> Unit) {
+fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) {
     val context = LocalContext.current
     val credentials = remember { BinanceCredentialStore(context) }
     val saved = remember { credentials.read() }
@@ -274,6 +274,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit) {
                                 Button(onClick = {
                                     val inserted = BinanceAutoJournalStore.merge(context, preview)
                                     historyPreview = null
+                                    onJournalImported()
                                     status = "Imported ${inserted} new execution fill(s) to the journal. Existing trade IDs were skipped."
                                 }, modifier = Modifier.weight(1f)) { Text("Confirm import") }
                             }
