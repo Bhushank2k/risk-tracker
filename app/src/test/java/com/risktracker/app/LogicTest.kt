@@ -104,6 +104,21 @@ class LogicTest {
     }
 
     @Test
+    fun calculatorRejectsPositionWhoseMarginExceedsBalance() {
+        val result = calcSide(base.copy(stopLoss = 99.9, leverage = 1.0), long = true)
+        assertFalse(result.valid)
+        assertTrue(result.message!!.contains("margin exceeds"))
+    }
+
+    @Test
+    fun calculatorRejectsOverflowingDerivedValues() {
+        val result = calcSide(base.copy(balance = Double.MAX_VALUE, riskPercent = 100.0), long = true)
+        assertFalse(result.valid)
+        assertTrue(result.message!!.contains("numeric range"))
+        assertEquals(0.0, result.positionSize, eps)
+    }
+
+    @Test
     fun leverageMatrixLiquidationBoundaries() {
         val row10 = leverageMatrix(100.0).first { it.lev == 10 }
         assertEquals(10.0, row10.movePercent, eps)
@@ -158,6 +173,31 @@ class LogicTest {
         val short = TradeEntry("2", "2026-01-02", "ETHUSDT", "Short", 100.0, 90.0, 3.0, 2.0)
         assertEquals(19.0, long.pnl, eps)
         assertEquals(28.0, short.pnl, eps)
+    }
+
+    @Test
+    fun unknownTradeSideDoesNotSilentlyCalculateAsShort() {
+        val invalid = TradeEntry("bad", "2026-01-01", "BTC", "Buy", 100.0, 90.0, 1.0)
+        assertTrue(invalid.pnl.isNaN())
+        val stats = computeTradeStats(listOf(invalid))
+        assertEquals(0, stats.count)
+        assertEquals(0.0, stats.netPnl, eps)
+        val csv = tradesToCsv(listOf(invalid))
+        assertFalse(csv.contains("NaN"))
+        assertTrue(csv.contains(",\"Buy\",100.0,90.0,1.0,0.0,,"))
+    }
+
+    @Test
+    fun dailyCsvUsesLocaleIndependentDecimalPointAndQuotesText() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.GERMANY)
+            val csv = entriesToCsv(listOf(PnlEntry("1/2/2026", 100.5, 1.25, "memo, \"quoted\"")), 90.0)
+            assertTrue(csv.contains("\"1/2/2026\",100.50,1.25,"))
+            assertTrue(csv.contains("\"memo, \"\"quoted\"\"\""))
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test

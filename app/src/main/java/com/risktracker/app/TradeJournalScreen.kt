@@ -154,6 +154,7 @@ fun TradeJournalScreen(
         } else {
             item { Text("Closed trades", style = MaterialTheme.typography.titleMedium) }
             items(filteredTrades, key = { it.id }) { trade ->
+                val tradePnl = trade.pnl
                 Card(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
@@ -170,7 +171,11 @@ fun TradeJournalScreen(
                             if (trade.notes.isNotBlank()) Text(trade.notes, style = MaterialTheme.typography.bodySmall)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(trade.pnl.usd(), color = pnlColor(trade.pnl), fontWeight = FontWeight.Bold)
+                            Text(
+                                if (tradePnl.isFinite()) tradePnl.usd() else "P&L unavailable (invalid side)",
+                                color = if (tradePnl.isFinite()) pnlColor(tradePnl) else MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
                             IconButton(onClick = { onDelete(trade) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete trade")
                             }

@@ -101,6 +101,16 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
     val liqSimple = if (long) i.entry * (1 - inv) else i.entry * (1 + inv)
     val liqExact = if (long) i.entry * (1 - inv + mmr) else i.entry * (1 + inv - mmr)
     val profit = size * tpDist
+    val roi = if (margin > 0) profit / margin * 100 else 0.0
+    val rr = if (risk > 0) profit / risk else 0.0
+    val computedValues = listOf(
+        risk, slDist, size, tokens, margin, liqSimple, liqExact, tpDist, profit,
+        slDist * 100, tpDist * 100, roi, rr
+    )
+    if (computedValues.any { !it.isFinite() }) {
+        return SideResult(false, "Calculated values exceed the supported numeric range",
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    }
 
     val validDirection = if (long) i.stopLoss < i.entry && i.target > i.entry
     else i.stopLoss > i.entry && i.target < i.entry
@@ -114,6 +124,7 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
         !validDirection -> if (long) "Long needs stop loss below entry and target above entry"
         else "Short needs stop loss above entry and target below entry"
         slBeyondLiq -> "Stop loss is beyond the liquidation price"
+        margin > i.balance -> "Required margin exceeds the available balance"
         else -> null
     }
     return SideResult(
@@ -128,8 +139,8 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
         liqExact = liqExact,
         tpPercent = tpDist * 100,
         profit = profit,
-        roiPercent = if (margin > 0) profit / margin * 100 else 0.0,
-        rr = if (risk > 0) profit / risk else 0.0
+        roiPercent = roi,
+        rr = rr
     )
 }
 
@@ -153,8 +164,14 @@ data class TradeEntry(
     val strategy: String = "", val mistake: String = "", val riskUsd: Double = 0.0, val screenshotUri: String = ""
 ) {
     /** Estimated realized P&L after fees; not exchange-reported P&L. */
-    val pnl: Double get() = ((exit - entry) * quantity *
-        (if (side.equals("Long", true)) 1.0 else -1.0)) - fees
+    val pnl: Double get() {
+        val direction = when (side.lowercase(Locale.ROOT)) {
+            "long" -> 1.0
+            "short" -> -1.0
+            else -> return Double.NaN
+        }
+        return ((exit - entry) * quantity * direction) - fees
+    }
 }
 
 data class TradeStats(
@@ -163,7 +180,8 @@ data class TradeStats(
 )
 
 fun computeTradeStats(trades: List<TradeEntry>): TradeStats {
-    val ordered = trades.sortedBy { it.date }
+    // Ignore malformed legacy/imported rows rather than letting NaN corrupt every metric.
+    val ordered = trades.filter { it.pnl.isFinite() }.sortedBy { it.date }
     val wins = ordered.filter { it.pnl > 0 }
     val losses = ordered.filter { it.pnl < 0 }
     val grossWin = wins.sumOf { it.pnl }
@@ -178,7 +196,7 @@ fun computeTradeStats(trades: List<TradeEntry>): TradeStats {
     }
     val decisive = wins.size + losses.size
     return TradeStats(
-        count = trades.size, wins = wins.size, losses = losses.size,
+        count = ordered.size, wins = wins.size, losses = losses.size,
         netPnl = ordered.sumOf { it.pnl },
         winRate = if (decisive > 0) wins.size * 100.0 / decisive else 0.0,
         profitFactor = when {
@@ -206,7 +224,7 @@ fun tradesToCsv(trades: List<TradeEntry>): String = buildString {
         append(trade.exit).append(',')
         append(trade.quantity).append(',')
         append(trade.fees).append(',')
-        append(trade.pnl).append(',')
+        append(if (trade.pnl.isFinite()) trade.pnl.toString() else "").append(',')
         append(textCell(trade.strategy)).append(',')
         append(textCell(trade.mistake)).append(',')
         append(trade.riskUsd).append(',')
@@ -350,16 +368,20 @@ class Store(context: Context) {
 
 fun entriesToCsv(list: List<PnlEntry>, inrRate: Double): String {
     val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing,DisciplineScore,Notes\n")
+    fun textCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
     list.forEachIndexed { idx, e ->
         val inr = e.balance * inrRate
         val inrPnl = e.pnl * inrRate
-        val safeNotes = e.notes.replace("\"", "\"\"").replace("\n", " ")
-        sb.append("${idx + 1},${e.date},${"%.2f".format(e.balance)},${"%.2f".format(e.pnl)},")
-            .append("${"%.2f".format(e.wlPercent)}%,${inr.toLong()},${inrPnl.toLong()},${(inr + inrPnl).toLong()},${e.disciplineScore},\"${safeNotes}\"\n")
+        sb.append(idx + 1).append(',').append(textCell(e.date)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.balance)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.pnl)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.wlPercent)).append("%,")
+            .append(inr.toLong()).append(',').append(inrPnl.toLong()).append(',')
+            .append((inr + inrPnl).toLong()).append(',').append(e.disciplineScore).append(',')
+            .append(textCell(e.notes)).append('\n')
     }
     return sb.toString()
 }
-
 const val INR_RATE = 94.74
 
 /** USD->INR rate; replaced by the sheet's rate (cell G3) on every sync. */
