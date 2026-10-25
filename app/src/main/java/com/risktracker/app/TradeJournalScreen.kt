@@ -96,6 +96,20 @@ fun TradeJournalScreen(
                     }
                     Text("Exchange fills are stored separately from manually recorded closed trades. Each row retains its exchange trade ID, timestamp and fee. Futures realized P&L is reported by Binance; Spot fills are not assigned an invented closed-trade P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (exchangeFills.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = {
+                                val csv = exchangeFillsToCsv(exchangeFills)
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/csv"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Risk Tracker exchange fills")
+                                    putExtra(Intent.EXTRA_TEXT, csv)
+                                }
+                                context.startActivity(Intent.createChooser(send, "Export exchange fills CSV"))
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Export exchange fills CSV (${exchangeFills.size})") }
+                    }
+                    if (exchangeFills.isNotEmpty()) {
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Realized P&L analysis", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -141,7 +155,7 @@ fun TradeJournalScreen(
                                 }
                             }
                         }
-                        if (exchangeFills.size > 100) Text("Showing the latest 100 of ${exchangeFills.size} fills. Export support for exchange fills can be added separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (exchangeFills.size > 100) Text("Showing the latest 100 of ${exchangeFills.size} fills. The CSV export includes all imported fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -331,4 +345,23 @@ private fun JournalField(label: String, value: String, onValue: (String) -> Unit
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text)
     )
+}
+
+
+private fun exchangeFillsToCsv(fills: List<BinanceJournalFill>): String {
+    fun cell(value: String): String {
+        val escaped = value.replace("\"", "\"\"")
+        return if (escaped.any { it == ',' || it == '\"' || it == '\n' || it == '\r' }) "\"$escaped\"" else escaped
+    }
+    return buildString {
+        appendLine("exchange,market,trade_id,symbol,side,time_ms,quantity,price,quote_amount,fee,fee_asset,realized_pnl,order_id")
+        fills.sortedBy { it.time }.forEach { fill ->
+            val row = listOf(
+                fill.exchange, fill.market, fill.id, fill.symbol, fill.side, fill.time.toString(),
+                fill.quantity.toString(), fill.price.toString(), fill.quoteAmount.toString(),
+                fill.fee.toString(), fill.feeAsset, fill.realizedPnl?.toString().orEmpty(), fill.orderId
+            )
+            appendLine(row.joinToString(",") { cell(it) })
+        }
+    }
 }
