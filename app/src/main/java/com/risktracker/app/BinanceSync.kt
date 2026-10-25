@@ -448,6 +448,28 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         )
     }
 
+    /** Discover Futures symbols with recent income events, including positions already closed. */
+    fun recentFuturesSymbols(startTime: Long, endTime: Long): Set<String> {
+        val symbols = mutableSetOf<String>()
+        var cursor = startTime
+        var pages = 0
+        while (cursor <= endTime && pages++ < 100) {
+            val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/income", listOf(
+                "startTime" to cursor.toString(), "endTime" to endTime.toString(), "limit" to "1000"
+            ))
+            if (page.length() == 0) break
+            var maxTime = cursor
+            for (i in 0 until page.length()) {
+                val row = page.getJSONObject(i)
+                row.optString("symbol").takeIf { it.isNotBlank() }?.let { symbols += it }
+                maxTime = maxOf(maxTime, row.optLong("time"))
+            }
+            if (page.length() < 1000 || maxTime <= cursor) break
+            cursor = maxTime + 1
+        }
+        return symbols
+    }
+
     fun futuresDailyPnl(): Map<String, Double> {
         val daily = mutableMapOf<String, Double>()
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
