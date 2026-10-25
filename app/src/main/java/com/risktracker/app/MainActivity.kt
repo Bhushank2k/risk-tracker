@@ -214,6 +214,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
 @Composable
 fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, importedPnl: List<BinanceDailyResult> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
+    var liveBinanceLoading by remember { mutableStateOf(false) }
+    var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
     val todayEntry = pnlEntryForDate(entries)
@@ -287,6 +291,51 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         }
                         Text("${stats.winDays} winning days · ${stats.lossDays} losing days · win rate ${stats.winRate.pct(0)}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Live Binance transactions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Recent Spot fills · read-only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OutlinedButton(enabled = !liveBinanceLoading, onClick = {
+                                liveBinanceLoading = true
+                                liveBinanceStatus = "Refreshing from Binance…"
+                                scope.launch {
+                                    try {
+                                        val fetched = withContext(Dispatchers.IO) {
+                                            val pair = BinanceCredentialStore(ctx).read() ?: error("Add read-only API credentials in Binance trade history first.")
+                                            BinanceApi(pair.first, pair.second).recentSpotTransactions()
+                                        }
+                                        liveBinanceTrades = fetched
+                                        liveBinanceStatus = if (fetched.isEmpty()) "No recent Spot fills found for currently held assets. Futures fills and assets with zero balances may not appear here." else "Updated just now · ${fetched.size} fills"
+                                    } catch (e: Exception) { liveBinanceStatus = e.message ?: "Could not refresh Binance activity." }
+                                    finally { liveBinanceLoading = false }
+                                }
+                            }) { Text(if (liveBinanceLoading) "Loading…" else "Refresh") }
+                        }
+                        Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        liveBinanceTrades.take(8).forEach { trade ->
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(trade.symbol, fontWeight = FontWeight.SemiBold)
+                                        Text(trade.side, color = if (trade.side == "BUY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Text("${SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(trade.time))} · Qty ${trade.quantity.num(6)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Fee ${trade.fee.num(6)} ${trade.feeAsset}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(trade.quoteAmount.usd(), fontWeight = FontWeight.SemiBold)
+                                    Text("@ ${trade.price.num(4)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
                     }
                 }
             }
