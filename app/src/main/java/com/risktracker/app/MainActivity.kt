@@ -221,15 +221,16 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
-    val latestManualEntry = entries.maxByOrNull { it.date }
-    val latestImportedEntry = importedPnl.maxByOrNull { it.date }
-    val latestRecordedPnl = when {
-        latestManualEntry == null -> latestImportedEntry?.total ?: 0.0
-        latestImportedEntry == null -> latestManualEntry.pnl
-        latestManualEntry.date >= latestImportedEntry.date -> latestManualEntry.pnl
-        else -> latestImportedEntry.total
+    // Merge manual ledger and synced Binance P&L by date.
+    val manualByDate = entries.associateBy { it.date }
+    val importedByDate = importedPnl.associateBy { it.date }
+    val combinedDates = (manualByDate.keys + importedByDate.keys).toSortedSet()
+    val combinedDailyPnl = combinedDates.associateWith { date ->
+        (manualByDate[date]?.pnl ?: 0.0) + (importedByDate[date]?.total ?: 0.0)
     }
-    val latestPnlDate = maxOf(latestManualEntry?.date.orEmpty(), latestImportedEntry?.date.orEmpty()).ifBlank { "No recorded entries" }
+    val combinedNetPnl = combinedDailyPnl.values.sum()
+    val latestPnlDate = combinedDailyPnl.keys.maxOrNull().orEmpty().ifBlank { "No recorded entries" }
+    val latestRecordedPnl = combinedDailyPnl[latestPnlDate] ?: 0.0
     val todayEntry = pnlEntryForDate(entries)
     val todayPnl = todayEntry?.pnl ?: 0.0
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
@@ -282,10 +283,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                                     color = if (latestRecordedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Net recorded P&L", style = MaterialTheme.typography.labelSmall,
+                                Text("Combined net P&L", style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                Text(stats.net.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                                    color = if (stats.net < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                                Text(combinedNetPnl.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                    color = if (combinedNetPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -354,33 +355,25 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     }
                 }
             }
-            if (importedPnl.isNotEmpty()) {
+            if (combinedDailyPnl.isNotEmpty()) {
                 item {
-                    val manualByDate = entries.associateBy { it.date }
-                    val importedByDate = importedPnl.associateBy { it.date }
-                    val allDates = (manualByDate.keys + importedByDate.keys).toSortedSet()
-                    val combinedRows = allDates.mapNotNull { date ->
-                        val manual = manualByDate[date]
-                        val imported = importedByDate[date]
-                        if (manual != null) Triple(date, manual.pnl, if (imported != null) "Manual · Binance available separately" else "Manual")
-                        else imported?.let { Triple(date, it.total, "Binance") }
-                    }
-                    val combinedNet = combinedRows.sumOf { it.second }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Daily P&L by date", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Combined net across unique dates: " + combinedNet.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNet))
+                            Text("Combined daily P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Manual + synced Binance: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
                             Text("Spot FIFO: " + importedPnl.sumOf { it.spotPnl }.usd() + " · Futures net: " + importedPnl.sumOf { it.futuresPnl }.usd(),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("For dates with both sources, the manual entry is shown and Binance is not added again. Current balance and balance-chart statistics continue to use your manual balance ledger.",
+                            Text("Each date adds manual P&L and synced Binance Spot/Futures P&L. If the same trades were entered manually and synced, that date can be double-counted; remove duplicate manual records if needed. Portfolio balance remains based on the live Binance Spot estimate when refreshed, otherwise the manual ledger.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            combinedRows.takeLast(10).reversed().forEach { row ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            combinedDailyPnl.entries.toList().takeLast(30).reversed().forEach { row ->
+                                val manual = manualByDate[row.key]?.pnl ?: 0.0
+                                val synced = importedByDate[row.key]?.total ?: 0.0
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                        Text(row.first, style = MaterialTheme.typography.bodySmall)
-                                        Text(row.third, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(row.key, style = MaterialTheme.typography.bodySmall)
+                                        Text("Manual " + manual.usd() + " · Synced " + synced.usd(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Text(row.second.usd(), color = pnlColor(row.second))
+                                    Text(row.value.usd(), color = pnlColor(row.value), fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
