@@ -101,7 +101,12 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
     val liqSimple = if (long) i.entry * (1 - inv) else i.entry * (1 + inv)
     val liqExact = if (long) i.entry * (1 - inv + mmr) else i.entry * (1 + inv - mmr)
     val profit = size * tpDist
-    val computedValues = listOf(risk, slDist, size, tokens, margin, liqSimple, liqExact, tpDist, profit)
+    val roi = if (margin > 0) profit / margin * 100 else 0.0
+    val rr = if (risk > 0) profit / risk else 0.0
+    val computedValues = listOf(
+        risk, slDist, size, tokens, margin, liqSimple, liqExact, tpDist, profit,
+        slDist * 100, tpDist * 100, roi, rr
+    )
     if (computedValues.any { !it.isFinite() }) {
         return SideResult(false, "Calculated values exceed the supported numeric range",
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -134,8 +139,8 @@ fun calcSide(i: CalcInput, long: Boolean): SideResult {
         liqExact = liqExact,
         tpPercent = tpDist * 100,
         profit = profit,
-        roiPercent = if (margin > 0) profit / margin * 100 else 0.0,
-        rr = if (risk > 0) profit / risk else 0.0
+        roiPercent = roi,
+        rr = rr
     )
 }
 
