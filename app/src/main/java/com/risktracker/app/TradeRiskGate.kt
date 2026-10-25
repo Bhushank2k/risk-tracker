@@ -70,8 +70,20 @@ fun evaluateTradeRisk(
     val distance = abs(entry - stopLoss)
     if (distance <= 0.0) return TradeRiskEvaluation(false, 0.0, 0.0, null, emptyList(), listOf("Stop-loss distance must be greater than zero."))
     val riskBudget = balance * riskPercent / 100.0
-    val quantity = maxOf(0.0, riskBudget - estimatedFees) / distance
+    if (!riskBudget.isFinite() || riskBudget <= 0.0) {
+        return TradeRiskEvaluation(false, 0.0, 0.0, null, emptyList(),
+            listOf("Calculated risk budget is outside the supported numeric range."))
+    }
+    if (estimatedFees >= riskBudget) {
+        return TradeRiskEvaluation(false, 0.0, estimatedFees, null, emptyList(),
+            listOf("Estimated fees meet or exceed the entire risk budget; no safe position size is available."))
+    }
+    val quantity = (riskBudget - estimatedFees) / distance
     val plannedRisk = quantity * distance + estimatedFees
+    if (!quantity.isFinite() || !plannedRisk.isFinite() || quantity <= 0.0) {
+        return TradeRiskEvaluation(false, 0.0, 0.0, null, emptyList(),
+            listOf("Calculated position size is outside the supported numeric range."))
+    }
     val reward = target?.let { abs(it - entry) * quantity }
     val rr = if (plannedRisk > 0.0 && reward != null) reward / plannedRisk else null
     val remainingDailyBudget = (settings.maxDailyLoss + minOf(settings.dailyPnl, 0.0)).coerceAtLeast(0.0)
