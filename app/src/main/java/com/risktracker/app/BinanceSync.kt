@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit
 data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
 
 data class BinancePortfolioBalance(val valueUsdt: Double, val assetsHeld: Int, val unpricedAssets: Int, val fetchedAt: Long)
+data class BinanceLiveTrade(val id: String, val symbol: String, val market: String, val side: String, val quantity: Double, val entryPrice: Double, val markPrice: Double, val unrealizedPnl: Double, val leverage: Int, val liquidationPrice: Double, val status: String)
 
 data class BinanceDailyResult(val date: String, val spotPnl: Double, val futuresPnl: Double) {
     val total: Double get() = spotPnl + futuresPnl
@@ -134,6 +135,48 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             if (price > 0.0 && price.isFinite()) total += amount * price else unpriced++
         }
         return BinancePortfolioBalance(total, held, unpriced, System.currentTimeMillis())
+    }
+
+    /** Read-only snapshot of open USDⓈ-M Futures positions and Spot open orders. */
+    fun liveTrades(): List<BinanceLiveTrade> {
+        val result = mutableListOf<BinanceLiveTrade>()
+        val positions = signedGetArray("https://fapi.binance.com", "/fapi/v2/positionRisk", emptyList())
+        for (i in 0 until positions.length()) {
+            val p = positions.getJSONObject(i)
+            val amount = p.optString("positionAmt").toDoubleOrNull() ?: p.optDouble("positionAmt")
+            if (kotlin.math.abs(amount) < 1e-12) continue
+            result += BinanceLiveTrade(
+                id = "futures:" + p.optString("symbol") + ":" + p.optString("positionSide"),
+                symbol = p.optString("symbol"),
+                market = "USDⓈ-M Futures",
+                side = if (amount > 0) "LONG" else "SHORT",
+                quantity = kotlin.math.abs(amount),
+                entryPrice = p.optString("entryPrice").toDoubleOrNull() ?: p.optDouble("entryPrice"),
+                markPrice = p.optString("markPrice").toDoubleOrNull() ?: p.optDouble("markPrice"),
+                unrealizedPnl = p.optString("unRealizedProfit").toDoubleOrNull() ?: p.optDouble("unRealizedProfit"),
+                leverage = p.optString("leverage").toIntOrNull() ?: p.optInt("leverage"),
+                liquidationPrice = p.optString(" liquidationPrice").toDoubleOrNull() ?: p.optString("liquidationPrice").toDoubleOrNull() ?: p.optDouble("liquidationPrice"),
+                status = "OPEN"
+            )
+        }
+        val orders = signedGetArray("https://api.binance.com", "/api/v3/openOrders", emptyList())
+        for (i in 0 until orders.length()) {
+            val o = orders.getJSONObject(i)
+            result += BinanceLiveTrade(
+                id = "spot-order:" + o.optString("symbol") + ":" + o.optString("orderId"),
+                symbol = o.optString("symbol"),
+                market = "Spot order",
+                side = o.optString("side"),
+                quantity = o.optString("origQty").toDoubleOrNull() ?: o.optDouble("origQty"),
+                entryPrice = o.optString("price").toDoubleOrNull() ?: o.optDouble("price"),
+                markPrice = 0.0,
+                unrealizedPnl = 0.0,
+                leverage = 1,
+                liquidationPrice = 0.0,
+                status = o.optString("status", "NEW")
+            )
+        }
+        return result.sortedWith(compareBy<BinanceLiveTrade> { it.market }.thenBy { it.symbol })
     }
 
     /** Fetches available Spot trade history. P&L is FIFO matched across imported fills. */
