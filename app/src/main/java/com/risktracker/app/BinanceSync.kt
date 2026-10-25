@@ -28,6 +28,8 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
+data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
+
 data class BinanceDailyResult(val date: String, val spotPnl: Double, val futuresPnl: Double) {
     val total: Double get() = spotPnl + futuresPnl
 }
@@ -174,6 +176,34 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         return daily
     }
 
+    /** Recent Spot fills for currently held non-stable assets. Read-only endpoint; no orders are placed. */
+    fun recentSpotTransactions(): List<BinanceActivityItem> {
+        val account = signedGetObject("https://api.binance.com", "/api/v3/account", emptyList())
+        val balances = account.optJSONArray("balances") ?: JSONArray()
+        val assets = (0 until balances.length()).mapNotNull { i ->
+            val b = balances.getJSONObject(i)
+            val asset = b.optString("asset")
+            if (asset.isNotBlank() && (b.optString("free").toDoubleOrNull() ?: 0.0) + (b.optString("locked").toDoubleOrNull() ?: 0.0) > 0.0 && asset !in setOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI")) asset else null
+        }.toSet()
+        if (assets.isEmpty()) return emptyList()
+        val info = publicGet("https://api.binance.com/api/v3/exchangeInfo")
+        val symbols = mutableListOf<String>()
+        val rows = info.optJSONArray("symbols") ?: JSONArray()
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            if (row.optString("status") == "TRADING" && row.optString("quoteAsset") in setOf("USDT", "USDC") && row.optString("baseAsset") in assets) symbols += row.optString("symbol")
+        }
+        return symbols.take(30).flatMap { symbol ->
+            val trades = signedGetArray("https://api.binance.com", "/api/v3/myTrades", listOf("symbol" to symbol, "limit" to "20"))
+            (0 until trades.length()).map { i ->
+                val t = trades.getJSONObject(i)
+                val qty = t.optString("qty").toDoubleOrNull() ?: t.optDouble("qty")
+                val price = t.optString("price").toDoubleOrNull() ?: t.optDouble("price")
+                val quote = t.optString("quoteQty").toDoubleOrNull() ?: t.optDouble("quoteQty", qty * price)
+                BinanceActivityItem("spot:" + symbol + ":" + t.optString("id"), symbol, if (t.optBoolean("isBuyer")) "BUY" else "SELL", qty, price, quote, t.optString("commission").toDoubleOrNull() ?: t.optDouble("commission"), t.optString("commissionAsset"), t.optLong("time"), "SPOT")
+            }
+        }.sortedByDescending { it.time }.take(25)
+    }
     /**
      * Requests Binance's official asynchronous USDⓈ-M Futures transaction-history export.
      * This endpoint is quota-limited (five requests per month) and accepts at most one year.
