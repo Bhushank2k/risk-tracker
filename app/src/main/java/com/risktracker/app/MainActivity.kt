@@ -33,6 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -130,6 +133,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+                ),
                 title = {
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Risk Tracker", fontWeight = FontWeight.SemiBold)
@@ -141,19 +148,38 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
                     }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        shape = RoundedCornerShape(24.dp),
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                        tonalElevation = 8.dp,
+                        shadowElevation = 16.dp,
+                        modifier = Modifier.border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            RoundedCornerShape(24.dp)
+                        )
+                    ) {
                         menuGroups.forEachIndexed { groupIndex, (group, items) ->
-                            if (groupIndex > 0) HorizontalDivider(Modifier.padding(horizontal = 12.dp))
+                            if (groupIndex > 0) {
+                                HorizontalDivider(
+                                    Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                                )
+                            }
                             Text(
                                 group,
-                                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                                modifier = Modifier.padding(start = 18.dp, top = 10.dp, bottom = 5.dp),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                             items.forEach { (label, destination) ->
                                 DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = { menuExpanded = false; tab = destination }
+                                    text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                                    onClick = { menuExpanded = false; tab = destination },
+                                    modifier = Modifier.padding(horizontal = 6.dp)
                                 )
                             }
                         }
@@ -163,13 +189,33 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             )
         },
         bottomBar = {
-            NavigationBar {
+            val navShape = RoundedCornerShape(26.dp)
+            NavigationBar(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .clip(navShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+                        navShape
+                    ),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                tonalElevation = 0.dp,
+            ) {
                 titles.forEachIndexed { i, title ->
                     NavigationBarItem(
                         selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; 2 -> tab == 8; else -> tab !in setOf(0, 1, 8) },
                         onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 8; else -> 7 } },
                         icon = { Icon(icons[i], contentDescription = null) },
-                        label = { Text(title) }
+                        label = { Text(title) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f),
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
