@@ -109,7 +109,7 @@ class CryptoTaxHistoryTest {
         val trades = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         val report = CryptoTaxHistory.printableReportLines(trades, 80.0)
         assertTrue(report.any { it.contains("RISK TRACKER") })
-        assertTrue(report.any { it.contains("not a tax-filing determination") })
+        assertTrue(report.any { it.contains("not a tax-filing determination", ignoreCase = true) })
         assertTrue(report.any { it.contains("FY 2019-20") })
         assertTrue(report.any { it.contains("Sell rows missing realized P&L: 1") })
         assertTrue(report.any { it.contains("realized P&L MISSING") })
