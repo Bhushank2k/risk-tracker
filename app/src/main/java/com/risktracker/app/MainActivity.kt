@@ -343,10 +343,13 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
     var liveBinanceBalance by remember { mutableStateOf<BinancePortfolioBalance?>(null) }
+    var liveBinanceFuturesBalance by remember { mutableStateOf<BinanceFuturesAccountBalance?>(null) }
     var liveBinanceLoading by remember { mutableStateOf(false) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
     val stats = computeStats(entries)
+    val livePortfolioBalance = if (liveBinanceBalance != null && liveBinanceFuturesBalance != null)
+        liveBinanceBalance!!.valueUsdt + liveBinanceFuturesBalance!!.totalEquity else null
     // Merge manual ledger and synced Binance P&L by date.
     val manualByDate = entries.associateBy { it.date }
     val importedByDate = importedPnl.associateBy { it.date }
@@ -395,9 +398,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text((liveBinanceBalance?.valueUsdt ?: stats.currentBalance).usd(), style = MaterialTheme.typography.headlineLarge,
+                        val displayedBalance = livePortfolioBalance ?: stats.currentBalance
+                        Text(displayedBalance.usd(), style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text((if (liveBinanceBalance != null) "Binance Spot estimate · " else "Manual ledger · ") + "₹" + ((liveBinanceBalance?.valueUsdt ?: stats.currentBalance) * inrRate).num(0),
+                        Text((if (livePortfolioBalance != null) "Binance Spot + Futures equity · " else "Manual ledger · ") + "₹" + (displayedBalance * inrRate).num(0),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -437,7 +441,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("Live Binance transactions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Recent Spot fills · read-only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Spot + USDⓈ-M Futures balances · read-only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             OutlinedButton(enabled = !liveBinanceLoading, onClick = {
                                 liveBinanceLoading = true
@@ -447,11 +451,12 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                                         val fetched = withContext(Dispatchers.IO) {
                                             val pair = BinanceCredentialStore(ctx).read() ?: error("Add read-only API credentials in Binance trade history first.")
                                             val api = BinanceApi(pair.first, pair.second)
-                                            api.spotPortfolioBalance() to api.recentSpotTransactions()
+                                             Triple(api.spotPortfolioBalance(), api.recentSpotTransactions(), api.futuresAccountBalance())
                                         }
                                         liveBinanceBalance = fetched.first
-                                        liveBinanceTrades = fetched.second
-                                        liveBinanceStatus = "Balance refreshed · ${fetched.first.valueUsdt.usd()} USDT estimated · ${fetched.second.size} recent Spot fills" + if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} asset(s) not priced and excluded" else ""
+                                         liveBinanceTrades = fetched.second
+                                         liveBinanceFuturesBalance = fetched.third
+                                         liveBinanceStatus = "Spot ${fetched.first.valueUsdt.usd()} USDT estimated + Futures equity ${fetched.third.totalEquity.usd()} USDT · ${fetched.second.size} recent Spot fills" + if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} Spot asset(s) unpriced and excluded" else ""
                                     } catch (e: Exception) { liveBinanceStatus = e.message ?: "Could not refresh Binance activity." }
                                     finally { liveBinanceLoading = false }
                                 }
@@ -459,9 +464,48 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         }
                         Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         liveBinanceBalance?.let { balance ->
-                            Text("Spot account: ${balance.assetsHeld} assets with positive balances · unpriced assets excluded. Refresh to update.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        liveBinanceTrades.take(8).forEach { trade ->
+                             Text("Spot account: ${balance.assetsHeld} assets with positive balances · unpriced assets excluded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+                         liveBinanceFuturesBalance?.let { balance ->
+                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                             Text("USDⓈ-M FUTURES ACCOUNT", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                 Text("Wallet balance", style = MaterialTheme.typography.bodySmall)
+                                 Text(balance.walletBalance.usd(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                             }
+                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                 Text("Unrealized P&L", style = MaterialTheme.typography.bodySmall)
+                                 Text((if (balance.unrealizedPnl > 0) "+" else "") + balance.unrealizedPnl.usd(), style = MaterialTheme.typography.bodySmall,
+                                     color = if (balance.unrealizedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                             }
+                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                 Text("Total Futures equity", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                 Text(balance.totalEquity.usd(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                             }
+                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                 Text("Available to trade", style = MaterialTheme.typography.bodySmall)
+                                 Text(balance.availableBalance.usd(), style = MaterialTheme.typography.bodySmall)
+                             }
+                             if (balance.assets.isNotEmpty()) {
+                                 Text("Futures assets", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                 balance.assets.forEach { asset ->
+                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                             Text(asset.asset, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                             Text("Wallet ${asset.walletBalance.num(6)} · Available ${asset.availableBalance.num(6)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                         }
+                                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                             Text(asset.marginBalance.num(6), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                             Text("UPnL ${if (asset.unrealizedPnl > 0) "+" else ""}${asset.unrealizedPnl.num(4)}", style = MaterialTheme.typography.labelSmall,
+                                                 color = if (asset.unrealizedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                         }
+                                     }
+                                 }
+                             }
+                             Text("Last refreshed: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(balance.fetchedAt))}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+                         liveBinanceTrades.take(8).forEach { trade ->
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
