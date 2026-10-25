@@ -26,6 +26,17 @@ class TradeJournalAnalyticsTest {
     }
 
     @Test
+    fun partialSpotFillsFromSameOrderAreGroupedIntoOneSale() {
+        val first = fill("sell-1", "SELL", 0.25, 120.0, fee = 0.1, time = 2).copy(orderId = "sell-order")
+        val second = fill("sell-2", "SELL", 0.25, 140.0, fee = 0.1, time = 3).copy(orderId = "sell-order")
+        val sales = TradeJournalAnalytics.summarize(
+            listOf(fill("buy", "BUY", 1.0, 100.0, time = 1), first, second)
+        ).spotClosedSales
+        assertEquals(1, sales.size)
+        assertEquals(0.5, sales.single().quantity, 1e-9)
+        assertEquals(39.8, sales.single().netPnlQuote!!, 1e-9)
+    }
+    @Test
     fun saleWithoutEnoughImportedBuyBasisIsNotGivenInventedPnl() {
         val sale = TradeJournalAnalytics.summarize(
             listOf(fill("sell", "SELL", 0.5, 150.0, time = 2))
