@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit
 
 data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
 
+data class BinancePortfolioBalance(val valueUsdt: Double, val assetsHeld: Int, val unpricedAssets: Int, val fetchedAt: Long)
+
 data class BinanceDailyResult(val date: String, val spotPnl: Double, val futuresPnl: Double) {
     val total: Double get() = spotPnl + futuresPnl
 }
@@ -100,6 +102,38 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             }
             return body
         } finally { conn.disconnect() }
+    }
+
+
+    /** Estimated Spot account valuation in USDT using current public ticker prices. */
+    fun spotPortfolioBalance(): BinancePortfolioBalance {
+        val account = signedGetObject("https://api.binance.com", "/api/v3/account", emptyList())
+        val balances = account.optJSONArray("balances") ?: JSONArray()
+        val tickerRows = publicGetArray("https://api.binance.com/api/v3/ticker/price")
+        val prices = (0 until tickerRows.length()).associate { i ->
+            val row = tickerRows.getJSONObject(i)
+            row.optString("symbol") to (row.optString("price").toDoubleOrNull() ?: 0.0)
+        }
+        val stable = setOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI")
+        var total = 0.0
+        var held = 0
+        var unpriced = 0
+        for (i in 0 until balances.length()) {
+            val row = balances.getJSONObject(i)
+            val asset = row.optString("asset")
+            val amount = (row.optString("free").toDoubleOrNull() ?: 0.0) +
+                (row.optString("locked").toDoubleOrNull() ?: 0.0)
+            if (asset.isBlank() || amount <= 0.0) continue
+            held++
+            val price = when {
+                asset in stable -> 1.0
+                prices.containsKey(asset + "USDT") -> prices[asset + "USDT"] ?: 0.0
+                prices.containsKey(asset + "USDC") -> prices[asset + "USDC"] ?: 0.0
+                else -> 0.0
+            }
+            if (price > 0.0 && price.isFinite()) total += amount * price else unpriced++
+        }
+        return BinancePortfolioBalance(total, held, unpriced, System.currentTimeMillis())
     }
 
     /** Fetches available Spot trade history. P&L is FIFO matched across imported fills. */
@@ -274,6 +308,17 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 
     private fun signedGetObject(base: String, path: String, params: List<Pair<String, String>>): JSONObject =
         JSONObject(signedRequest(base, path, params))
+
+
+    private fun publicGetArray(url: String): JSONArray {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 15000
+        conn.readTimeout = 20000
+        try {
+            if (conn.responseCode !in 200..299) throw IllegalStateException("Could not load Binance market prices.")
+            return JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally { conn.disconnect() }
+    }
 
     private fun publicGet(url: String): JSONObject {
         val conn = URL(url).openConnection() as HttpURLConnection
