@@ -17,9 +17,8 @@ data class SpotRealizedResult(
 
 data class ExchangeJournalSummary(
     val spotClosedSales: List<SpotRealizedResult>,
-    val futuresGrossRealizedPnl: Double,
-    val futuresKnownQuoteFees: Double,
-    val futuresNetKnownQuotePnl: Double,
+    /** Values are grouped by quote asset; do not add unlike currencies together. */
+    val futuresPnlByQuoteAsset: Map<String, Pair<Double, Double>>,
     val futuresRowsWithUnknownFeeConversion: Int
 )
 
@@ -74,17 +73,21 @@ object TradeJournalAnalytics {
         }
 
         val futures = fills.filter { it.market == "USDⓈ-M Futures" && it.realizedPnl != null }
-        val knownQuoteFees = futures.filter { it.feeAsset.equals("USDT", true) || it.feeAsset.equals("USDC", true) }
-            .sumOf { it.fee }
-        val unknownFeeRows = futures.count {
-            it.fee != 0.0 && !it.feeAsset.equals("USDT", true) && !it.feeAsset.equals("USDC", true)
+        val unknownFeeRows = futures.count { fill ->
+            val quote = quoteAsset(fill.symbol)
+            fill.fee != 0.0 && (quote == null || !fill.feeAsset.equals(quote, true))
         }
-        val gross = futures.sumOf { it.realizedPnl ?: 0.0 }
+        val pnlByQuote = futures.groupBy { quoteAsset(it.symbol) ?: "Unknown quote" }.mapValues { (_, rows) ->
+            val gross = rows.sumOf { it.realizedPnl ?: 0.0 }
+            val knownFees = rows.filter { row ->
+                val quote = quoteAsset(row.symbol)
+                quote != null && row.feeAsset.equals(quote, true)
+            }.sumOf { it.fee }
+            gross to knownFees
+        }
         return ExchangeJournalSummary(
             spotClosedSales = sales,
-            futuresGrossRealizedPnl = gross,
-            futuresKnownQuoteFees = knownQuoteFees,
-            futuresNetKnownQuotePnl = gross - knownQuoteFees,
+            futuresPnlByQuoteAsset = pnlByQuote,
             futuresRowsWithUnknownFeeConversion = unknownFeeRows
         )
     }
