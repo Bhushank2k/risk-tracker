@@ -23,7 +23,8 @@ data class ExchangeJournalSummary(
 )
 
 object TradeJournalAnalytics {
-    private data class Lot(var quantity: Double, val unitCost: Double)
+    private data class Lot(var quantity: Double, val unitCost: Double, val feeConversionNeeded: Boolean)
+
 
     private val quoteAssets = listOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "BTC", "ETH", "BNB", "EUR", "TRY", "GBP", "BRL", "AUD", "BIDR", "RUB", "UAH", "DAI")
 
@@ -33,6 +34,7 @@ object TradeJournalAnalytics {
     fun summarize(fills: List<BinanceJournalFill>): ExchangeJournalSummary {
         val lotsBySymbol = mutableMapOf<String, ArrayDeque<Lot>>()
         val sales = mutableListOf<SpotRealizedResult>()
+        val invalidBasisSymbols = mutableSetOf<String>()
         val ordered = fills.sortedWith(compareBy<BinanceJournalFill> { it.time }.thenBy { it.id })
 
         ordered.filter { it.market == "Spot" }.forEach { fill ->
@@ -46,28 +48,36 @@ object TradeJournalAnalytics {
             if (fill.side.equals("BUY", true)) {
                 val acquired = (fill.quantity - if (feeInBase) fill.fee else 0.0).coerceAtLeast(0.0)
                 val totalCost = fill.quoteAmount + if (feeInQuote) fill.fee else 0.0
-                if (acquired > 0.0 && totalCost >= 0.0) lots.addLast(Lot(acquired, totalCost / acquired))
+                if (acquired > 0.0 && totalCost >= 0.0) lots.addLast(Lot(acquired, totalCost / acquired, feeConversionNeeded = !feeConvertible))
             } else if (fill.side.equals("SELL", true)) {
                 val disposed = fill.quantity + if (feeInBase) fill.fee else 0.0
                 var remaining = disposed
                 var basis = 0.0
+                var consumedLotHasUnknownFee = false
                 val epsilon = 1e-10
-                while (remaining > epsilon && lots.isNotEmpty()) {
-                    val lot = lots.first()
-                    val used = minOf(remaining, lot.quantity)
-                    basis += used * lot.unitCost
-                    lot.quantity -= used
-                    remaining -= used
-                    if (lot.quantity <= epsilon) lots.removeFirst()
+                val alreadyInvalid = fill.symbol in invalidBasisSymbols
+                if (!alreadyInvalid) {
+                    while (remaining > epsilon && lots.isNotEmpty()) {
+                        val lot = lots.first()
+                        val used = minOf(remaining, lot.quantity)
+                        basis += used * lot.unitCost
+                        consumedLotHasUnknownFee = consumedLotHasUnknownFee || lot.feeConversionNeeded
+                        lot.quantity -= used
+                        remaining -= used
+                        if (lot.quantity <= epsilon) lots.removeFirst()
+                    }
                 }
-                val complete = remaining <= maxOf(epsilon, disposed * 1e-8)
+                val covered = remaining <= maxOf(epsilon, disposed * 1e-8)
+                val complete = covered && !alreadyInvalid
+                if (!complete) invalidBasisSymbols += fill.symbol
                 val grossProceeds = fill.quoteAmount
                 val grossPnl = if (complete) grossProceeds - basis else null
-                val netPnl = if (complete && feeConvertible) grossProceeds - basis - if (feeInQuote) fill.fee else 0.0 else null
+                val needsFeeConversion = !feeConvertible || consumedLotHasUnknownFee
+                val netPnl = if (complete && !needsFeeConversion) grossProceeds - basis - if (feeInQuote) fill.fee else 0.0 else null
                 sales += SpotRealizedResult(
                     symbol = fill.symbol, sellFillId = fill.id, time = fill.time,
                     quantity = fill.quantity, grossPnlQuote = grossPnl, netPnlQuote = netPnl,
-                    basisComplete = complete, feeConversionNeeded = !feeConvertible
+                    basisComplete = complete, feeConversionNeeded = needsFeeConversion
                 )
             }
         }
