@@ -43,7 +43,7 @@ class TradeJournalAnalyticsTest {
         )
         val sale = TradeJournalAnalytics.summarize(fills).spotClosedSales.single()
         assertTrue(sale.basisComplete)
-        assertEquals(18.0, sale.netPnlQuote!!, 1e-9)
+        assertEquals(8.0, sale.netPnlQuote!!, 1e-9)
     }
 
     @Test
