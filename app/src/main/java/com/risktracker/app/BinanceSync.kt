@@ -31,6 +31,21 @@ import java.util.concurrent.TimeUnit
 data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
 
 data class BinancePortfolioBalance(val valueUsdt: Double, val assetsHeld: Int, val unpricedAssets: Int, val fetchedAt: Long)
+data class BinanceFuturesAssetBalance(
+    val asset: String,
+    val walletBalance: Double,
+    val unrealizedPnl: Double,
+    val marginBalance: Double,
+    val availableBalance: Double
+)
+data class BinanceFuturesAccountBalance(
+    val walletBalance: Double,
+    val unrealizedPnl: Double,
+    val totalEquity: Double,
+    val availableBalance: Double,
+    val assets: List<BinanceFuturesAssetBalance>,
+    val fetchedAt: Long
+)
 data class BinanceLiveTrade(val id: String, val symbol: String, val market: String, val side: String, val quantity: Double, val entryPrice: Double, val markPrice: Double, val unrealizedPnl: Double, val leverage: Int, val liquidationPrice: Double, val status: String)
 
 data class BinanceDailyResult(val date: String, val spotPnl: Double, val futuresPnl: Double) {
@@ -135,6 +150,30 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             if (price > 0.0 && price.isFinite()) total += amount * price else unpriced++
         }
         return BinancePortfolioBalance(total, held, unpriced, System.currentTimeMillis())
+    }
+
+    /** Full read-only USDⓈ-M Futures account balances, including per-asset wallet and unrealized P&L. */
+    fun futuresAccountBalance(): BinanceFuturesAccountBalance {
+        val account = signedGetObject("https://fapi.binance.com", "/fapi/v3/account", emptyList())
+        val assetsJson = account.optJSONArray("assets") ?: JSONArray()
+        val assets = (0 until assetsJson.length()).mapNotNull { i ->
+            val row = assetsJson.getJSONObject(i)
+            val asset = row.optString("asset")
+            val wallet = row.optString("walletBalance").toDoubleOrNull() ?: row.optDouble("walletBalance")
+            val unrealized = row.optString("unrealizedProfit").toDoubleOrNull() ?: row.optDouble("unrealizedProfit")
+            val margin = row.optString("marginBalance").toDoubleOrNull() ?: row.optDouble("marginBalance", wallet + unrealized)
+            val available = row.optString("availableBalance").toDoubleOrNull() ?: row.optDouble("availableBalance")
+            if (asset.isBlank() || (kotlin.math.abs(wallet) < 1e-12 && kotlin.math.abs(unrealized) < 1e-12 && kotlin.math.abs(available) < 1e-12)) null
+            else BinanceFuturesAssetBalance(asset, wallet, unrealized, margin, available)
+        }.sortedWith(compareByDescending<BinanceFuturesAssetBalance> { it.marginBalance }.thenBy { it.asset })
+        return BinanceFuturesAccountBalance(
+            walletBalance = account.optString("totalWalletBalance").toDoubleOrNull() ?: account.optDouble("totalWalletBalance"),
+            unrealizedPnl = account.optString("totalUnrealizedProfit").toDoubleOrNull() ?: account.optDouble("totalUnrealizedProfit"),
+            totalEquity = account.optString("totalMarginBalance").toDoubleOrNull() ?: account.optDouble("totalMarginBalance"),
+            availableBalance = account.optString("availableBalance").toDoubleOrNull() ?: account.optDouble("availableBalance"),
+            assets = assets,
+            fetchedAt = System.currentTimeMillis()
+        )
     }
 
     /** Read-only snapshot of open USDⓈ-M Futures positions and Spot open orders. */
