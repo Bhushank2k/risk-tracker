@@ -168,7 +168,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("NET RECORDED P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
+                    Text(if (useJournalFallback) "${snapshot.winningDays} winning trades · ${snapshot.losingDays} losing trades" else "${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(if (useJournalFallback) "Based on closed trades in your trade journal" else "Based on manually recorded daily results", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
@@ -183,7 +183,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard("Average day", snapshot.averagePnl.usd(), Modifier.weight(1f))
+                MetricCard(if (useJournalFallback) "Average trade" else "Average day", snapshot.averagePnl.usd(), Modifier.weight(1f))
                 MetricCard("Journal trades · all time", snapshot.tradeCount.toString(), Modifier.weight(1f))
             }
         }
@@ -193,7 +193,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
                     Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
                     InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
-                    InsightRow("Recorded days in period", filteredEntries.size.toString())
+                    InsightRow(if (useJournalFallback) "Closed trades in period" else "Recorded days in period", if (useJournalFallback) filteredTrades.size.toString() else filteredEntries.size.toString())
                 }
             }
         }
