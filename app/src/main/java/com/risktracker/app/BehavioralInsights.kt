@@ -50,7 +50,7 @@ fun summarizeTradeTimeline(trades: List<TradeEntry>, weeksToShow: Int = 5): List
         }
         calendar.timeInMillis to trade
     }
-    return parsed.groupBy { it.first }.toSortedMap().entries.takeLast(weeksToShow.coerceAtLeast(0)).map { (weekStart, rows) ->
+    return parsed.groupBy { it.first }.toSortedMap().entries.toList().takeLast(weeksToShow.coerceAtLeast(0)).map { (weekStart, rows) ->
         val label = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date(weekStart))
         WeeklyTradePerformance(label, rows.size, rows.sumOf { it.second.pnl })
     }
