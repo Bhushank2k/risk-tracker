@@ -100,13 +100,32 @@ fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Lo
 }
 
 @Composable
-fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
+fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
-    val filteredEntries = remember(entries, periodDays) {
-        filterPnlEntriesForPeriod(entries, periodDays, System.currentTimeMillis())
+    val nowMillis = System.currentTimeMillis()
+    val filteredEntries = remember(entries, periodDays, nowMillis) {
+        filterPnlEntriesForPeriod(entries, periodDays, nowMillis)
     }
-    val snapshot = remember(filteredEntries, tradeCount) {
-        buildPerformanceSnapshot(filteredEntries.map { it.pnl }, filteredEntries.map { it.closing }, tradeCount)
+    val filteredTrades = remember(trades, periodDays, nowMillis) {
+        if (periodDays == null) trades else {
+            val today = Calendar.getInstance().apply {
+                timeInMillis = nowMillis
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            val start = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -(periodDays!! - 1)) }
+            val endExclusive = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+            trades.filter { trade ->
+                val time = parseInsightsDate(trade.date)?.time
+                time != null && time >= start.timeInMillis && time < endExclusive.timeInMillis
+            }
+        }
+    }
+    val useJournalFallback = filteredEntries.isEmpty() && filteredTrades.isNotEmpty()
+    val resultPnl = if (useJournalFallback) filteredTrades.map { it.pnl } else filteredEntries.map { it.pnl }
+    val resultBalances = if (useJournalFallback) emptyList() else filteredEntries.map { it.closing }
+    val snapshot = remember(filteredEntries, filteredTrades, useJournalFallback, resultPnl, resultBalances) {
+        buildPerformanceSnapshot(resultPnl, resultBalances, trades.size)
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -151,7 +170,7 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("Based on manually recorded daily results", style = MaterialTheme.typography.bodySmall,
+                    Text(if (useJournalFallback) "Based on closed trades in your trade journal" else "Based on manually recorded daily results", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                 }
             }
@@ -183,14 +202,14 @@ fun InsightsScreen(entries: List<PnlEntry>, tradeCount: Int) {
             else Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Add at least two daily records to see your balance trend.",
+                    Text(if (filteredEntries.isEmpty() && filteredTrades.isNotEmpty()) "Your results above use closed journal trades. Add daily P&L records to see the balance trend." else "Add at least two daily records to see your balance trend.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         item {
             Text(
-                "P&L metrics and balance trend use the selected daily-record period. Journal trade count is all-time and is not an exchange-confirmed live position count.",
+                "P&L metrics use daily records when available; if none match the selected period, they fall back to closed journal trades. Balance trend requires at least two daily records. Journal trade count is all-time and is not an exchange-confirmed live position count.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
