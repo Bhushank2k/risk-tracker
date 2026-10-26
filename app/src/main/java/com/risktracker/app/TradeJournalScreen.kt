@@ -84,6 +84,35 @@ fun TradeJournalScreen(
             }
         }
         item {
+            val insights = analyzeTradeBehavior(filteredTrades)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Personalized journal insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (insights.tradeCount < 3) {
+                        Text("Record at least 3 trades to start comparing patterns. Current sample: ${insights.tradeCount}.", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        val strongest = insights.strategies.firstOrNull { it.sampleSize >= 3 }
+                        if (strongest != null) {
+                            Text("Top net strategy: ${strongest.strategy}", fontWeight = FontWeight.SemiBold)
+                            Text("${strongest.sampleSize} trades · Net ${strongest.netPnl.usd()} · Win rate ${strongest.winRate.pct(1)}")
+                        } else {
+                            Text("Add the same strategy tag to at least 3 trades to compare strategy results.")
+                        }
+                        val commonMistake = insights.mistakeCounts.entries.firstOrNull()
+                        if (commonMistake != null) {
+                            Text("Most-recorded mistake: ${commonMistake.key} (${commonMistake.value} ${if (commonMistake.value == 1) "trade" else "trades"}).")
+                        } else {
+                            Text("No mistake tags recorded yet. Tagging mistakes can reveal recurring patterns.")
+                        }
+                        insights.largestLoss?.let { loss ->
+                            Text("Largest recorded loss: ${loss.symbol} on ${loss.date} (${loss.pnl.usd()}).", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    Text("Descriptive patterns from the trades currently shown by your filters; small samples are not reliable predictions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
