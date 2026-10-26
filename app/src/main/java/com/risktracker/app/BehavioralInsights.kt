@@ -29,6 +29,55 @@ fun analyzeTradeBehavior(trades: List<TradeEntry>, minimumSampleSize: Int = 3): 
     return BehavioralInsights(trades.size, trades.count { it.strategy.isNotBlank() }, strategyStats, mistakes, trades.filter { it.pnl < 0.0 }.minByOrNull { it.pnl }, warnings)
 }
 
+
+data class WeeklyTradePerformance(val weekLabel: String, val tradeCount: Int, val netPnl: Double)
+data class TradeStreak(val kind: String, val count: Int)
+
+/** Weekly summaries and current result streak for valid, manually recorded closed trades. */
+fun summarizeTradeTimeline(trades: List<TradeEntry>, weeksToShow: Int = 5): List<WeeklyTradePerformance> {
+    val parsed = trades.mapNotNull { trade ->
+        if (!trade.pnl.isFinite()) return@mapNotNull null
+        val date = parseJournalDate(trade.date) ?: return@mapNotNull null
+        val calendar = java.util.Calendar.getInstance().apply {
+            time = date
+            firstDayOfWeek = java.util.Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+            set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        calendar.timeInMillis to trade
+    }
+    return parsed.groupBy { it.first }.toSortedMap().entries.takeLast(weeksToShow.coerceAtLeast(0)).map { (weekStart, rows) ->
+        val label = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date(weekStart))
+        WeeklyTradePerformance(label, rows.size, rows.sumOf { it.second.pnl })
+    }
+}
+
+fun currentTradeStreak(trades: List<TradeEntry>): TradeStreak {
+    val decisive = trades.mapNotNull { trade ->
+        val date = parseJournalDate(trade.date) ?: return@mapNotNull null
+        if (!trade.pnl.isFinite() || trade.pnl == 0.0) null else date.time to trade
+    }.sortedBy { it.first }
+    val latest = decisive.lastOrNull()?.second ?: return TradeStreak("No streak", 0)
+    val kind = if (latest.pnl > 0.0) "Win" else "Loss"
+    val count = decisive.asReversed().takeWhile { (_, trade) ->
+        if (kind == "Win") trade.pnl > 0.0 else trade.pnl < 0.0
+    }.size
+    return TradeStreak(kind, count)
+}
+
+private fun parseJournalDate(value: String): java.util.Date? {
+    for (pattern in listOf("yyyy-MM-dd", "d/M/yyyy", "dd/MM/yyyy", "M/d/yyyy", "MM/dd/yyyy")) {
+        val formatter = java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply { isLenient = false }
+        val parsed = runCatching { formatter.parse(value.trim()) }.getOrNull()
+        if (parsed != null) return parsed
+    }
+    return null
+}
+
 @Composable
 fun BehavioralInsightsScreen(trades: List<TradeEntry>) {
     val report = analyzeTradeBehavior(trades)
