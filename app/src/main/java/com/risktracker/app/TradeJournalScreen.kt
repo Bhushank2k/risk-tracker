@@ -84,6 +84,34 @@ fun TradeJournalScreen(
             }
         }
         item {
+            val weekly = summarizeTradeTimeline(filteredTrades)
+            val streak = currentTradeStreak(filteredTrades)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Weekly performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (streak.count == 0) "Current streak: no wins or losses recorded yet"
+                        else "Current streak: ${streak.count} ${streak.kind.lowercase(Locale.getDefault())}${if (streak.count == 1) "" else "s"}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (weekly.isEmpty()) {
+                        Text("Add trades with a recognized date to see weekly results.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        weekly.forEach { week ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Week of ${week.weekLabel}", fontWeight = FontWeight.Medium)
+                                    Text("${week.tradeCount} closed trade${if (week.tradeCount == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text(week.netPnl.usd(), color = pnlColor(week.netPnl), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    Text("Based on manually recorded closed trades currently matching your filters. Exchange fills are not included as closed trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
             val insights = analyzeTradeBehavior(filteredTrades)
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
