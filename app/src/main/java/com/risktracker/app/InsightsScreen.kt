@@ -100,11 +100,26 @@ fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Lo
 }
 
 @Composable
-fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
+fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPnl: List<BinanceDailyResult> = emptyList()) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
     val nowMillis = System.currentTimeMillis()
     val filteredEntries = remember(entries, periodDays, nowMillis) {
         filterPnlEntriesForPeriod(entries, periodDays, nowMillis)
+    }
+    val filteredImportedPnl = remember(importedPnl, periodDays, nowMillis) {
+        if (periodDays == null) importedPnl else {
+            val today = Calendar.getInstance().apply {
+                timeInMillis = nowMillis
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            val start = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -(periodDays!! - 1)) }
+            val endExclusive = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+            importedPnl.filter { row ->
+                val time = parseInsightsDate(row.date)?.time
+                time != null && time >= start.timeInMillis && time < endExclusive.timeInMillis
+            }
+        }
     }
     val filteredTrades = remember(trades, periodDays, nowMillis) {
         if (periodDays == null) trades else {
@@ -121,10 +136,16 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
             }
         }
     }
-    val useJournalFallback = filteredEntries.isEmpty() && filteredTrades.isNotEmpty()
-    val resultPnl = if (useJournalFallback) filteredTrades.map { it.pnl } else filteredEntries.map { it.pnl }
-    val resultBalances = if (useJournalFallback) emptyList() else filteredEntries.map { it.closing }
-    val snapshot = remember(filteredEntries, filteredTrades, useJournalFallback, resultPnl, resultBalances) {
+    val useImportedFallback = filteredEntries.isEmpty() && filteredImportedPnl.isNotEmpty()
+    val useJournalFallback = filteredEntries.isEmpty() && filteredImportedPnl.isEmpty() && filteredTrades.isNotEmpty()
+    val resultPnl = when {
+        filteredEntries.isNotEmpty() -> filteredEntries.map { it.pnl }
+        useImportedFallback -> filteredImportedPnl.map { it.total }
+        useJournalFallback -> filteredTrades.map { it.pnl }
+        else -> emptyList()
+    }
+    val resultBalances = if (filteredEntries.isNotEmpty()) filteredEntries.map { it.closing } else emptyList()
+    val snapshot = remember(filteredEntries, filteredImportedPnl, filteredTrades, useImportedFallback, useJournalFallback, resultPnl, resultBalances) {
         buildPerformanceSnapshot(resultPnl, resultBalances, trades.size)
     }
     LazyColumn(
@@ -168,9 +189,9 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("NET RECORDED P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(if (useJournalFallback) "${snapshot.winningDays} winning trades · ${snapshot.losingDays} losing trades" else "${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
+                    Text(when { useJournalFallback -> "${snapshot.winningDays} winning trades · ${snapshot.losingDays} losing trades"; else -> "${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days" },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(if (useJournalFallback) "Based on closed trades in your trade journal" else "Based on manually recorded daily results", style = MaterialTheme.typography.bodySmall,
+                    Text(when { useJournalFallback -> "Based on closed trades in your trade journal"; useImportedFallback -> "Based on imported Binance Spot and Futures P&L"; else -> "Based on manually recorded daily results" }, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                 }
             }
@@ -193,7 +214,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
                     Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
                     InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
-                    InsightRow(if (useJournalFallback) "Closed trades in period" else "Recorded days in period", if (useJournalFallback) filteredTrades.size.toString() else filteredEntries.size.toString())
+                    InsightRow(when { useJournalFallback -> "Closed trades in period"; useImportedFallback -> "Imported result days"; else -> "Recorded days in period" }, when { useJournalFallback -> filteredTrades.size.toString(); useImportedFallback -> filteredImportedPnl.size.toString(); else -> filteredEntries.size.toString() })
                 }
             }
         }
@@ -202,14 +223,14 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>) {
             else Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(if (filteredEntries.isEmpty() && filteredTrades.isNotEmpty()) "Your results above use closed journal trades. Add daily P&L records to see the balance trend." else "Add at least two daily records to see your balance trend.",
+                    Text(when { useJournalFallback -> "Your results above use closed journal trades. Add daily P&L records to see the balance trend."; useImportedFallback -> "Your results above use imported Binance P&L. Add daily balance records to see the balance trend."; else -> "Add at least two daily records to see your balance trend." },
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         item {
             Text(
-                "P&L metrics use daily records when available; if none match the selected period, they fall back to closed journal trades. Balance trend requires at least two daily records. Journal trade count is all-time and is not an exchange-confirmed live position count.",
+                "P&L metrics use manually recorded daily results when available, then imported Binance P&L, then closed journal trades. Balance trend requires at least two daily records. Journal trade count is all-time and is not an exchange-confirmed live position count.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
