@@ -252,7 +252,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 }
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
-                8 -> InsightsScreen(entries, trades.size)
+                8 -> InsightsScreen(entries, trades)
                 9 -> CryptoTaxReportScreen()
                 10 -> TargetScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
