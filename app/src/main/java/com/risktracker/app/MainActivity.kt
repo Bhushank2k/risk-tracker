@@ -649,18 +649,22 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Combined daily P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Manual-preferred combined P&L: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
-                            Text("Spot FIFO: " + importedPnl.sumOf { it.spotPnl }.usd() + " · Futures net: " + importedPnl.sumOf { it.futuresPnl }.usd(),
+                            Text("Reconciled net P&L: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
+                            Text("Manual days: ${reconciledDailyPnl.count { it.source == DailyPnlSource.MANUAL }} · Binance-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.BINANCE }} · Journal-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.JOURNAL }}",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Manual daily P&L takes precedence on dates where both manual and Binance records exist, preventing duplicate counting. Binance-only dates are included. Portfolio balance uses live Binance Spot estimate + Futures equity when refreshed, otherwise the manual ledger.",
+                            Text("Manual daily P&L takes precedence on matching dates; Binance fills missing dates, then closed journal trades fill remaining dates. Overlaps are not added twice. Portfolio balance is separate: live Binance Spot estimate + Futures equity when refreshed, otherwise the manual ledger.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (mismatchRows.isNotEmpty()) {
+                                Text("${mismatchRows.size} overlapping dates differ by more than \\$0.01; total absolute difference: ${totalOverlapDifference.usd()}. Review the values below before treating the combined total as final.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            }
                             combinedDailyPnl.entries.toList().takeLast(30).reversed().forEach { row ->
-                                val manual = manualByDate[row.key]?.pnl ?: 0.0
-                                val synced = importedByDate[row.key]?.total ?: 0.0
+                                val manual = manualByDate[row.key]?.pnl
+                                val synced = importedByDate[row.key]?.total
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                         Text(row.key, style = MaterialTheme.typography.bodySmall)
-                                        Text("Manual " + manual.usd() + " · Synced " + synced.usd(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("Manual " + (manual?.usd() ?: "—") + " · Binance " + (synced?.usd() ?: "—"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Text(row.value.usd(), color = pnlColor(row.value), fontWeight = FontWeight.SemiBold)
                                 }
