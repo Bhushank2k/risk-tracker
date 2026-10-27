@@ -687,340 +687,122 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("TODAY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), fontWeight = FontWeight.Bold)
+                                Text("Net P&L", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)) {
+                                Text(if (todayReconciled == null) "NO DATA" else when {
+                                    maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss -> "LIMIT HIT"
+                                    maxDailyLoss > 0.0 && todayPnl <= -(maxDailyLoss * 0.8) -> "NEAR LIMIT"
+                                    else -> "TRACKING"
+                                }, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                    color = if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                        Text(if (todayReconciled == null) "—" else (if (todayPnl > 0.0) "+" else "") + todayPnl.usd(),
+                            style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
+                            color = if (todayReconciled == null) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else if (todayPnl < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(if (todayReconciled == null) "No reconciled P&L recorded for today. Add a daily result or sync exchange data."
+                            else "Source: ${todayReconciled.source.name.lowercase().replaceFirstChar { it.uppercase() }} · fees and funding depend on the selected source",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Winning days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                                Text(stats.winDays.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Losing days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                                Text(stats.lossDays.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Win-day rate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                                Text(stats.winRate.pct(0), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Daily loss budget", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(when {
+                                    maxDailyLoss <= 0.0 -> "Set a limit in Tools & settings to track your risk budget."
+                                    todayReconciled == null -> "Waiting for today's P&L data; usage is not estimated."
+                                    else -> "${((-todayPnl).coerceAtLeast(0.0) / maxDailyLoss * 100).toInt()}% of your configured limit used"
+                                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(when {
+                                maxDailyLoss <= 0.0 -> "Not set"
+                                todayReconciled == null -> "Unknown"
+                                else -> (maxDailyLoss + todayPnl).coerceIn(0.0, maxDailyLoss).usd()
+                            }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                color = if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        }
+                        if (maxDailyLoss > 0.0 && todayReconciled != null) {
+                            LinearProgressIndicator(progress = { lossLimitUsed }, modifier = Modifier.fillMaxWidth(),
+                                color = if (lossLimitUsed >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        }
+                        if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss) {
+                            Text("Daily loss limit reached. Pause and review your plan before taking another trade.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        } else if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -(maxDailyLoss * 0.8)) {
+                            Text("Caution: at least 80% of your daily loss budget has been used.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("Advisory only: this uses recorded P&L and does not enforce a broker-side stop.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("EXCHANGE SYNC", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                Text(journalSyncStatus.state, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text("Exchange sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(journalSyncStatus.state, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             }
                             TextButton(onClick = { onNavigate(18) }) { Text("Details") }
                         }
                         Text(journalSyncStatus.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
+                        Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             item {
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("DAILY P&L TARGET", style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Ledger start", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(initialBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Opening Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (todayOpeningBalance > 0.0) todayOpeningBalance.usd() else "Not set", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("2% Target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (todayOpeningBalance > 0.0) todayTarget.usd() else "Not set", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        HorizontalDivider()
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Today's reconciled P&L",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (todayReconciled == null) "No data yet" else todayPnl.usd(),
-                                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                                    color = if (todayReconciled == null) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(todayPnl))
-                                Text("Source: ${todayReconciled?.source?.name ?: "Unavailable"}",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Recent journal trades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Estimated realized P&L after entered fees", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Text(
-                                if (todayOpeningBalance <= 0.0) "Opening balance needed" else if (todayTargetComplete) "Target complete" else "Target incomplete",
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                                color = if (todayOpeningBalance <= 0.0) MaterialTheme.colorScheme.onSurfaceVariant
-                                    else if (todayTargetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                            )
+                            TextButton(onClick = { onNavigate(1) }) { Text("View all") }
                         }
-                        Text("Fixed target: 2% of the day's opening balance. Each following day's target rises or falls with its opening balance; a larger closing balance after an over-target day increases the next target automatically. This is a planning benchmark, not a guaranteed return.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        val targetProgress = if (todayOpeningBalance > 0.0) (todayPnl / todayTarget.coerceAtLeast(0.01)).coerceIn(0.0, 1.0).toFloat() else 0f
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Target progress", style = MaterialTheme.typography.labelMedium)
-                            Text(if (todayOpeningBalance <= 0.0) "Opening balance needed" else "${(targetProgress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        }
-                        LinearProgressIndicator(progress = { targetProgress }, modifier = Modifier.fillMaxWidth())
-                        Text(
-                            when {
-                                todayOpeningBalance <= 0.0 -> "Data check: add a valid opening balance to calculate today's target."
-                                maxDailyLoss <= 0.0 -> "Risk check: set a daily loss limit in Tools & settings."
-                                todayPnl <= -maxDailyLoss -> "STOP: daily loss limit reached. Avoid new trades until you review your plan."
-                                todayPnl <= -(maxDailyLoss * 0.8) -> "Caution: you have used at least 80% of your daily loss limit."
-                                todayReconciled == null -> "Data check: no daily P&L recorded or imported yet."
-                                else -> "Risk status: within configured daily loss limit. Keep following your trade plan."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (todayOpeningBalance <= 0.0 || maxDailyLoss <= 0.0) MaterialTheme.colorScheme.onSurfaceVariant else if (todayPnl <= -maxDailyLoss) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            item {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        if (livePortfolioBalance != null) {
-                            Text(livePortfolioBalance.usd(), style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Text("Binance Spot + USDⓈ-M Futures equity · ₹${(livePortfolioBalance * inrRate).num(0)}",
-                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text("Spot estimate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                    Text(liveBinanceBalance?.valueUsdt?.usd() ?: "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                }
-                                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text("Futures equity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                    Text(liveBinanceFuturesBalance?.totalEquity?.usd() ?: "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                    Text("Wallet ${liveBinanceFuturesBalance?.walletBalance?.usd() ?: "Unavailable"}",
-                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                    Text("Unrealized ${liveBinanceFuturesBalance?.unrealizedPnl?.usd() ?: "Unavailable"}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if ((liveBinanceFuturesBalance?.unrealizedPnl ?: 0.0) < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                    Text("Available ${liveBinanceFuturesBalance?.availableBalance?.usd() ?: "Unavailable"}",
-                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                }
-                            }
-                            Text("Last successful refresh: " + (liveBinanceLastUpdated?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "unknown"),
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                            if ((liveBinanceBalance?.unpricedAssets ?: 0) > 0) {
-                                Text("Warning: ${liveBinanceBalance?.unpricedAssets ?: 0} Spot asset(s) could not be priced and are excluded from the Spot estimate.",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            }
+                        if (trades.isEmpty()) {
+                            Text("No journal trades yet. Log a trade to start building your history.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { onNavigate(1) }) { Text("Open trade journal") }
                         } else {
-                            Text("Live balance not synced", style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Text("Refresh Binance to fetch current account equity. Ledger balance: ${stats.currentBalance.usd()} (historical/manual, not a live exchange balance).",
-                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Latest recorded P&L · $latestPnlDate", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                Text((if (latestRecordedPnl > 0) "+" else "") + latestRecordedPnl.usd(),
-                                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                                    color = if (latestRecordedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
-                            }
-                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Combined net P&L", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                Text(combinedNetPnl.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                                    color = if (combinedNetPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Today P&L vs loss limit", style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Text(if (maxDailyLoss > 0) "${(lossLimitUsed * 100).toInt()}% used" else "Not set",
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        }
-                        Box(Modifier.fillMaxWidth().height(7.dp).background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f))) {
-                            Box(Modifier.fillMaxWidth(lossLimitUsed).height(7.dp)
-                                .background(if (lossLimitUsed >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary))
-                        }
-                        Text("${stats.winDays} winning days · ${stats.lossDays} losing days · win rate ${stats.winRate.pct(0)}",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-            item {
-                val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
-                val initialTodayBalance = todayEntry?.balance ?: 0.0
-                val todayTarget = (initialTodayBalance * 0.02).coerceAtLeast(0.0)
-                val todayBalance = if (initialTodayBalance > 0.0) initialTodayBalance + todayPnl else 0.0
-                val targetComplete = initialTodayBalance > 0.0 && todayReconciled != null && todayPnl >= todayTarget
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (targetComplete) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("DAILY FIXED TARGET · 2%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Initial Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (initialTodayBalance > 0.0) initialTodayBalance.usd() else "Not set", fontWeight = FontWeight.SemiBold)
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (initialTodayBalance > 0.0) todayBalance.usd() else "Not set", fontWeight = FontWeight.SemiBold)
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text("Target (2%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(todayTarget.usd(), fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(if (todayReconciled == null) "Today's P&L: no reconciled data" else "Today's P&L: ${todayPnl.usd()} (${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)}) · ${todayReconciled.source.name}",
-                                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                Text("Each day's target is 2% of that day's opening balance. Extra profit raises the next day's opening balance and target.",
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(
-                                if (targetComplete) "TARGET COMPLETE" else "TARGET INCOMPLETE",
-                                color = if (targetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                val fixedDailyTarget = ((todayEntry?.balance
-                    ?: entries.maxByOrNull { reportDate(it.date)?.time ?: Long.MIN_VALUE }?.closing
-                    ?: 0.0) * 0.02).coerceAtLeast(0.0)
-                val suggestion = when {
-                    maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss ->
-                        "Your recorded daily loss has reached the configured limit (" + todayPnl.usd() + " of " + maxDailyLoss.usd() + "). Consider stopping for the day and reviewing your plan."
-                    maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss * 0.75 ->
-                        "You've used " + ((-todayPnl / maxDailyLoss) * 100).toInt() + "% of your daily loss limit. Consider reducing risk or pausing before taking another trade."
-                    todayEntry != null && todayPnl >= fixedDailyTarget ->
-                        "Your fixed 2% daily profit target is complete (" + todayPnl.usd() + " of " + fixedDailyTarget.usd() + "). Consider protecting gains and sticking to your plan."
-                    todayPnl > 0.0 ->
-                        "Today's recorded P&L is " + todayPnl.usd() + ". Keep position risk within your saved limits and avoid increasing size just because you're up."
-                    else ->
-                        "Today's 2% target is incomplete. Target is " + fixedDailyTarget.usd() + " based on the opening balance. Keep planned risk within your limits and verify synced exchange data separately."
-                }
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("Today's suggestion", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("Daily profit target is fixed at 2% of the opening balance. Loss limits remain separately configurable; advisory only.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                    }
-                }
-            }
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Live Binance transactions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Spot + USDⓈ-M Futures balances · read-only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            OutlinedButton(enabled = !liveBinanceLoading, onClick = {
-                                liveBinanceLoading = true
-                                liveBinanceStatus = "Refreshing from Binance…"
-                                scope.launch {
-                                    try {
-                                        val fetched = withContext(Dispatchers.IO) {
-                                            val pair = BinanceCredentialStore(ctx).read() ?: error("Add read-only API credentials in Binance trade history first.")
-                                            val api = BinanceApi(pair.first, pair.second)
-                                            Triple(api.spotPortfolioBalance(), api.recentSpotTransactions(), api.futuresAccountBalance())
+                            trades.sortedByDescending { reportDate(it.date)?.time ?: Long.MIN_VALUE }.take(5).forEach { trade ->
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(trade.symbol.ifBlank { "Trade" }, fontWeight = FontWeight.SemiBold)
+                                            Text(trade.side.uppercase(Locale.ROOT), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        val dailySync = runCatching {
-                                            withContext(Dispatchers.IO) {
-                                                BinanceSyncRunner.sync(ctx)
-                                                BinanceSyncData.load(ctx)
-                                            }
-                                        }
-                                        dailySync.onSuccess { onImportedPnlChange(it) }
-                                        liveBinanceBalance = fetched.first
-                                        liveBinanceTrades = fetched.second
-                                        liveBinanceFuturesBalance = fetched.third
-                                        liveBinanceLastUpdated = System.currentTimeMillis()
-                                        liveBinanceStatus = "Spot ${fetched.first.valueUsdt.usd()} USDT estimated + Futures equity ${fetched.third.totalEquity.usd()} USDT · ${fetched.second.size} recent Spot fills" +
-                                            (if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} Spot asset(s) unpriced and excluded" else "") +
-                                            (if (dailySync.isSuccess) " · daily P&L history synced" else " · balance refreshed; P&L history sync failed: ${dailySync.exceptionOrNull()?.message ?: "unknown error"}")
-                                    } catch (e: Exception) { liveBinanceStatus = e.message ?: "Could not refresh Binance activity." }
-                                    finally { liveBinanceLoading = false }
-                                }
-                            }) { Text(if (liveBinanceLoading) "Loading…" else "Refresh") }
-                        }
-                        Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        liveBinanceBalance?.let { balance ->
-                             Text("Spot account: ${balance.assetsHeld} assets with positive balances · unpriced assets excluded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                         }
-                         liveBinanceFuturesBalance?.let { balance ->
-                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                             Text("USDⓈ-M FUTURES ACCOUNT", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                 Text("Wallet balance", style = MaterialTheme.typography.bodySmall)
-                                 Text(balance.walletBalance.usd(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                             }
-                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                 Text("Unrealized P&L", style = MaterialTheme.typography.bodySmall)
-                                 Text((if (balance.unrealizedPnl > 0) "+" else "") + balance.unrealizedPnl.usd(), style = MaterialTheme.typography.bodySmall,
-                                     color = if (balance.unrealizedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                             }
-                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                 Text("Total Futures equity", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                 Text(balance.totalEquity.usd(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                             }
-                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                 Text("Available to trade", style = MaterialTheme.typography.bodySmall)
-                                 Text(balance.availableBalance.usd(), style = MaterialTheme.typography.bodySmall)
-                             }
-                             if (balance.assets.isNotEmpty()) {
-                                 Text("Futures assets", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                 balance.assets.forEach { asset ->
-                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                             Text(asset.asset, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                             Text("Wallet ${asset.walletBalance.num(6)} · Available ${asset.availableBalance.num(6)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                         }
-                                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                             Text(asset.marginBalance.num(6), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                             Text("UPnL ${if (asset.unrealizedPnl > 0) "+" else ""}${asset.unrealizedPnl.num(4)}", style = MaterialTheme.typography.labelSmall,
-                                                 color = if (asset.unrealizedPnl < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                                         }
-                                     }
-                                 }
-                             }
-                             Text("Last refreshed: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(balance.fetchedAt))}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                         }
-                         liveBinanceTrades.take(8).forEach { trade ->
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(trade.symbol, fontWeight = FontWeight.SemiBold)
-                                        Text(trade.side, color = if (trade.side == "BUY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                                        Text(trade.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Text("${SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(trade.time))} · Qty ${trade.quantity.num(6)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("Fee ${trade.fee.num(6)} ${trade.feeAsset}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(trade.quoteAmount.usd(), fontWeight = FontWeight.SemiBold)
-                                    Text("@ ${trade.price.num(4)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(if (trade.pnl.isFinite()) (if (trade.pnl > 0.0) "+" else "") + trade.pnl.usd() else "Unavailable",
+                                        fontWeight = FontWeight.SemiBold, color = if (!trade.pnl.isFinite()) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(trade.pnl))
                                 }
                             }
-                        }
-                    }
-                }
-            }
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Quick actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { showAdd = true }, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Add P&L")
-                            }
-                            OutlinedButton(onClick = { onNavigate(1) }, modifier = Modifier.weight(1f)) { Text("Trade journal") }
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { onNavigate(6) }, modifier = Modifier.weight(1f)) { Text("Sync Binance") }
-                            OutlinedButton(onClick = { onNavigate(2) }, modifier = Modifier.weight(1f)) { Text("Position calculator") }
                         }
                     }
                 }
