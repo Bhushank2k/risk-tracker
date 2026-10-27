@@ -226,7 +226,11 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard("Win rate", snapshot.winRatePercent.pct(1), Modifier.weight(1f))
-                MetricCard("Max drawdown", snapshot.maxDrawdownPercent.pct(1), Modifier.weight(1f))
+                MetricCard(
+                    if (resultBalances.size >= 2) "Manual balance drawdown" else "Balance drawdown",
+                    if (resultBalances.size >= 2) snapshot.maxDrawdownPercent.pct(1) else "—",
+                    Modifier.weight(1f)
+                )
             }
         }
         item {
@@ -257,7 +261,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         }
         item {
             Text(
-                "P&L metrics normalize dates and select one value per day: manual daily entry first, Binance imported P&L second, then closed journal trades. Overlaps are not added twice; compare them on Dashboard. Balance trend requires at least two manual daily records. Journal trade count is all-time.",
+                "P&L metrics normalize dates and select one value per day: manual daily entry first, Binance imported P&L second, then closed journal trades. Overlaps are not added twice; compare them on Dashboard. Balance trend and percentage drawdown require at least two manual daily balance records; drawdown is not inferred from P&L-only sources. Journal trade count is all-time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
