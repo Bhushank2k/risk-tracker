@@ -305,7 +305,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
-                19 -> RiskAlertsScreen(entries, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
