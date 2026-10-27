@@ -162,7 +162,7 @@ fun TradeJournalScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text("${fill.symbol} · ${fill.side}", fontWeight = FontWeight.SemiBold)
-                                    Text("${fill.market} · " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${fill.market} · " + (if (fill.id.contains(":csv:")) "Source: Binance CSV" else "Source: Binance API") + " · " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text("Qty ${fill.quantity.num(6)} @ ${fill.price.num(6)} · Notional ${fill.quoteAmount.usd()}", style = MaterialTheme.typography.bodySmall)
                                     Text("Fee ${fill.fee.num(6)} ${fill.feeAsset} · Order ${fill.orderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
