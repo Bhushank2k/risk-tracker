@@ -452,7 +452,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val importedByDate = importedPnl.associateBy { it.date }
     val combinedDates = (manualByDate.keys + importedByDate.keys).toSortedSet()
     val combinedDailyPnl = combinedDates.associateWith { date ->
-        (manualByDate[date]?.pnl ?: 0.0) + (importedByDate[date]?.total ?: 0.0)
+        manualByDate[date]?.pnl ?: (importedByDate[date]?.total ?: 0.0)
     }
     val combinedNetPnl = combinedDailyPnl.values.sum()
     val latestPnlDate = combinedDailyPnl.keys.maxOrNull().orEmpty().ifBlank { "No recorded entries" }
@@ -648,10 +648,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Combined daily P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Manual + synced Binance: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
+                            Text("Manual-preferred combined P&L: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
                             Text("Spot FIFO: " + importedPnl.sumOf { it.spotPnl }.usd() + " · Futures net: " + importedPnl.sumOf { it.futuresPnl }.usd(),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Each date adds manual P&L and synced Binance Spot/Futures P&L. If the same trades were entered manually and synced, that date can be double-counted; remove duplicate manual records if needed. Portfolio balance remains based on the live Binance Spot estimate when refreshed, otherwise the manual ledger.",
+                            Text("Manual daily P&L takes precedence on dates where both manual and Binance records exist, preventing duplicate counting. Binance-only dates are included. Portfolio balance uses live Binance Spot estimate + Futures equity when refreshed, otherwise the manual ledger.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             combinedDailyPnl.entries.toList().takeLast(30).reversed().forEach { row ->
                                 val manual = manualByDate[row.key]?.pnl ?: 0.0
