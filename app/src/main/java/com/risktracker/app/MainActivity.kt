@@ -122,12 +122,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     }
     val titles = listOf("Home", "Journal", "Insights", "Tools")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
+    // Keep global navigation focused on the four primary areas. Specialist screens live in Tools.
     val menuGroups = listOf(
-        "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1, "Performance insights" to 8, "Trade reviews" to 14),
-        "TRADING TOOLS" to listOf("Position calculator" to 2, "Leverage & liquidation" to 3, "Trade Risk Gate" to 11, "Behavioral intelligence" to 12, "Risk Scenario Lab" to 13),
-        "IMPORTS & REPORTS" to listOf("Google Sheets sync" to 4, "Binance trade history" to 6, "Live trades" to 16, "Crypto tax report" to 9, "Ledger audit" to 15),
-        "GOAL PLANNING" to listOf("Target" to 10),
-        "APP" to listOf("Settings & backup" to 7, "About Risk Tracker" to 5)
+        "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1),
+        "ANALYSIS" to listOf("Analytics" to 8),
+        "TOOLS & SETTINGS" to listOf("Tools & settings" to 7)
     )
 
     Scaffold(
@@ -241,7 +240,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
-                2 -> CalculatorScreen(input) {
+                2 -> CombinedTradingCalculatorScreen(input) {
                     input = it
                     store.saveInput(it)
                 }
@@ -252,7 +251,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 }
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
-                8 -> InsightsScreen(entries, trades, importedPnl)
+                8 -> InsightsScreen(entries, trades, importedPnl, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
                 10 -> TargetScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
@@ -267,6 +266,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 14 -> TradeReviewScreen(trades)
                 15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
+                17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
             }
@@ -1025,13 +1025,22 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Trading tools", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Position calculator", "Position size, risk and target") { onNavigate(2) }
-        MoreDestinationCard("Leverage & liquidation", "Compare leverage risk") { onNavigate(3) }
-        Text("Imports & reports", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Google Sheets sync", "Sync Daily P&L only") { onNavigate(4) }
-        MoreDestinationCard("Binance trade history", "Read-only Spot & Futures history") { onNavigate(6) }
+        MoreDestinationCard("Position & leverage calculator", "Position sizing, stop-loss risk and liquidation estimates") { onNavigate(2) }
+        MoreDestinationCard("Trade Risk Gate", "Check planned risk and daily limits before a trade") { onNavigate(11) }
+        MoreDestinationCard("Target planner", "Optional balance and goal planning") { onNavigate(10) }
+        Text("Analysis & reviews", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Behavioral intelligence", "Strategy patterns and recurring mistakes") { onNavigate(12) }
+        MoreDestinationCard("Risk Scenario Lab", "Advanced loss-streak and scenario simulations") { onNavigate(13) }
+        MoreDestinationCard("Trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
+        Text("Binance data & reports", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Binance data & imports", "Read-only account activity, historical imports and recovery") { onNavigate(6) }
+        MoreDestinationCard("Live positions & orders", "Current Futures positions and pending Spot orders") { onNavigate(16) }
+        MoreDestinationCard("Ledger audit & reconciliation", "Check imported coverage, duplicates and totals") { onNavigate(15) }
         MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
-        Text("About", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
+        Text("Optional integrations", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
+        Text("App information", style = MaterialTheme.typography.titleMedium)
         MoreDestinationCard("About Risk Tracker", "App details and risk disclaimer") { onNavigate(5) }
         HorizontalDivider()
         Text("Performance summaries", style = MaterialTheme.typography.titleMedium)
@@ -1230,6 +1239,20 @@ fun Warn(text: String) {
 
 // ---------------- Leverage matrix ----------------
 
+@Composable
+fun CombinedTradingCalculatorScreen(input: CalcInput, onChange: (CalcInput) -> Unit) {
+    var selectedTool by remember { mutableStateOf("Position sizing") }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Position sizing", "Leverage & liquidation").forEach { tool ->
+                FilterChip(selected = selectedTool == tool, onClick = { selectedTool = tool }, label = { Text(tool) })
+            }
+        }
+        Box(Modifier.fillMaxSize()) {
+            if (selectedTool == "Position sizing") CalculatorScreen(input, onChange) else LeverageScreen(input)
+        }
+    }
+}
 @Composable
 fun LeverageScreen(input: CalcInput) {
     val rows = leverageMatrix(input.entry)
