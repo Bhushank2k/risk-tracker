@@ -227,7 +227,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget, importedPnl, trades) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -448,7 +448,7 @@ fun LiveTradesScreen() {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
@@ -1162,6 +1162,9 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
+    var advancedToolsExpanded by remember { mutableStateOf(false) }
+    var reportsExpanded by remember { mutableStateOf(false) }
+    var integrationsExpanded by remember { mutableStateOf(false) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -1179,24 +1182,35 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Trading tools", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Position & leverage calculator", "Position sizing, stop-loss risk and liquidation estimates") { onNavigate(2) }
-        MoreDestinationCard("Trade Risk Gate", "Check planned risk and daily limits before a trade") { onNavigate(11) }
-        MoreDestinationCard("Target planner", "Optional balance and goal planning") { onNavigate(10) }
-        Text("Advanced tools (optional)", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Behavioral intelligence", "Optional strategy patterns and recurring mistakes") { onNavigate(12) }
-        MoreDestinationCard("Risk Scenario Lab", "Optional loss-streak and scenario simulations") { onNavigate(13) }
-        MoreDestinationCard("Trade reviews", "Optional closed-trade reviews and plan adherence") { onNavigate(14) }
-        Text("Binance data", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Binance data & imports", "API sync, trade CSV, income CSV and historical recovery") { onNavigate(6) }
-        MoreDestinationCard("Live positions & orders", "Optional current Futures positions and pending Spot orders") { onNavigate(16) }
-        MoreDestinationCard("Ledger audit & reconciliation", "Check imported coverage, duplicates and totals") { onNavigate(15) }
-        Text("Reports (optional)", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
-        MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
-        Text("Optional integrations", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
-        Text("App information", style = MaterialTheme.typography.titleMedium)
+        Text("Quick tools", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
+        MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
+        Text("Binance & data", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Binance data & imports", "API sync, CSV imports and account-history recovery") { onNavigate(6) }
+        MoreDestinationCard("Ledger audit & reconciliation", "Check coverage, duplicates and daily totals") { onNavigate(15) }
+        OutlinedButton(onClick = { reportsExpanded = !reportsExpanded }, modifier = Modifier.fillMaxWidth()) {
+            Text((if (reportsExpanded) "▾ " else "▸ ") + "Reports & exchange tools")
+        }
+        if (reportsExpanded) {
+            MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
+            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
+            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+        }
+        OutlinedButton(onClick = { advancedToolsExpanded = !advancedToolsExpanded }, modifier = Modifier.fillMaxWidth()) {
+            Text((if (advancedToolsExpanded) "▾ " else "▸ ") + "Advanced tools")
+        }
+        if (advancedToolsExpanded) {
+            MoreDestinationCard("Target planner", "Optional balance and goal planning") { onNavigate(10) }
+            MoreDestinationCard("Behavioral intelligence", "Explore patterns and recurring mistakes") { onNavigate(12) }
+            MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
+            MoreDestinationCard("Trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
+        }
+        OutlinedButton(onClick = { integrationsExpanded = !integrationsExpanded }, modifier = Modifier.fillMaxWidth()) {
+            Text((if (integrationsExpanded) "▾ " else "▸ ") + "Optional integrations")
+        }
+        if (integrationsExpanded) {
+            MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
+        }
         MoreDestinationCard("About Risk Tracker", "App details and risk disclaimer") { onNavigate(5) }
         HorizontalDivider()
         Text("App settings", style = MaterialTheme.typography.titleMedium)
