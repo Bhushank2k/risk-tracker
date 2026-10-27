@@ -1014,6 +1014,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var profitTarget by remember { mutableStateOf(store.dailyProfitTarget.toString()) }
     var backupMessage by remember { mutableStateOf("") }
+    var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
     }
@@ -1021,8 +1022,8 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         if (uri != null) {
             try {
                 val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file")
-                onRestore(store.importBackup(raw))
-                backupMessage = "Backup restored. Existing records were replaced by the selected backup."
+                pendingBackupRaw = raw
+                backupMessage = "Backup file loaded. Confirm below before replacing current journal and daily records."
             } catch (e: Exception) {
                 backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
             }
@@ -1058,9 +1059,35 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
-        OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export all records (JSON)") }
-        OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Restore from backup") }
+        Text("Exports daily P&L, journal trades, saved trade plans/reviews, and risk targets. Binance imports, API credentials, and external screenshot files are not included; keep their original exports separately.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export journal & settings (JSON)") }
+        OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Choose backup to restore") }
         if (backupMessage.isNotBlank()) Text(backupMessage, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+        if (pendingBackupRaw != null) {
+            AlertDialog(
+                onDismissRequest = { pendingBackupRaw = null },
+                title = { Text("Replace current records?") },
+                text = { Text("Restoring replaces your current daily P&L and journal entries, and may replace saved trade plans, reviews, and risk limits. Export a backup of the current data first if you may need it.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val raw = pendingBackupRaw
+                        pendingBackupRaw = null
+                        if (raw != null) {
+                            try {
+                                onRestore(store.importBackup(raw))
+                                backupMessage = "Backup restored. The selected backup replaced current daily P&L and journal entries."
+                            } catch (e: Exception) {
+                                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
+                            }
+                        }
+                    }) { Text("Replace records") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingBackupRaw = null; backupMessage = "Restore cancelled. Current records were unchanged." }) { Text("Cancel") }
+                }
+            )
+        }
         HorizontalDivider()
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
