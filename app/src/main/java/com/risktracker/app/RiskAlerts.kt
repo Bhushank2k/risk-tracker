@@ -1,6 +1,10 @@
 package com.risktracker.app
 
+import android.Manifest
 import android.content.Context
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -68,6 +72,20 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, dailyPnl
     var drawdownThreshold by remember { mutableStateOf(prefs.getFloat("drawdown_threshold", 10f).toString()) }
     var staleHours by remember { mutableStateOf(prefs.getInt("stale_hours", 24).toString()) }
     var savedMessage by remember { mutableStateOf("") }
+    var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean("background_notifications_enabled", false)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            notificationsEnabled = true
+            prefs.edit().putBoolean("background_notifications_enabled", true).apply()
+            RiskAlertNotifications.schedule(context)
+            savedMessage = "Background notifications enabled. Checks run periodically and may be delayed by Android battery restrictions."
+        } else {
+            notificationsEnabled = false
+            prefs.edit().putBoolean("background_notifications_enabled", false).apply()
+            RiskAlertNotifications.cancel(context)
+            savedMessage = "Notifications permission was not granted; background alerts remain off."
+        }
+    }
 
     val ordered = entries.mapNotNull { entry ->
         parseRiskDate(entry.date)?.let { it.time to entry.closing }
@@ -100,6 +118,31 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, dailyPnl
         Text("Risk alerts", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("In-app checks based on data saved on this device. These are advisory, not exchange-enforced controls, and they do not place or block orders.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Background notifications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Check configured rules about every 15 minutes. Android may delay checks; alerts are advisory, not real-time trading protection.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = notificationsEnabled, onCheckedChange = { enabled ->
+                    if (!enabled) {
+                        notificationsEnabled = false
+                        prefs.edit().putBoolean("background_notifications_enabled", false).apply()
+                        RiskAlertNotifications.cancel(context)
+                        savedMessage = "Background notifications turned off."
+                    } else if (Build.VERSION.SDK_INT >= 33 && !RiskAlertNotifications.hasNotificationPermission(context)) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        notificationsEnabled = true
+                        prefs.edit().putBoolean("background_notifications_enabled", true).apply()
+                        RiskAlertNotifications.createChannel(context)
+                        RiskAlertNotifications.schedule(context)
+                        savedMessage = "Background notifications enabled. Checks run periodically and may be delayed by Android battery restrictions."
+                    }
+                })
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Alert rules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
