@@ -15,7 +15,7 @@ A native Android app built with Kotlin and Jetpack Compose for crypto-futures ri
 - Binance Sync Health screen with last-attempt/last-success timestamps, fetched/inserted counts, failed-symbol count, and explicit rolling-window coverage caveats
 - Target planner for balance goals, daily net-profit pace, progress and estimated completion time
 - Trade Risk Gate for advisory pre-trade risk checks and locally saved trade plans
-- Configurable in-app risk alerts for known daily loss-limit breaches, recorded drawdown thresholds, and stale Binance execution-history sync
+- Configurable in-app risk alerts for daily loss limits, consecutive-loss streaks, recorded drawdown thresholds, and stale Binance execution-history sync
 - Behavioral intelligence by strategy and mistake tags, with sample-size and data-quality caveats
 - Risk Scenario Lab for consecutive-loss drawdown stress tests and seeded historical-outcome simulations
 - Post-trade reviews for plan adherence, setup, pre-trade state and lessons learned
