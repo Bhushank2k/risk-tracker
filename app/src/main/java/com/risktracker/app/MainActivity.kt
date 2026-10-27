@@ -172,8 +172,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 title = {
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Risk Tracker", fontWeight = FontWeight.SemiBold)
-                        Text("Trade with a plan", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 actions = {
@@ -607,12 +605,14 @@ fun LiveTradesScreen() {
 fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onNavigate: (Int) -> Unit = {}, onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {}, onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
-    var liveBinanceBalance by remember { mutableStateOf<BinancePortfolioBalance?>(null) }
-    var liveBinanceFuturesBalance by remember { mutableStateOf<BinanceFuturesAccountBalance?>(null) }
+    val savedAccountSnapshot = remember { BinanceAccountSnapshotStore(ctx).load() }
+    var liveBinanceBalance by remember { mutableStateOf(savedAccountSnapshot?.spot) }
+    var liveBinanceFuturesBalance by remember { mutableStateOf(savedAccountSnapshot?.futures) }
     var liveBinanceLoading by remember { mutableStateOf(false) }
-    var liveBinanceLastUpdated by remember { mutableStateOf<Long?>(null) }
-    var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
+    var liveBinanceLastUpdated by remember { mutableStateOf(savedAccountSnapshot?.savedAt) }
+    var liveBinanceStatus by remember {
+        mutableStateOf(if (savedAccountSnapshot != null) "Showing last successful Binance snapshot; refresh to check for updates." else "Connect Binance to load account equity.")
+    }
     var journalSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(ctx)) }
     var showAdd by remember { mutableStateOf(false) }
     fun refreshLiveAccount() {
@@ -633,6 +633,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                 liveBinanceBalance = balances.first
                 liveBinanceFuturesBalance = balances.second
                 liveBinanceLastUpdated = System.currentTimeMillis()
+                BinanceAccountSnapshotStore(ctx).save(balances.first, balances.second)
                 liveBinanceStatus = if (balances.first.unpricedAssets > 0) {
                     "Updated. ${balances.first.unpricedAssets} Spot asset(s) could not be priced and are excluded from the estimate."
                 } else {
