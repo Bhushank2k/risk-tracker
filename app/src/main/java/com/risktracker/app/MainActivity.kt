@@ -233,6 +233,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 1 -> TradeJournalScreen(trades, onAdd = { trade ->
                     trades = (trades + trade).sortedByDescending { it.date }
                     store.saveTrades(trades)
+                }, onUpdate = { updated ->
+                    trades = trades.map { if (it.id == updated.id) updated else it }.sortedByDescending { it.date }
+                    store.saveTrades(trades)
                 }, onDelete = { trade ->
                     trades = trades.filterNot { it.id == trade.id }
                     store.saveTrades(trades)
