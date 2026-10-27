@@ -533,7 +533,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(todayOpeningBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(if (todayOpeningBalance > 0.0) todayOpeningBalance.usd() else "Not set", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("2% Target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -667,11 +667,11 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
                                 Text("Initial Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(initialTodayBalance.usd(), fontWeight = FontWeight.SemiBold)
+                                Text(if (initialTodayBalance > 0.0) initialTodayBalance.usd() else "Not set", fontWeight = FontWeight.SemiBold)
                             }
                             Column(Modifier.weight(1f)) {
                                 Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(todayBalance.usd(), fontWeight = FontWeight.SemiBold)
+                                Text(if (initialTodayBalance > 0.0) todayBalance.usd() else "Not set", fontWeight = FontWeight.SemiBold)
                             }
                             Column(Modifier.weight(1f)) {
                                 Text("Target (2%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
