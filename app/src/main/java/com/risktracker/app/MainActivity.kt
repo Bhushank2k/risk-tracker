@@ -257,9 +257,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
                     maxTradeRisk = store.maxTradeRisk,
                     maxDailyLoss = store.maxDailyLoss,
-                    dailyPnl = pnlEntryForDate(entries)?.pnl ?: 0.0,
+                    dailyPnl = reconcileDailyPnl(entries, importedPnl, trades)
+                        .lastOrNull { it.date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+                        ?.selectedPnl ?: 0.0,
                     maxTradesPerDay = 10,
-                    tradesTakenToday = trades.count { it.date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+                    tradesTakenToday = trades.count {
+                        canonicalPnlDate(it.date) == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                    }
                 ))
                 12 -> BehavioralInsightsScreen(trades)
                 13 -> RiskScenarioLabScreen()
