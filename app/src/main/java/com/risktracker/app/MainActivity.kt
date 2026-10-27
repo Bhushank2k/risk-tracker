@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -546,6 +547,52 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                 }
             }
             item {
+                val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
+                val priorClosingBalance = chronologicalEntries.lastOrNull()?.closing ?: 0.0
+                val initialTodayBalance = todayEntry?.balance ?: priorClosingBalance
+                val todayTarget = (initialTodayBalance * 0.02).coerceAtLeast(0.0)
+                val todayBalance = todayEntry?.closing ?: initialTodayBalance
+                val targetComplete = todayEntry != null && todayPnl >= todayTarget
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (targetComplete) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("DAILY FIXED TARGET · 2%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Initial Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(initialTodayBalance.usd(), fontWeight = FontWeight.SemiBold)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(todayBalance.usd(), fontWeight = FontWeight.SemiBold)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Target (2%)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(todayTarget.usd(), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Today's P&L: \${todayPnl.usd()} (\${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)})",
+                                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                Text("Each day's target is 2% of that day's opening balance. Extra profit raises the next day's opening balance and target.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                if (targetComplete) "TARGET COMPLETE" else "TARGET INCOMPLETE",
+                                color = if (targetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+            item {
                 val suggestion = when {
                     maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss ->
                         "Your recorded daily loss has reached the configured limit (" + todayPnl.usd() + " of " + maxDailyLoss.usd() + "). Consider stopping for the day and reviewing your plan."
@@ -718,33 +765,59 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                     TextButton(onClick = { pdfLauncher.launch("risk-tracker-daily-pnl.pdf") }) { Text("Export PDF") }
                 }
             }
-            items(entries.indices.reversed().toList()) { idx ->
-                val e = entries[idx]
+            item {
                 Card(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("#${idx + 1}  ${e.date}", fontWeight = FontWeight.Medium)
-                            Text("Bal ${e.balance.usd()}  →  ${e.closing.usd()}",
-                                style = MaterialTheme.typography.bodySmall)
-                            if (e.disciplineScore > 0) Text("Discipline: ${e.disciplineScore}/5", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (e.notes.isNotBlank()) Text(e.notes, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                    Column(Modifier.horizontalScroll(rememberScrollState()).width(900.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(vertical = 10.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Date", Modifier.width(100.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Initial Bal", Modifier.width(115.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Daily P&L", Modifier.width(115.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("W/L %", Modifier.width(85.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Today Bal", Modifier.width(115.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Target 2%", Modifier.width(110.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Target status", Modifier.width(145.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text((if (e.pnl > 0) "+" else "") + e.pnl.usd(),
-                                color = pnlColor(e.pnl), fontWeight = FontWeight.Bold)
-                            Text(e.wlPercent.pct() + "  •  ₹" + (e.pnl * inrRate).num(0),
-                                color = pnlColor(e.pnl), style = MaterialTheme.typography.bodySmall)
-                        }
-                        // Days already in the sheet are removed in the sheet itself.
-                        if (syncedCount < 0 || idx >= syncedCount) {
-                            IconButton(onClick = { onChange(entries.toMutableList().also { it.removeAt(idx) }) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        HorizontalDivider()
+                        entries.indices.reversed().forEach { idx ->
+                            val e = entries[idx]
+                            val dailyTarget = (e.balance * 0.02).coerceAtLeast(0.0)
+                            val completed = e.pnl >= dailyTarget
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 9.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(e.date, Modifier.width(100.dp), style = MaterialTheme.typography.bodySmall)
+                                Text(e.balance.usd(), Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall)
+                                Text((if (e.pnl > 0) "+" else "") + e.pnl.usd(), Modifier.width(115.dp),
+                                    style = MaterialTheme.typography.bodySmall, color = pnlColor(e.pnl), fontWeight = FontWeight.SemiBold)
+                                Text(e.wlPercent.pct(2), Modifier.width(85.dp), style = MaterialTheme.typography.bodySmall, color = pnlColor(e.pnl))
+                                Text(e.closing.usd(), Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                Text(dailyTarget.usd(), Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
+                                Row(Modifier.width(145.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        if (completed) "Target complete" else "Target incomplete",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                    )
+                                    if (syncedCount < 0 || idx >= syncedCount) {
+                                        IconButton(onClick = { onChange(entries.toMutableList().also { it.removeAt(idx) }) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete daily P&L row")
+                                        }
+                                    }
+                                }
                             }
-                        } else {
-                            Spacer(Modifier.width(12.dp))
+                            if (e.disciplineScore > 0 || e.notes.isNotBlank()) {
+                                Text(
+                                    listOf(if (e.disciplineScore > 0) "Discipline \${e.disciplineScore}/5" else "", e.notes).filter { it.isNotBlank() }.joinToString(" · "),
+                                    Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
                         }
                     }
                 }
@@ -756,7 +829,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
         ) { Icon(Icons.Default.Add, contentDescription = "Add day") }
     }
 
-    if (showAdd) AddEntryDialog(entries.lastOrNull(), onDismiss = { showAdd = false }) {
+    if (showAdd) AddEntryDialog(
+        entries.maxByOrNull { reportDate(it.date)?.time ?: Long.MIN_VALUE },
+        onDismiss = { showAdd = false }
+    ) {
         onChange(entries + it)
         showAdd = false
     }
