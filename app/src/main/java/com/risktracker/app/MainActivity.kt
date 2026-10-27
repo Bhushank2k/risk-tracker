@@ -268,7 +268,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
-                    onRestore = { pair -> entries = pair.first; trades = pair.second }) { tab = it }
+                    onRestore = { pair ->
+                        entries = pair.first
+                        trades = pair.second
+                        importedPnl = BinanceSyncData.load(context)
+                    }) { tab = it }
             }
         }
     }
