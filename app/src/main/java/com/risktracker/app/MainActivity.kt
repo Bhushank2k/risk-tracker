@@ -227,7 +227,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it }) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -448,7 +448,7 @@ fun LiveTradesScreen() {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onNavigate: (Int) -> Unit = {}, onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onNavigate: (Int) -> Unit = {}, onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {}, onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
@@ -730,12 +730,22 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                         val fetched = withContext(Dispatchers.IO) {
                                             val pair = BinanceCredentialStore(ctx).read() ?: error("Add read-only API credentials in Binance trade history first.")
                                             val api = BinanceApi(pair.first, pair.second)
-                                             Triple(api.spotPortfolioBalance(), api.recentSpotTransactions(), api.futuresAccountBalance())
+                                            Triple(api.spotPortfolioBalance(), api.recentSpotTransactions(), api.futuresAccountBalance())
                                         }
+                                        val dailySync = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                BinanceSyncRunner.sync(ctx)
+                                                BinanceSyncData.load(ctx)
+                                            }
+                                        }
+                                        dailySync.onSuccess { onImportedPnlChange(it) }
                                         liveBinanceBalance = fetched.first
-                                         liveBinanceTrades = fetched.second
-                                         liveBinanceFuturesBalance = fetched.third
-                                         liveBinanceStatus = "Spot ${fetched.first.valueUsdt.usd()} USDT estimated + Futures equity ${fetched.third.totalEquity.usd()} USDT · ${fetched.second.size} recent Spot fills" + if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} Spot asset(s) unpriced and excluded" else ""
+                                        liveBinanceTrades = fetched.second
+                                        liveBinanceFuturesBalance = fetched.third
+                                        liveBinanceLastUpdated = System.currentTimeMillis()
+                                        liveBinanceStatus = "Spot ${fetched.first.valueUsdt.usd()} USDT estimated + Futures equity ${fetched.third.totalEquity.usd()} USDT · ${fetched.second.size} recent Spot fills" +
+                                            (if (fetched.first.unpricedAssets > 0) " · ${fetched.first.unpricedAssets} Spot asset(s) unpriced and excluded" else "") +
+                                            (if (dailySync.isSuccess) " · daily P&L history synced" else " · balance refreshed; P&L history sync failed: ${dailySync.exceptionOrNull()?.message ?: "unknown error"}")
                                     } catch (e: Exception) { liveBinanceStatus = e.message ?: "Could not refresh Binance activity." }
                                     finally { liveBinanceLoading = false }
                                 }
