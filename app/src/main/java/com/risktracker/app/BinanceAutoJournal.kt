@@ -182,6 +182,7 @@ object BinanceAutoJournalRunner {
 
         val fetched = mutableListOf<BinanceJournalFill>()
         var symbolsAttempted = 0
+        var symbolFailures = 0
         (knownSpot.take(100).map { "Spot" to it } +
             knownFutures.take(100).map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
             symbolsAttempted++
@@ -190,7 +191,7 @@ object BinanceAutoJournalRunner {
                 else api.futuresExecutionHistory(symbol, start, end)
             }
             result.onSuccess { fetched += it }
-                .onFailure { failures += "$market $symbol: ${it.message ?: "request failed"}" }
+                .onFailure { symbolFailures++; failures += "$market $symbol: ${it.message ?: "request failed"}" }
         }
 
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
@@ -211,7 +212,7 @@ object BinanceAutoJournalRunner {
             },
             detail = detail,
             symbolsAttempted = symbolsAttempted,
-            symbolsFailed = failures.count { it.contains(":") && (it.startsWith("Spot ") || it.startsWith("USDⓈ-M Futures ")) },
+            symbolsFailed = symbolFailures,
             fillsFetched = fetched.size,
             fillsInserted = inserted,
             windowStart = start,
