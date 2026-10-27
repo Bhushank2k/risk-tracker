@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 fun TradeJournalScreen(
     trades: List<TradeEntry>,
     onAdd: (TradeEntry) -> Unit,
+    onUpdate: (TradeEntry) -> Unit,
     onDelete: (TradeEntry) -> Unit,
     maxTradeRisk: Double = 5.0,
     exchangeFills: List<BinanceJournalFill> = emptyList(),
@@ -37,6 +39,7 @@ fun TradeJournalScreen(
 ) {
     val context = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
+    var editingTrade by remember { mutableStateOf<TradeEntry?>(null) }
     var search by remember { mutableStateOf("") }
     var sideFilter by remember { mutableStateOf("All") }
     var resultFilter by remember { mutableStateOf("All") }
@@ -233,8 +236,13 @@ fun TradeJournalScreen(
                                 color = if (tradePnl.isFinite()) pnlColor(tradePnl) else MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.Bold
                             )
-                            IconButton(onClick = { onDelete(trade) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete trade")
+                            Row {
+                                IconButton(onClick = { editingTrade = trade }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit trade")
+                                }
+                                IconButton(onClick = { onDelete(trade) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete trade")
+                                }
                             }
                         }
                     }
@@ -249,9 +257,16 @@ fun TradeJournalScreen(
             )
         }
     }
-    if (showAdd) AddTradeDialog(maxTradeRisk, onDismiss = { showAdd = false }) { trade ->
-        onAdd(trade)
-        showAdd = false
+    if (editingTrade != null) {
+        AddTradeDialog(maxTradeRisk, initialTrade = editingTrade, onDismiss = { editingTrade = null }) { trade ->
+            onUpdate(trade)
+            editingTrade = null
+        }
+    } else if (showAdd) {
+        AddTradeDialog(maxTradeRisk, onDismiss = { showAdd = false }) { trade ->
+            onAdd(trade)
+            showAdd = false
+        }
     }
 }
 
@@ -264,20 +279,25 @@ private fun JournalMetric(label: String, value: String, color: androidx.compose.
 }
 
 @Composable
-private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (TradeEntry) -> Unit) {
+private fun AddTradeDialog(
+    maxTradeRisk: Double,
+    initialTrade: TradeEntry? = null,
+    onDismiss: () -> Unit,
+    onAdd: (TradeEntry) -> Unit
+) {
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    var date by remember { mutableStateOf(today) }
-    var symbol by remember { mutableStateOf("") }
-    var side by remember { mutableStateOf("Long") }
-    var entry by remember { mutableStateOf("") }
-    var exit by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf("1") }
-    var fees by remember { mutableStateOf("0") }
-    var notes by remember { mutableStateOf("") }
-    var strategy by remember { mutableStateOf("") }
-    var mistake by remember { mutableStateOf("") }
-    var riskUsd by remember { mutableStateOf("") }
-    var screenshotUri by remember { mutableStateOf("") }
+    var date by remember(initialTrade) { mutableStateOf(initialTrade?.date ?: today) }
+    var symbol by remember(initialTrade) { mutableStateOf(initialTrade?.symbol ?: "") }
+    var side by remember(initialTrade) { mutableStateOf(initialTrade?.side ?: "Long") }
+    var entry by remember(initialTrade) { mutableStateOf(initialTrade?.entry?.toString() ?: "") }
+    var exit by remember(initialTrade) { mutableStateOf(initialTrade?.exit?.toString() ?: "") }
+    var quantity by remember(initialTrade) { mutableStateOf(initialTrade?.quantity?.toString() ?: "1") }
+    var fees by remember(initialTrade) { mutableStateOf(initialTrade?.fees?.toString() ?: "0") }
+    var notes by remember(initialTrade) { mutableStateOf(initialTrade?.notes ?: "") }
+    var strategy by remember(initialTrade) { mutableStateOf(initialTrade?.strategy ?: "") }
+    var mistake by remember(initialTrade) { mutableStateOf(initialTrade?.mistake ?: "") }
+    var riskUsd by remember(initialTrade) { mutableStateOf(initialTrade?.riskUsd?.toString() ?: "") }
+    var screenshotUri by remember(initialTrade) { mutableStateOf(initialTrade?.screenshotUri ?: "") }
     var riskAcknowledged by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
@@ -289,7 +309,7 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Record closed trade") },
+        title = { Text(if (initialTrade == null) "Record closed trade" else "Edit closed trade") },
         text = {
             Column(
                 Modifier.fillMaxWidth().heightIn(max = 520.dp),
@@ -343,12 +363,12 @@ private fun AddTradeDialog(maxTradeRisk: Double, onDismiss: () -> Unit, onAdd: (
                     else -> null
                 }
                 if (error == null) onAdd(TradeEntry(
-                    id = "${System.currentTimeMillis()}-${symbol.trim().uppercase(Locale.ROOT)}",
+                    id = initialTrade?.id ?: "${System.currentTimeMillis()}-${symbol.trim().uppercase(Locale.ROOT)}",
                     date = date.trim(), symbol = symbol.trim().uppercase(Locale.ROOT), side = side,
                     entry = e!!, exit = x!!, quantity = q!!, fees = fee!!, notes = notes.trim(),
                     strategy = strategy.trim(), mistake = mistake.trim(), riskUsd = plannedRisk, screenshotUri = screenshotUri
                 ))
-            }) { Text("Save trade") }
+            }) { Text(if (initialTrade == null) "Save trade" else "Save changes") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
