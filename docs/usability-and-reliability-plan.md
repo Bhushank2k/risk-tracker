@@ -4,6 +4,8 @@ This plan prioritizes trustworthy numbers and a short daily workflow over adding
 
 ## Delivered in this branch
 
+- Configurable in-app risk alerts for daily loss-limit breaches, recorded peak drawdown, and stale Binance sync, with locally saved opt-in rules and threshold validation.
+- Unit tests for alert threshold crossings, unknown P&L, disconnected exchange state, and stale-sync conditions.
 - Dedicated Binance Sync Health screen, reachable from Tools and the Overview dashboard.
 - Persisted last-attempt and last-success timestamps, rolling-window bounds, fetched and inserted execution counts, and failed-symbol request counts.
 - Distinct status for a complete rolling-window sync, partial sync, and failed sync.
@@ -15,7 +17,7 @@ This plan prioritizes trustworthy numbers and a short daily workflow over adding
 
 ### 1. Ledger trust
 
-- Store executions in a database with stable exchange-scoped IDs and indexed timestamps.
+- Migrate SharedPreferences-backed records to Room with a versioned, tested migration path; retain stable exchange-scoped IDs and indexed timestamps.
 - Track per-market/per-symbol coverage ranges and import batches.
 - Reconcile realized P&L, commissions, funding, fee-asset conversions, Spot cost basis, and manual estimates without double-counting.
 - Show stale data, unknown fee conversions, incomplete cost basis, and unreconciled source totals as explicit warnings.
@@ -30,7 +32,7 @@ This plan prioritizes trustworthy numbers and a short daily workflow over adding
 
 ### 3. Risk management
 
-- Add opt-in alerts for daily loss limits, drawdown, consecutive losses, and stale account data.
+- Extend the new in-app alerts with optional Android notifications and consecutive-loss checks, with clear notification-permission controls.
 - Distinguish realized P&L, unrealized P&L, equity, notional exposure, and margin.
 - Label liquidation calculations as estimates unless sourced from the exchange.
 
