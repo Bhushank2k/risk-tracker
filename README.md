@@ -47,3 +47,6 @@ Use a read-only Binance API key with no trading or withdrawal permissions. Never
 ## Product roadmap
 
 See [docs/product-roadmap.md](docs/product-roadmap.md) for the staged feature roadmap and engineering guardrails. See [docs/usability-and-reliability-plan.md](docs/usability-and-reliability-plan.md) for usability, data-trust, backup, risk-alert, and release-quality priorities. The new features are under review in [pull request #45](https://github.com/Bhushank2k/risk-tracker/pull/45). Trade plans and review notes use separate local storage and are included in newly exported backup bundles. Older backup files remain importable; because they predate these fields, importing an older bundle leaves existing trade plans and reviews unchanged.
+
+
+Risk alerts can optionally post Android notifications in the background. Enable **Background notifications** on the Risk alerts screen and grant notification permission when Android asks. WorkManager checks about every 15 minutes (Android may delay background work); a notification is sent when an alert first becomes active, not repeatedly while it stays active. Notifications are advisory and are not real-time, broker-enforced, or guaranteed to run on schedule. Daily P&L, drawdown, and loss-streak checks use locally saved data; stale-sync alerts require saved Binance credentials.
