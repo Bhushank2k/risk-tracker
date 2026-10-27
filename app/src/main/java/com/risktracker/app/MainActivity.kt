@@ -837,7 +837,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         tableDailyRows.asReversed().forEach { (day, openingBalance, manualEntry) ->
                             val dailyPnl = day.selectedPnl
                             val dailyTarget = (openingBalance * 0.02).coerceAtLeast(0.0)
-                            val completed = dailyPnl >= dailyTarget
+                            val hasOpeningBalance = openingBalance > 0.0
+                            val completed = hasOpeningBalance && dailyPnl >= dailyTarget
                             Row(
                                 Modifier.fillMaxWidth().padding(vertical = 9.dp, horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -851,10 +852,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                                 Text(dailyTarget.usd(), Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
                                 Row(Modifier.width(145.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        if (completed) "Target complete" else "Target incomplete",
+                                        when { !hasOpeningBalance -> "Set opening bal"; completed -> "Target complete"; else -> "Target incomplete" },
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        color = if (completed) MaterialTheme.colorScheme.primary else if (hasOpeningBalance) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     if (manualEntry != null) {
                                         IconButton(onClick = {
