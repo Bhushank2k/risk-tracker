@@ -109,6 +109,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var input by remember { mutableStateOf(store.loadInput()) }
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
+    val todayPnlDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    val todayReconciledPnl = remember(entries, importedPnl, trades, todayPnlDate) {
+        reconcileDailyPnl(entries, importedPnl, trades).firstOrNull { it.date == todayPnlDate }
+    }
     var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
@@ -257,13 +261,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
                     maxTradeRisk = store.maxTradeRisk,
                     maxDailyLoss = store.maxDailyLoss,
-                    dailyPnl = reconcileDailyPnl(entries, importedPnl, trades)
-                        .lastOrNull { it.date == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-                        ?.selectedPnl ?: 0.0,
+                    dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
                     maxTradesPerDay = 10,
-                    tradesTakenToday = trades.count {
-                        canonicalPnlDate(it.date) == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                    }
+                    tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
+                    dailyPnlKnown = todayReconciledPnl != null
                 ))
                 12 -> BehavioralInsightsScreen(trades)
                 13 -> RiskScenarioLabScreen()
