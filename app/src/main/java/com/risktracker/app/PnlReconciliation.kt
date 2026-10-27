@@ -32,8 +32,8 @@ fun canonicalPnlDate(value: String): String? {
 }
 
 /**
- * Creates one P&L row per calendar day. Manual records take precedence over Binance values;
- * Binance fills dates without a manual record; journal trades fill dates absent from both.
+ * Creates one P&L row per calendar day. Binance history takes precedence when available; manual records are fallback values;
+ * journal trades fill dates absent from both.
  * Overlap discrepancies are retained for transparency rather than silently added together.
  */
 fun reconcileDailyPnl(
@@ -57,8 +57,8 @@ fun reconcileDailyPnl(
         val binance = binanceByDate[date]
         val journal = journalByDate[date]
         val source = when {
-            manual != null -> DailyPnlSource.MANUAL
             binance != null -> DailyPnlSource.BINANCE
+            manual != null -> DailyPnlSource.MANUAL
             else -> DailyPnlSource.JOURNAL
         }
         ReconciledDailyPnl(
