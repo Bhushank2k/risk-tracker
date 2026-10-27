@@ -578,7 +578,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Today's P&L: \${todayPnl.usd()} (\${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)})",
+                                Text("Today's P&L: ${todayPnl.usd()} (${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)})",
                                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                 Text("Each day's target is 2% of that day's opening balance. Extra profit raises the next day's opening balance and target.",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -593,23 +593,26 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                 }
             }
             item {
+                val fixedDailyTarget = ((todayEntry?.balance
+                    ?: entries.maxByOrNull { reportDate(it.date)?.time ?: Long.MIN_VALUE }?.closing
+                    ?: 0.0) * 0.02).coerceAtLeast(0.0)
                 val suggestion = when {
                     maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss ->
                         "Your recorded daily loss has reached the configured limit (" + todayPnl.usd() + " of " + maxDailyLoss.usd() + "). Consider stopping for the day and reviewing your plan."
                     maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss * 0.75 ->
                         "You've used " + ((-todayPnl / maxDailyLoss) * 100).toInt() + "% of your daily loss limit. Consider reducing risk or pausing before taking another trade."
-                    dailyProfitTarget > 0.0 && todayPnl >= dailyProfitTarget ->
-                        "Your recorded daily profit target is reached (" + todayPnl.usd() + " of " + dailyProfitTarget.usd() + "). Consider protecting gains and sticking to your plan."
+                    todayEntry != null && todayPnl >= fixedDailyTarget ->
+                        "Your fixed 2% daily profit target is complete (" + todayPnl.usd() + " of " + fixedDailyTarget.usd() + "). Consider protecting gains and sticking to your plan."
                     todayPnl > 0.0 ->
                         "Today's recorded P&L is " + todayPnl.usd() + ". Keep position risk within your saved limits and avoid increasing size just because you're up."
                     else ->
-                        "No daily profit or loss threshold has been reached from today's manual ledger entry. Keep planned risk within your saved limits and verify synced exchange data separately."
+                        "Today's 2% target is incomplete. Target is " + fixedDailyTarget.usd() + " based on the opening balance. Keep planned risk within your limits and verify synced exchange data separately."
                 }
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Today's suggestion", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("Based on today's manual P&L and your configured limits; advisory only.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                        Text("Daily profit target is fixed at 2% of the opening balance. Loss limits remain separately configurable; advisory only.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
                     }
                 }
             }
@@ -812,7 +815,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                             }
                             if (e.disciplineScore > 0 || e.notes.isNotBlank()) {
                                 Text(
-                                    listOf(if (e.disciplineScore > 0) "Discipline \${e.disciplineScore}/5" else "", e.notes).filter { it.isNotBlank() }.joinToString(" · "),
+                                    listOf(if (e.disciplineScore > 0) "Discipline ${e.disciplineScore}/5" else "", e.notes).filter { it.isNotBlank() }.joinToString(" · "),
                                     Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
