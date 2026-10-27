@@ -52,6 +52,75 @@ data class BinanceDailyResult(val date: String, val spotPnl: Double, val futures
     val total: Double get() = spotPnl + futuresPnl
 }
 
+data class BinanceAccountSnapshot(
+    val spot: BinancePortfolioBalance,
+    val futures: BinanceFuturesAccountBalance,
+    val savedAt: Long
+)
+
+/** Keeps the last successful read-only account snapshot visible when a later refresh fails or the device is offline. */
+class BinanceAccountSnapshotStore(context: Context) {
+    private val prefs = context.getSharedPreferences("binance_account_snapshot_v1", Context.MODE_PRIVATE)
+
+    fun save(spot: BinancePortfolioBalance, futures: BinanceFuturesAccountBalance) {
+        val root = JSONObject()
+            .put("savedAt", System.currentTimeMillis())
+            .put("spotValueUsdt", spot.valueUsdt)
+            .put("spotAssetsHeld", spot.assetsHeld)
+            .put("spotUnpricedAssets", spot.unpricedAssets)
+            .put("spotFetchedAt", spot.fetchedAt)
+            .put("futuresWalletBalance", futures.walletBalance)
+            .put("futuresUnrealizedPnl", futures.unrealizedPnl)
+            .put("futuresTotalEquity", futures.totalEquity)
+            .put("futuresAvailableBalance", futures.availableBalance)
+            .put("futuresFetchedAt", futures.fetchedAt)
+        val assets = JSONArray()
+        futures.assets.forEach { asset ->
+            assets.put(JSONObject()
+                .put("asset", asset.asset)
+                .put("walletBalance", asset.walletBalance)
+                .put("unrealizedPnl", asset.unrealizedPnl)
+                .put("marginBalance", asset.marginBalance)
+                .put("availableBalance", asset.availableBalance))
+        }
+        root.put("futuresAssets", assets)
+        prefs.edit().putString("snapshot", root.toString()).apply()
+    }
+
+    fun load(): BinanceAccountSnapshot? = runCatching {
+        val root = JSONObject(prefs.getString("snapshot", null) ?: return null)
+        val spotFetchedAt = root.optLong("spotFetchedAt")
+        val futuresFetchedAt = root.optLong("futuresFetchedAt")
+        val spot = BinancePortfolioBalance(
+            valueUsdt = root.optDouble("spotValueUsdt"),
+            assetsHeld = root.optInt("spotAssetsHeld"),
+            unpricedAssets = root.optInt("spotUnpricedAssets"),
+            fetchedAt = spotFetchedAt
+        )
+        val assetsJson = root.optJSONArray("futuresAssets") ?: JSONArray()
+        val assets = (0 until assetsJson.length()).map { index ->
+            val asset = assetsJson.getJSONObject(index)
+            BinanceFuturesAssetBalance(
+                asset = asset.optString("asset"),
+                walletBalance = asset.optDouble("walletBalance"),
+                unrealizedPnl = asset.optDouble("unrealizedPnl"),
+                marginBalance = asset.optDouble("marginBalance"),
+                availableBalance = asset.optDouble("availableBalance")
+            )
+        }
+        val futures = BinanceFuturesAccountBalance(
+            walletBalance = root.optDouble("futuresWalletBalance"),
+            unrealizedPnl = root.optDouble("futuresUnrealizedPnl"),
+            totalEquity = root.optDouble("futuresTotalEquity"),
+            availableBalance = root.optDouble("futuresAvailableBalance"),
+            assets = assets,
+            fetchedAt = futuresFetchedAt
+        )
+        val savedAt = root.optLong("savedAt", maxOf(spotFetchedAt, futuresFetchedAt))
+        BinanceAccountSnapshot(spot, futures, savedAt)
+    }.getOrNull()
+}
+
 /** Encrypted with an Android Keystore AES-GCM key; credentials are never logged or exported. */
 class BinanceCredentialStore(context: Context) {
     private val prefs = context.getSharedPreferences("binance_credentials_v1", Context.MODE_PRIVATE)
