@@ -883,15 +883,6 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                         }
-                            if (e.disciplineScore > 0 || e.notes.isNotBlank()) {
-                                Text(
-                                    listOf(if (e.disciplineScore > 0) "Discipline ${e.disciplineScore}/5" else "", e.notes).filter { it.isNotBlank() }.joinToString(" · "),
-                                    Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                        }
                     }
                 }
             }
