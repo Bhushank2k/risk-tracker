@@ -274,10 +274,14 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
-                2 -> CombinedTradingCalculatorScreen(input) {
-                    input = it
-                    store.saveInput(it)
-                }
+                2 -> CombinedTradingCalculatorScreen(
+                    input = input,
+                    accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
+                    onChange = {
+                        input = it
+                        store.saveInput(it)
+                    }
+                )
                 3 -> LeverageScreen(input)
                 4 -> SyncScreen(store, entries, syncedCount) { synced ->
                     entries = synced
@@ -1478,7 +1482,7 @@ fun AboutRow(label: String, value: String) {
 // ---------------- Calculator ----------------
 
 @Composable
-fun CalculatorScreen(input: CalcInput, onChange: (CalcInput) -> Unit) {
+fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: (CalcInput) -> Unit) {
     // Text state is kept as strings so partially typed numbers (e.g. "2.") are not rewritten.
     var balance by remember { mutableStateOf(input.balance.toString()) }
     var risk by remember { mutableStateOf(input.riskPercent.toString()) }
@@ -1501,6 +1505,21 @@ fun CalculatorScreen(input: CalcInput, onChange: (CalcInput) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Account & risk settings", style = MaterialTheme.typography.titleMedium)
+        if (accountEquity != null && accountEquity.isFinite() && accountEquity > 0.0) {
+            Card(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Binance account equity", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(accountEquity.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = { balance = accountEquity.toString() }) { Text("Use balance") }
+                }
+            }
+        }
         Field("Account balance (USD)", balance) { balance = it }
         Field("Risk per trade (%)", risk) { risk = it }
         Field("Entry price (USD)", entry) { entry = it }
@@ -1583,7 +1602,7 @@ fun Warn(text: String) {
 // ---------------- Leverage matrix ----------------
 
 @Composable
-fun CombinedTradingCalculatorScreen(input: CalcInput, onChange: (CalcInput) -> Unit) {
+fun CombinedTradingCalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: (CalcInput) -> Unit) {
     var selectedTool by remember { mutableStateOf("Position sizing") }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1592,7 +1611,7 @@ fun CombinedTradingCalculatorScreen(input: CalcInput, onChange: (CalcInput) -> U
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (selectedTool == "Position sizing") CalculatorScreen(input, onChange) else LeverageScreen(input)
+            if (selectedTool == "Position sizing") CalculatorScreen(input, accountEquity, onChange) else LeverageScreen(input)
         }
     }
 }
