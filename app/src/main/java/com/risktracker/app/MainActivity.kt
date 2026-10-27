@@ -647,11 +647,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             }
             item {
                 val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
-                val priorClosingBalance = chronologicalEntries.lastOrNull()?.closing ?: 0.0
-                val initialTodayBalance = todayEntry?.balance ?: priorClosingBalance
+                val initialTodayBalance = todayEntry?.balance ?: 0.0
                 val todayTarget = (initialTodayBalance * 0.02).coerceAtLeast(0.0)
-                val todayBalance = todayEntry?.closing ?: initialTodayBalance
-                val targetComplete = todayEntry != null && todayPnl >= todayTarget
+                val todayBalance = if (initialTodayBalance > 0.0) initialTodayBalance + todayPnl else 0.0
+                val targetComplete = initialTodayBalance > 0.0 && todayReconciled != null && todayPnl >= todayTarget
                 Card(
                     Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -677,7 +676,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Today's P&L: ${todayPnl.usd()} (${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)})",
+                                Text(if (todayReconciled == null) "Today's P&L: no reconciled data" else "Today's P&L: ${todayPnl.usd()} (${if (initialTodayBalance > 0) (todayPnl / initialTodayBalance * 100).pct(2) else 0.0.pct(2)}) · ${todayReconciled.source.name}",
                                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                 Text("Each day's target is 2% of that day's opening balance. Extra profit raises the next day's opening balance and target.",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
