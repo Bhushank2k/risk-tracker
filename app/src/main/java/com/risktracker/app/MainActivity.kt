@@ -473,6 +473,12 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val totalOverlapDifference = overlapRows.sumOf { kotlin.math.abs(it.discrepancy ?: 0.0) }
     val todayEntry = pnlEntryForDate(entries)
     val todayPnl = todayEntry?.pnl ?: 0.0
+    val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MAX_VALUE }
+    val initialBalance = chronologicalEntries.firstOrNull()?.balance ?: 0.0
+    val latestLedgerEntry = chronologicalEntries.lastOrNull()
+    val todayOpeningBalance = todayEntry?.balance ?: latestLedgerEntry?.closing ?: initialBalance
+    val todayTarget = (todayOpeningBalance * 0.02).coerceAtLeast(0.0)
+    val todayTargetComplete = todayEntry != null && todayEntry.pnl >= todayTarget
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
     val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
@@ -501,6 +507,47 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("DAILY P&L TARGET", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Initial Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(initialBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(todayOpeningBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("2% Target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(todayTarget.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        HorizontalDivider()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(if (todayEntry == null) "Today's P&L" else "Today's P&L",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (todayEntry == null) "No entry yet" else todayPnl.usd(),
+                                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                                    color = if (todayEntry == null) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(todayPnl))
+                            }
+                            Text(
+                                if (todayEntry == null) "Awaiting entry" else if (todayTargetComplete) "Target complete" else "Target incomplete",
+                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                                color = if (todayEntry == null) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else if (todayTargetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Text("Fixed target: 2% of the day's opening balance. Each following day's target rises or falls with its opening balance; a larger closing balance after an over-target day increases the next target automatically. This is a planning benchmark, not a guaranteed return.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             item {
                 Card(
                     Modifier.fillMaxWidth(),
@@ -732,14 +779,6 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                                 }
                             }
                         }
-                    }
-                }
-            }
-            if (todayEntry?.pnl?.let { it >= dailyProfitTarget } == true) {
-                item {
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Text("Daily profit target reached: " + todayEntry!!.pnl.usd() + " of " + dailyProfitTarget.usd() + ". Protect your gains and follow your plan.",
-                            Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
