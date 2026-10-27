@@ -744,8 +744,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         Text(if (todayReconciled == null) "—" else (if (todayPnl > 0.0) "+" else "") + todayPnl.usd(),
                             style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
                             color = if (todayReconciled == null) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else if (todayPnl < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text(if (todayReconciled == null) "No reconciled P&L recorded for today. Add a daily result or sync exchange data."
-                            else "Source: ${todayReconciled.source.name.lowercase().replaceFirstChar { it.uppercase() }} · fees and funding depend on the selected source",
+                        Text(if (todayReconciled == null) "No synced result for today"
+                            else "Source: ${todayReconciled.source.name.lowercase().replaceFirstChar { it.uppercase() }}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
                         HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -825,8 +825,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("Daily loss budget", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Text(when {
-                                    maxDailyLoss <= 0.0 -> "Set a limit in Tools & settings to track your risk budget."
-                                    todayReconciled == null -> "Waiting for today's P&L data; usage is not estimated."
+                                    maxDailyLoss <= 0.0 -> "Daily loss limit not configured"
+                                    todayReconciled == null -> "Today's P&L unavailable"
                                     else -> "${((-todayPnl).coerceAtLeast(0.0) / maxDailyLoss * 100).toInt()}% of your configured limit used"
                                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -846,7 +846,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         } else if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -(maxDailyLoss * 0.8)) {
                             Text("Caution: at least 80% of your daily loss budget has been used.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("Advisory only: this uses recorded P&L and does not enforce a broker-side stop.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Advisory · based on recorded P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -860,7 +860,6 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                             TextButton(onClick = { onNavigate(18) }) { Text("Details") }
                         }
-                        Text(journalSyncStatus.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -904,9 +903,9 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Combined daily P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Reconciled net P&L: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
-                            Text("Manual days: ${reconciledDailyPnl.count { it.source == DailyPnlSource.MANUAL }} · Binance-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.BINANCE }} · Journal-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.JOURNAL }}",
+                            Text("Sources · Manual ${reconciledDailyPnl.count { it.source == DailyPnlSource.MANUAL }} · Binance ${reconciledDailyPnl.count { it.source == DailyPnlSource.BINANCE }} · Journal ${reconciledDailyPnl.count { it.source == DailyPnlSource.JOURNAL }}",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Binance daily P&L takes precedence on overlapping dates; manual records are fallback, then closed journal trades fill remaining dates. Overlaps are never added twice and differences are flagged below. Live Spot estimate + Futures equity is shown separately from historical/manual ledger balances.",
+                            Text("Binance takes priority on overlapping dates; manual and journal data fill missing dates. Overlaps are not added twice.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (mismatchRows.isNotEmpty()) {
                                 Text("${mismatchRows.size} overlapping dates differ by more than \$0.01; total absolute difference: ${totalOverlapDifference.usd()}. Review the values below before treating the combined total as final.",
