@@ -11,13 +11,13 @@ class PnlReconciliationTest {
         assertNull(canonicalPnlDate("not-a-date"))
     }
 
-    @Test fun manualWinsButOverlapRemainsVisibleAndDoesNotDoubleCount() {
+    @Test fun binanceWinsButOverlapRemainsVisibleAndDoesNotDoubleCount() {
         val manual = listOf(PnlEntry("6/6/2026", 100.0, 5.0))
         val binance = listOf(BinanceDailyResult("2026-06-06", 2.0, 4.0))
         val rows = reconcileDailyPnl(manual, binance, emptyList())
         assertEquals(1, rows.size)
-        assertEquals(DailyPnlSource.MANUAL, rows.single().source)
-        assertEquals(5.0, rows.single().selectedPnl, 0.0001)
+        assertEquals(DailyPnlSource.BINANCE, rows.single().source)
+        assertEquals(6.0, rows.single().selectedPnl, 0.0001)
         assertEquals(1.0, rows.single().discrepancy!!, 0.0001)
     }
 
