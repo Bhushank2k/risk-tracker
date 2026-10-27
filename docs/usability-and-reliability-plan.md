@@ -4,7 +4,7 @@ This plan prioritizes trustworthy numbers and a short daily workflow over adding
 
 ## Delivered in this branch
 
-- Configurable in-app risk alerts for daily loss-limit breaches, recorded peak drawdown, and stale Binance sync, with locally saved opt-in rules and threshold validation.
+- Configurable in-app risk alerts for daily loss-limit breaches, consecutive-loss streaks, recorded peak drawdown, and stale Binance sync, with locally saved opt-in rules and threshold validation.
 - Unit tests for alert threshold crossings, unknown P&L, disconnected exchange state, and stale-sync conditions.
 - Dedicated Binance Sync Health screen, reachable from Tools and the Overview dashboard.
 - Persisted last-attempt and last-success timestamps, rolling-window bounds, fetched and inserted execution counts, and failed-symbol request counts.
