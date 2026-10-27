@@ -145,7 +145,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
     val journalDays = reconciledPnl.count { it.source == DailyPnlSource.JOURNAL }
     val overlapCount = reconciledPnl.count { it.discrepancy != null }
     val resultBalances = if (filteredEntries.isNotEmpty()) filteredEntries.map { it.closing } else emptyList()
-    val snapshot = remember(filteredEntries, filteredImportedPnl, filteredTrades, useImportedFallback, useJournalFallback, resultPnl, resultBalances) {
+    val snapshot = remember(filteredEntries, filteredImportedPnl, filteredTrades, resultPnl, resultBalances, trades.size) {
         buildPerformanceSnapshot(resultPnl, resultBalances, trades.size)
     }
     LazyColumn(
