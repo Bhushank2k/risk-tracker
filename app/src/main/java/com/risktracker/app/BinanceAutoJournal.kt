@@ -29,6 +29,19 @@ data class BinanceJournalFill(
     val orderId: String
 )
 
+data class BinanceJournalSyncStatus(
+    val lastAttempt: Long = 0L,
+    val lastSuccess: Long = 0L,
+    val state: String = "Never synced",
+    val detail: String = "Connect Binance with read-only API credentials to start automatic sync.",
+    val symbolsAttempted: Int = 0,
+    val symbolsFailed: Int = 0,
+    val fillsFetched: Int = 0,
+    val fillsInserted: Int = 0,
+    val windowStart: Long = 0L,
+    val windowEnd: Long = 0L
+)
+
 object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
@@ -96,6 +109,38 @@ object BinanceAutoJournalStore {
 
     fun lastSync(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
+
+    fun syncStatus(context: Context): BinanceJournalSyncStatus {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return BinanceJournalSyncStatus(
+            lastAttempt = p.getLong("sync_last_attempt", 0L),
+            lastSuccess = p.getLong("sync_last_success", 0L),
+            state = p.getString("sync_state", "Never synced") ?: "Never synced",
+            detail = p.getString("sync_detail", "Connect Binance with read-only API credentials to start automatic sync.")
+                ?: "Connect Binance with read-only API credentials to start automatic sync.",
+            symbolsAttempted = p.getInt("sync_symbols_attempted", 0),
+            symbolsFailed = p.getInt("sync_symbols_failed", 0),
+            fillsFetched = p.getInt("sync_fills_fetched", 0),
+            fillsInserted = p.getInt("sync_fills_inserted", 0),
+            windowStart = p.getLong("sync_window_start", 0L),
+            windowEnd = p.getLong("sync_window_end", 0L)
+        )
+    }
+
+    fun recordSyncStatus(context: Context, status: BinanceJournalSyncStatus) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("sync_last_attempt", status.lastAttempt)
+            .putLong("sync_last_success", status.lastSuccess)
+            .putString("sync_state", status.state)
+            .putString("sync_detail", status.detail)
+            .putInt("sync_symbols_attempted", status.symbolsAttempted)
+            .putInt("sync_symbols_failed", status.symbolsFailed)
+            .putInt("sync_fills_fetched", status.fillsFetched)
+            .putInt("sync_fills_inserted", status.fillsInserted)
+            .putLong("sync_window_start", status.windowStart)
+            .putLong("sync_window_end", status.windowEnd)
+            .apply()
+    }
 }
 
 /**
@@ -103,34 +148,92 @@ object BinanceAutoJournalStore {
  * current Spot holdings and currently open USDⓈ-M positions. Use Historical import to seed older
  * or closed symbols; Binance doesn't provide a single all-symbol user-trades endpoint.
  */
+internal fun classifyBinanceSyncState(success: Boolean, failureCount: Int, discoverySucceeded: Int): String = when {
+    success -> "Up to date (7-day window)"
+    failureCount > 0 && discoverySucceeded > 0 -> "Partial sync"
+    else -> "Sync failed"
+}
+
 object BinanceAutoJournalRunner {
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
-        val credentials = BinanceCredentialStore(context).read() ?: return@withContext 0
+        val attemptedAt = System.currentTimeMillis()
+        val previous = BinanceAutoJournalStore.syncStatus(context)
+        val credentials = BinanceCredentialStore(context).read()
+        if (credentials == null) {
+            BinanceAutoJournalStore.recordSyncStatus(context, previous.copy(
+                lastAttempt = attemptedAt,
+                state = "Not connected",
+                detail = "Connect Binance with read-only API credentials. No exchange requests were made."
+            ))
+            return@withContext 0
+        }
+
         val api = BinanceApi(credentials.first, credentials.second)
-        val end = System.currentTimeMillis()
+        val end = attemptedAt
         val start = end - 7L * 24 * 60 * 60 * 1000
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
+        val failures = mutableListOf<String>()
+        var discoverySucceeded = 0
 
         runCatching { api.recentSpotTransactions().forEach { knownSpot += it.symbol } }
+            .onSuccess { discoverySucceeded++ }
+            .onFailure { failures += "Spot symbol discovery: ${it.message ?: "request failed"}" }
         runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
+            .onSuccess { discoverySucceeded++ }
+            .onFailure { failures += "Futures position discovery: ${it.message ?: "request failed"}" }
         runCatching { knownFutures += api.recentFuturesSymbols(start, end) }
+            .onSuccess { discoverySucceeded++ }
+            .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
 
         val fetched = mutableListOf<BinanceJournalFill>()
-        knownSpot.take(100).forEach { symbol ->
-            runCatching { fetched += api.spotExecutionHistory(symbol, start, end) }
+        var symbolsAttempted = 0
+        var symbolFailures = 0
+        (knownSpot.take(100).map { "Spot" to it } +
+            knownFutures.take(100).map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
+            symbolsAttempted++
+            val result = runCatching {
+                if (market == "Spot") api.spotExecutionHistory(symbol, start, end)
+                else api.futuresExecutionHistory(symbol, start, end)
+            }
+            result.onSuccess { fetched += it }
+                .onFailure { symbolFailures++; failures += "$market $symbol: ${it.message ?: "request failed"}" }
         }
-        knownFutures.take(100).forEach { symbol ->
-            runCatching { fetched += api.futuresExecutionHistory(symbol, start, end) }
+
+        val inserted = BinanceAutoJournalStore.merge(context, fetched)
+        val success = failures.isEmpty() && discoverySucceeded > 0
+        val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
+        val detail = when (state) {
+            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Historical coverage before this window is not guaranteed."
+            "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
+            else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
+                ?: "No discovery request succeeded. Check network access and read-only API permissions."
         }
-        BinanceAutoJournalStore.merge(context, fetched)
+        val priorSuccess = previous.lastSuccess
+        BinanceAutoJournalStore.recordSyncStatus(context, BinanceJournalSyncStatus(
+            lastAttempt = attemptedAt,
+            lastSuccess = if (success) attemptedAt else priorSuccess,
+            state = state,
+            detail = detail,
+            symbolsAttempted = symbolsAttempted,
+            symbolsFailed = symbolFailures,
+            fillsFetched = fetched.size,
+            fillsInserted = inserted,
+            windowStart = start,
+            windowEnd = end
+        ))
+        inserted
     }
 }
 
 class BinanceJournalWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
-        else { BinanceAutoJournalRunner.sync(applicationContext); Result.success() }
+        else {
+            BinanceAutoJournalRunner.sync(applicationContext)
+            val state = BinanceAutoJournalStore.syncStatus(applicationContext).state
+            if (state == "Sync failed" || state == "Partial sync") Result.retry() else Result.success()
+        }
     } catch (_: Exception) { Result.retry() }
 
     companion object {

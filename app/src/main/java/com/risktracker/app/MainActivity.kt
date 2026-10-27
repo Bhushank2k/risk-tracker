@@ -149,6 +149,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "EXCHANGE & DATA" to listOf(
             "Binance sync" to 6,
+            "Sync health" to 18,
             "Binance statements" to 17,
             "Live trades (read-only)" to 16,
             "CSV / Sheets sync" to 4,
@@ -302,12 +303,139 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
+                18 -> BinanceSyncHealthScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
                         trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
+            }
+        }
+    }
+}
+
+// ---------------- Binance sync health ----------------
+
+@Composable
+fun BinanceSyncHealthScreen() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
+    var fillCount by remember { mutableIntStateOf(BinanceAutoJournalStore.load(context).size) }
+    var loading by remember { mutableStateOf(false) }
+    var operationError by remember { mutableStateOf<String?>(null) }
+
+    fun timeLabel(value: Long): String =
+        if (value <= 0L) "Not recorded" else
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(value))
+
+    fun syncNow() {
+        if (loading) return
+        if (BinanceCredentialStore(context).read() == null) {
+            status = BinanceAutoJournalStore.syncStatus(context)
+            operationError = "Binance is not connected. Open Binance sync and add a read-only API key."
+            return
+        }
+        loading = true
+        operationError = null
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
+                status = BinanceAutoJournalStore.syncStatus(context)
+                fillCount = BinanceAutoJournalStore.load(context).size
+            } catch (e: Exception) {
+                operationError = e.message ?: "Sync failed unexpectedly. Check connectivity and API permissions."
+                status = BinanceAutoJournalStore.syncStatus(context)
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Sync health", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Monitor automatic Binance execution-history collection. This screen reports sync attempts; it cannot prove that the exchange has returned every historical trade.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(
+                            if (status.state.startsWith("Up to date")) Icons.Default.Refresh else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (status.state.startsWith("Up to date")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                        Text(status.state, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(status.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { syncNow() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                        if (loading) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (loading) "Syncing…" else "Sync now")
+                    }
+                    operationError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Latest attempt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Last attempt", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeLabel(status.lastAttempt), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Last fully successful sync", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeLabel(status.lastSuccess), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Saved executions", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(fillCount.toString(), fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Records fetched last attempt", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(status.fillsFetched.toString())
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("New records added", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(status.fillsInserted.toString())
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Symbols attempted", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(status.symbolsAttempted.toString())
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Symbol requests failed", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(status.symbolsFailed.toString(), color = if (status.symbolsFailed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Coverage limits", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("The automatic collector checks a rolling seven-day window and a limited set of discovered or previously known symbols. A successful sync does not mean your entire account history is complete.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Window start: ${timeLabel(status.windowStart)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Window end: ${timeLabel(status.windowEnd)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("For older records or closed symbols that were never discovered, use Binance historical exports or CSV import and reconcile totals before relying on long-term analytics.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -483,6 +611,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     var liveBinanceLoading by remember { mutableStateOf(false) }
     var liveBinanceLastUpdated by remember { mutableStateOf<Long?>(null) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
+    var journalSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(ctx)) }
+    LaunchedEffect(Unit) { journalSyncStatus = BinanceAutoJournalStore.syncStatus(ctx) }
     var showAdd by remember { mutableStateOf(false) }
     var dashboardRange by remember { mutableStateOf("All") }
     val stats = computeStats(entries)
@@ -554,6 +684,22 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("EXCHANGE SYNC", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                Text(journalSyncStatus.state, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            }
+                            TextButton(onClick = { onNavigate(18) }) { Text("Details") }
+                        }
+                        Text(journalSyncStatus.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
