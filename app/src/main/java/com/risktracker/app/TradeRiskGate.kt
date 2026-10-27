@@ -184,7 +184,8 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
                         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
                         symbol.trim().uppercase(Locale.ROOT), side, balance.toDouble(), risk.toDouble(),
                         entry.toDouble(), stop.toDouble(), parsedTarget, fees.toDouble(),
-                        evaluation.quantity, evaluation.plannedRisk, evaluation.riskReward)
+                        evaluation.quantity, evaluation.plannedRisk, evaluation.riskReward,
+                        status = if (evaluation.ready) "CHECKS_PASSED" else "REVIEW_REQUIRED")
                     plans = listOf(plan) + plans
                     store.save(plans)
                 }, enabled = evaluation.valid && symbol.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save trade plan") }
@@ -197,6 +198,15 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(p.symbol + " · " + p.side, fontWeight = FontWeight.Bold)
                     Text(p.createdAt + " · Risk " + "%.2f".format(Locale.US, p.plannedRisk) + " · Qty " + "%.6f".format(Locale.US, p.plannedQuantity))
+                    Text(
+                        when (p.status) {
+                            "CHECKS_PASSED" -> "Status: all configured checks passed when saved"
+                            "REVIEW_REQUIRED" -> "Status: warnings present when saved — review before trading"
+                            else -> "Status: " + p.status.replace('_', ' ').lowercase(Locale.US)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (p.status == "CHECKS_PASSED") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
                     Text("Entry " + p.entry + " · Stop " + p.stopLoss + " · Target " + (p.target?.toString() ?: "—"))
                     OutlinedButton(onClick = { plans = plans.filterNot { it.id == p.id }; store.save(plans) }) { Text("Delete") }
                 }
