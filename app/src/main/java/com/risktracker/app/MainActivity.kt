@@ -176,7 +176,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
-                navigationIcon = {
+                actions = {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
                     }
@@ -614,8 +614,41 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     var liveBinanceLastUpdated by remember { mutableStateOf<Long?>(null) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var journalSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(ctx)) }
-    LaunchedEffect(Unit) { journalSyncStatus = BinanceAutoJournalStore.syncStatus(ctx) }
     var showAdd by remember { mutableStateOf(false) }
+    fun refreshLiveAccount() {
+        if (liveBinanceLoading) return
+        val credentials = BinanceCredentialStore(ctx).read()
+        if (credentials == null) {
+            liveBinanceStatus = "Connect Binance to load account equity."
+            return
+        }
+        liveBinanceLoading = true
+        liveBinanceStatus = "Refreshing Binance balances…"
+        scope.launch {
+            try {
+                val api = BinanceApi(credentials.first, credentials.second)
+                val balances = withContext(Dispatchers.IO) {
+                    api.spotPortfolioBalance() to api.futuresAccountBalance()
+                }
+                liveBinanceBalance = balances.first
+                liveBinanceFuturesBalance = balances.second
+                liveBinanceLastUpdated = System.currentTimeMillis()
+                liveBinanceStatus = if (balances.first.unpricedAssets > 0) {
+                    "Updated. ${balances.first.unpricedAssets} Spot asset(s) could not be priced and are excluded from the estimate."
+                } else {
+                    "Balances updated from Binance."
+                }
+            } catch (e: Exception) {
+                liveBinanceStatus = e.message ?: "Could not refresh Binance balances. Check connection and read-only API permissions."
+            } finally {
+                liveBinanceLoading = false
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        journalSyncStatus = BinanceAutoJournalStore.syncStatus(ctx)
+        refreshLiveAccount()
+    }
     var dashboardRange by remember { mutableStateOf("All") }
     val stats = computeStats(entries)
     val livePortfolioBalance = if (liveBinanceBalance != null && liveBinanceFuturesBalance != null)
@@ -723,6 +756,59 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                 Text("Win-day rate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
                                 Text(stats.winRate.pct(0), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Binance account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    liveBinanceLastUpdated?.let { "Updated " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(it)) } ?: "No live balance snapshot",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(onClick = { refreshLiveAccount() }, enabled = !liveBinanceLoading) {
+                                if (liveBinanceLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                else Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (liveBinanceLoading) "Syncing" else "Refresh")
+                            }
+                        }
+                        Text(
+                            if (livePortfolioBalance != null) livePortfolioBalance.usd() else "Unavailable",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text("Estimated Spot value + USDⓈ-M Futures equity", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Binance net P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (importedPnl.isEmpty()) "Unavailable" else (if (importedPnl.sumOf { it.total } > 0.0) "+" else "") + importedPnl.sumOf { it.total }.usd(),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (importedPnl.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(importedPnl.sumOf { it.total })
+                                )
+                                Text("From imported Binance daily history", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("Starting capital", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (initialBalance > 0.0) initialBalance.usd() else "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (initialBalance > 0.0) "First recorded ledger balance" else "Requires reconciled opening balance and transfers",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = if (liveBinanceStatus.startsWith("Could not")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (liveBinanceBalance?.unpricedAssets ?: 0 > 0) {
+                            Text("${liveBinanceBalance?.unpricedAssets} Spot asset(s) excluded from the valuation.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
