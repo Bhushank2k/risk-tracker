@@ -480,15 +480,11 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MAX_VALUE }
     val initialBalance = chronologicalEntries.firstOrNull()?.balance ?: 0.0
     val latestLedgerEntry = chronologicalEntries.lastOrNull()
-    val tableDailyRows = run {
-        var runningBalance = initialBalance
-        reconciledDailyPnl.map { day ->
-            val manual = manualByDate[day.date]
-            val opening = manual?.balance ?: runningBalance
-            val closing = opening + day.selectedPnl
-            runningBalance = if (manual != null) manual.closing else closing
-            Triple(day, opening, manual)
-        }
+    // Only show a daily target when that date has an explicitly recorded opening balance.
+    // Carrying yesterday's calculated close forward can disguise missing exchange snapshots.
+    val tableDailyRows = reconciledDailyPnl.map { day ->
+        val manual = manualByDate[day.date]
+        Triple(day, manual?.balance ?: 0.0, manual)
     }
     val todayOpeningBalance = todayEntry?.balance ?: 0.0
     val todayTarget = (todayOpeningBalance * 0.02).coerceAtLeast(0.0)
@@ -537,7 +533,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("2% Target", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(todayTarget.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                Text(if (todayOpeningBalance > 0.0) todayTarget.usd() else "Not set", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary)
                             }
                         }
@@ -945,12 +941,12 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(day.date, Modifier.width(100.dp), style = MaterialTheme.typography.bodySmall)
-                                Text(openingBalance.usd(), Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall)
+                                Text(if (hasOpeningBalance) openingBalance.usd() else "Not set", Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall)
                                 Text((if (dailyPnl > 0) "+" else "") + dailyPnl.usd(), Modifier.width(115.dp),
                                     style = MaterialTheme.typography.bodySmall, color = pnlColor(dailyPnl), fontWeight = FontWeight.SemiBold)
-                                Text((if (openingBalance != 0.0) dailyPnl / openingBalance * 100 else 0.0).pct(2), Modifier.width(85.dp), style = MaterialTheme.typography.bodySmall, color = pnlColor(dailyPnl))
-                                Text((openingBalance + dailyPnl).usd(), Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                Text(dailyTarget.usd(), Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
+                                Text(if (hasOpeningBalance) (dailyPnl / openingBalance * 100).pct(2) else "—", Modifier.width(85.dp), style = MaterialTheme.typography.bodySmall, color = if (hasOpeningBalance) pnlColor(dailyPnl) else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (hasOpeningBalance) (openingBalance + dailyPnl).usd() else "Not set", Modifier.width(115.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                Text(if (hasOpeningBalance) dailyTarget.usd() else "—", Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
                                 Row(Modifier.width(145.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         when { !hasOpeningBalance -> "Set opening bal"; completed -> "Target complete"; else -> "Target incomplete" },
