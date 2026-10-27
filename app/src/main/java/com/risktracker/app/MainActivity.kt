@@ -455,6 +455,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     var liveBinanceBalance by remember { mutableStateOf<BinancePortfolioBalance?>(null) }
     var liveBinanceFuturesBalance by remember { mutableStateOf<BinanceFuturesAccountBalance?>(null) }
     var liveBinanceLoading by remember { mutableStateOf(false) }
+    var liveBinanceLastUpdated by remember { mutableStateOf<Long?>(null) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
     var dashboardRange by remember { mutableStateOf("All") }
