@@ -120,7 +120,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Home", "Journal", "Insights", "Tools")
+    val titles = listOf("Dashboard", "Journal", "Analytics", "Tools")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     // Keep global navigation focused on the four primary areas. Specialist screens live in Tools.
     val menuGroups = listOf(
@@ -1019,9 +1019,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             }
         }
     }
-    val weekly = entries.filter { it.date.takeLast(4).isNotEmpty() }.takeLast(7)
-    val monthKey = java.text.SimpleDateFormat("yyyy-MM", Locale.US)
-    val monthly = entries.filter { e -> try { val date = parseReportDate(e.date); monthKey.format(date) == monthKey.format(Date()) } catch (_: Exception) { false } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Trading tools", style = MaterialTheme.typography.titleMedium)
@@ -1042,12 +1039,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
         Text("App information", style = MaterialTheme.typography.titleMedium)
         MoreDestinationCard("About Risk Tracker", "App details and risk disclaimer") { onNavigate(5) }
-        HorizontalDivider()
-        Text("Performance summaries", style = MaterialTheme.typography.titleMedium)
-        Text("Weekly report · last 7 recorded days", style = MaterialTheme.typography.titleMedium)
-        ReportSummary(weekly)
-        Text("Monthly report · current month", style = MaterialTheme.typography.titleMedium)
-        ReportSummary(monthly)
         HorizontalDivider()
         Text("App settings", style = MaterialTheme.typography.titleMedium)
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
@@ -1079,27 +1070,6 @@ private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> 
             Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
         }
     }
-}
-private fun parseReportDate(value: String): Date {
-    val formats = listOf("yyyy-MM-dd", "d/M/yyyy", "M/d/yyyy", "dd/MM/yyyy")
-    formats.forEach { pattern -> try { return java.text.SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(value)!! } catch (_: Exception) {} }
-    throw IllegalArgumentException("Unrecognized date: " + value)
-}
-
-@Composable
-private fun ReportSummary(rows: List<PnlEntry>) {
-    val net = rows.sumOf { it.pnl }
-    val decisive = rows.filter { it.pnl != 0.0 }
-    val wins = decisive.count { it.pnl > 0 }
-    val best = rows.maxByOrNull { it.pnl }
-    val worst = rows.minByOrNull { it.pnl }
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text("Net P&L: " + net.usd(), color = pnlColor(net), fontWeight = FontWeight.Bold)
-        Text("Win rate: " + (if (decisive.isEmpty()) 0.0 else wins * 100.0 / decisive.size).pct(1))
-        Text("Best day: " + (best?.date ?: "—") + " · " + (best?.pnl?.usd() ?: "—"))
-        Text("Worst day: " + (worst?.date ?: "—") + " · " + (worst?.pnl?.usd() ?: "—"))
-        Text("Return on opening balance: " + (if ((rows.firstOrNull()?.balance ?: 0.0) > 0) (net / rows.first().balance * 100).pct(2) else "—"))
-    } }
 }
 // ---------------- About ----------------
 
