@@ -528,11 +528,11 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Initial Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Ledger start", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(initialBalance.usd(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("Today Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Opening Bal", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(if (todayOpeningBalance > 0.0) todayOpeningBalance.usd() else "Not set", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -555,7 +555,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             Text(
                                 if (todayOpeningBalance <= 0.0) "Opening balance needed" else if (todayTargetComplete) "Target complete" else "Target incomplete",
                                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                                color = if (todayEntry == null) MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (todayOpeningBalance <= 0.0) MaterialTheme.colorScheme.onSurfaceVariant
                                     else if (todayTargetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                         }
@@ -603,6 +603,13 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text("Futures equity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                                     Text(liveBinanceFuturesBalance?.totalEquity?.usd() ?: "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Wallet ${liveBinanceFuturesBalance?.walletBalance?.usd() ?: "Unavailable"}",
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                    Text("Unrealized ${liveBinanceFuturesBalance?.unrealizedPnl?.usd() ?: "Unavailable"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if ((liveBinanceFuturesBalance?.unrealizedPnl ?: 0.0) < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                    Text("Available ${liveBinanceFuturesBalance?.availableBalance?.usd() ?: "Unavailable"}",
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                                 }
                             }
                             Text("Last successful refresh: " + (liveBinanceLastUpdated?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "unknown"),
@@ -634,7 +641,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Latest entry vs loss limit", style = MaterialTheme.typography.labelMedium,
+                            Text("Today P&L vs loss limit", style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer)
                             Text(if (maxDailyLoss > 0) "${(lossLimitUsed * 100).toInt()}% used" else "Not set",
                                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
