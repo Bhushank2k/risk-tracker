@@ -576,6 +576,19 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
+    /** Replace the complete saved daily import during an explicit backup restore. */
+    fun replaceAll(context: Context, data: List<BinanceDailyResult>) {
+        require(data.all { it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.date.isNotBlank() }) {
+            "Imported Binance rows must have valid dates and finite P&L values."
+        }
+        val array = JSONArray()
+        data.distinctBy { it.date }.sortedBy { it.date }.forEach {
+            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
+    }
+
     /** Backward-compatible save for callers that provide complete combined daily rows. */
     fun save(context: Context, data: List<BinanceDailyResult>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
