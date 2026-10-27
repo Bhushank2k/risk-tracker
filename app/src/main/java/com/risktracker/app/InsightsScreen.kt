@@ -136,14 +136,14 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
             }
         }
     }
-    val useImportedFallback = filteredEntries.isEmpty() && filteredImportedPnl.isNotEmpty()
-    val useJournalFallback = filteredEntries.isEmpty() && filteredImportedPnl.isEmpty() && filteredTrades.isNotEmpty()
-    val resultPnl = when {
-        filteredEntries.isNotEmpty() -> filteredEntries.map { it.pnl }
-        useImportedFallback -> filteredImportedPnl.map { it.total }
-        useJournalFallback -> filteredTrades.map { it.pnl }
-        else -> emptyList()
+    val reconciledPnl = remember(filteredEntries, filteredImportedPnl, filteredTrades) {
+        reconcileDailyPnl(filteredEntries, filteredImportedPnl, filteredTrades)
     }
+    val resultPnl = reconciledPnl.map { it.selectedPnl }
+    val manualDays = reconciledPnl.count { it.source == DailyPnlSource.MANUAL }
+    val binanceDays = reconciledPnl.count { it.source == DailyPnlSource.BINANCE }
+    val journalDays = reconciledPnl.count { it.source == DailyPnlSource.JOURNAL }
+    val overlapCount = reconciledPnl.count { it.discrepancy != null }
     val resultBalances = if (filteredEntries.isNotEmpty()) filteredEntries.map { it.closing } else emptyList()
     val snapshot = remember(filteredEntries, filteredImportedPnl, filteredTrades, useImportedFallback, useJournalFallback, resultPnl, resultBalances) {
         buildPerformanceSnapshot(resultPnl, resultBalances, trades.size)
@@ -212,10 +212,14 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("NET RECORDED P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(when { useJournalFallback -> "${snapshot.winningDays} winning trades · ${snapshot.losingDays} losing trades"; else -> "${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days" },
+                    Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(when { useJournalFallback -> "Based on closed trades in your trade journal"; useImportedFallback -> "Based on imported Binance Spot and Futures P&L"; else -> "Based on manually recorded daily results" }, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                    Text("Source mix: $manualDays manual · $binanceDays Binance-only · $journalDays journal-only days. Manual records take precedence on overlap.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                    if (overlapCount > 0) {
+                        Text("$overlapCount overlapping dates are available for reconciliation. Open Dashboard to compare manual and Binance amounts.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                 }
             }
         }
@@ -227,7 +231,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard(if (useJournalFallback) "Average trade" else "Average day", snapshot.averagePnl.usd(), Modifier.weight(1f))
+                MetricCard("Average recorded day", snapshot.averagePnl.usd(), Modifier.weight(1f))
                 MetricCard("Journal trades · all time", snapshot.tradeCount.toString(), Modifier.weight(1f))
             }
         }
@@ -237,7 +241,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
                     Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
                     InsightRow("Worst recorded day", snapshot.worstDay?.usd() ?: "—")
-                    InsightRow(when { useJournalFallback -> "Closed trades in period"; useImportedFallback -> "Imported result days"; else -> "Recorded days in period" }, when { useJournalFallback -> filteredTrades.size.toString(); useImportedFallback -> filteredImportedPnl.size.toString(); else -> filteredEntries.size.toString() })
+                    InsightRow("Reconciled P&L days", reconciledPnl.size.toString())
                 }
             }
         }
@@ -246,14 +250,14 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
             else Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(when { useJournalFallback -> "Your results above use closed journal trades. Add daily P&L records to see the balance trend."; useImportedFallback -> "Your results above use imported Binance P&L. Add daily balance records to see the balance trend."; else -> "Add at least two daily records to see your balance trend." },
+                    Text("The balance trend uses manually recorded balance entries. Add at least two daily records to see it; Binance and journal-only P&L remain included in the reconciled totals above.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         item {
             Text(
-                "P&L metrics use manually recorded daily results when available, then imported Binance P&L, then closed journal trades. Balance trend requires at least two daily records. Journal trade count is all-time and is not an exchange-confirmed live position count.",
+                "P&L metrics normalize dates and select one value per day: manual daily entry first, Binance imported P&L second, then closed journal trades. Overlaps are not added twice; compare them on Dashboard. Balance trend requires at least two manual daily records. Journal trade count is all-time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
