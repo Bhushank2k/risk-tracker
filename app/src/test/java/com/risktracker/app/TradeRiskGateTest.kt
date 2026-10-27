@@ -52,6 +52,16 @@ class TradeRiskGateTest {
         assertEquals(0.0, overBudget.quantity, 1e-8)
     }
 
+    @Test fun missingDailyPnlIsExplicitlyFlagged() {
+        val r = evaluateTradeRisk(
+            "Long", 1000.0, 1.0, 100.0, 98.0, 104.0, 0.0,
+            settings.copy(dailyPnlKnown = false)
+        )
+        assertTrue(r.valid)
+        assertFalse(r.ready)
+        assertTrue(r.checks.any { it.title == "Today's P&L data" && !it.passed })
+    }
+
     @Test fun missingTargetDoesNotInventReward() {
         val r = evaluateTradeRisk("Long", 1000.0, 1.0, 100.0, 98.0, null, 0.0, settings)
         assertTrue(r.valid)
