@@ -91,7 +91,10 @@ class RiskAlertNotificationWorker(context: Context, params: WorkerParameters) : 
     override suspend fun doWork(): Result = try {
         val context = applicationContext
         val prefs = context.getSharedPreferences("risk_alert_settings_v1", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("background_notifications_enabled", false)) return Result.success()
+        if (!prefs.getBoolean("background_notifications_enabled", false)) {
+            RiskAlertNotifications.saveActive(context, emptySet())
+            return Result.success()
+        }
         if (!RiskAlertNotifications.hasNotificationPermission(context)) return Result.success()
 
         val store = Store(context)
