@@ -100,7 +100,7 @@ fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Lo
 }
 
 @Composable
-fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPnl: List<BinanceDailyResult> = emptyList()) {
+fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPnl: List<BinanceDailyResult> = emptyList(), onNavigate: (Int) -> Unit = {}) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
     val nowMillis = System.currentTimeMillis()
     val filteredEntries = remember(entries, periodDays, nowMillis) {
@@ -159,6 +159,29 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
                 Text("Your trading results", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Review recorded P&L, consistency and drawdown in one place.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("More analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Card(onClick = { onNavigate(12) }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Behavioral intelligence", fontWeight = FontWeight.SemiBold)
+                        Text("Find patterns in strategies and recurring mistakes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Card(onClick = { onNavigate(14) }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Trade reviews", fontWeight = FontWeight.SemiBold)
+                        Text("Compare trade plans with closed-trade outcomes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Card(onClick = { onNavigate(13) }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Advanced risk scenarios", fontWeight = FontWeight.SemiBold)
+                        Text("Explore loss streaks and historical risk scenarios.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
         item {
