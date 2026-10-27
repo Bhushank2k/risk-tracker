@@ -464,8 +464,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val latestPnlDate = combinedDailyPnl.keys.maxOrNull().orEmpty().ifBlank { "No recorded entries" }
     val latestRecordedPnl = combinedDailyPnl[latestPnlDate] ?: 0.0
     val overlapRows = reconciledDailyPnl.filter { it.discrepancy != null }
-    val mismatchRows = overlapRows.filter { (it.discrepancy ?: 0.0) > 0.01 }
-    val totalOverlapDifference = overlapRows.sumOf { it.discrepancy ?: 0.0 }
+    val mismatchRows = overlapRows.filter { kotlin.math.abs(it.discrepancy ?: 0.0) > 0.01 }
+    val totalOverlapDifference = overlapRows.sumOf { kotlin.math.abs(it.discrepancy ?: 0.0) }
     val todayEntry = pnlEntryForDate(entries)
     val todayPnl = todayEntry?.pnl ?: 0.0
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
