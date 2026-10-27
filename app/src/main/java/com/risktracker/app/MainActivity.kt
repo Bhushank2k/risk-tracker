@@ -1063,7 +1063,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
-        Text("Exports daily P&L, journal trades, saved trade plans/reviews, and risk targets. Binance imports, API credentials, and external screenshot files are not included; keep their original exports separately.",
+        Text("Exports daily P&L, journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export journal & settings (JSON)") }
         OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Choose backup to restore") }
