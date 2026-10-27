@@ -607,6 +607,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                             Text("Last successful refresh: " + (liveBinanceLastUpdated?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "unknown"),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                            if ((liveBinanceBalance?.unpricedAssets ?: 0) > 0) {
+                                Text("Warning: ${liveBinanceBalance?.unpricedAssets ?: 0} Spot asset(s) could not be priced and are excluded from the Spot estimate.",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            }
                         } else {
                             Text("Live balance not synced", style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -841,7 +845,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             Text("Reconciled net P&L: " + combinedNetPnl.usd(), fontWeight = FontWeight.Bold, color = pnlColor(combinedNetPnl))
                             Text("Manual days: ${reconciledDailyPnl.count { it.source == DailyPnlSource.MANUAL }} · Binance-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.BINANCE }} · Journal-only: ${reconciledDailyPnl.count { it.source == DailyPnlSource.JOURNAL }}",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Manual daily P&L takes precedence on matching dates; Binance fills missing dates, then closed journal trades fill remaining dates. Overlaps are not added twice. Portfolio balance is separate: live Binance Spot estimate + Futures equity when refreshed, otherwise the manual ledger.",
+                            Text("Binance daily P&L takes precedence on overlapping dates; manual records are fallback, then closed journal trades fill remaining dates. Overlaps are never added twice and differences are flagged below. Live Spot estimate + Futures equity is shown separately from historical/manual ledger balances.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (mismatchRows.isNotEmpty()) {
                                 Text("${mismatchRows.size} overlapping dates differ by more than \$0.01; total absolute difference: ${totalOverlapDifference.usd()}. Review the values below before treating the combined total as final.",
