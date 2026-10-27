@@ -807,7 +807,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             }
                         }
                         Text(liveBinanceStatus, style = MaterialTheme.typography.bodySmall, color = if (liveBinanceStatus.startsWith("Could not")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (liveBinanceBalance?.unpricedAssets ?: 0 > 0) {
+                        if ((liveBinanceBalance?.unpricedAssets ?: 0) > 0) {
                             Text("${liveBinanceBalance?.unpricedAssets} Spot asset(s) excluded from the valuation.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
