@@ -1248,7 +1248,7 @@ fun CombinedTradingCalculatorScreen(input: CalcInput, onChange: (CalcInput) -> U
                 FilterChip(selected = selectedTool == tool, onClick = { selectedTool = tool }, label = { Text(tool) })
             }
         }
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             if (selectedTool == "Position sizing") CalculatorScreen(input, onChange) else LeverageScreen(input)
         }
     }
