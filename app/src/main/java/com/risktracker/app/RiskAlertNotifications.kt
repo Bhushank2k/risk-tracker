@@ -88,7 +88,8 @@ object RiskAlertNotifications {
 }
 
 class RiskAlertNotificationWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result = try {
+    override suspend fun doWork(): Result {
+        return try {
         val context = applicationContext
         val prefs = context.getSharedPreferences("risk_alert_settings_v1", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("background_notifications_enabled", false)) {
@@ -142,5 +143,6 @@ class RiskAlertNotificationWorker(context: Context, params: WorkerParameters) : 
         Result.success()
     } catch (_: Exception) {
         Result.retry()
+    }
     }
 }
