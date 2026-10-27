@@ -742,7 +742,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             Text(when {
                                 maxDailyLoss <= 0.0 -> "Not set"
                                 todayReconciled == null -> "Unknown"
-                                else -> (maxDailyLoss + todayPnl).coerceAtLeast(0.0).usd()
+                                else -> (maxDailyLoss + todayPnl).coerceIn(0.0, maxDailyLoss).usd()
                             }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                                 color = if (todayReconciled != null && maxDailyLoss > 0.0 && todayPnl <= -maxDailyLoss) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                         }
@@ -772,6 +772,38 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         Text(journalSyncStatus.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Recent journal trades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Estimated realized P&L after entered fees", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = { onNavigate(1) }) { Text("View all") }
+                        }
+                        if (trades.isEmpty()) {
+                            Text("No journal trades yet. Log a trade to start building your history.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = { onNavigate(1) }) { Text("Open trade journal") }
+                        } else {
+                            trades.sortedByDescending { reportDate(it.date)?.time ?: Long.MIN_VALUE }.take(5).forEach { trade ->
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(trade.symbol.ifBlank { "Trade" }, fontWeight = FontWeight.SemiBold)
+                                            Text(trade.side.uppercase(Locale.ROOT), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Text(trade.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text(if (trade.pnl.isFinite()) (if (trade.pnl > 0.0) "+" else "") + trade.pnl.usd() else "Unavailable",
+                                        fontWeight = FontWeight.SemiBold, color = if (!trade.pnl.isFinite()) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(trade.pnl))
+                                }
+                            }
+                        }
                     }
                 }
             }
