@@ -22,7 +22,8 @@ object RiskAlertEngine {
         dailyPnl: Double?, dailyLossLimit: Double, dailyLossEnabled: Boolean,
         drawdownPercent: Double?, drawdownLimitPercent: Double, drawdownEnabled: Boolean,
         hasBinanceCredentials: Boolean, lastSyncSuccess: Long, now: Long,
-        staleAfterMillis: Long, staleSyncEnabled: Boolean
+        staleAfterMillis: Long, staleSyncEnabled: Boolean,
+        consecutiveLosses: Int = 0, consecutiveLossLimit: Int = 3, consecutiveLossEnabled: Boolean = false
     ): List<RiskAlert> = buildList {
         if (dailyLossEnabled && dailyPnl != null && dailyPnl.isFinite() &&
             dailyLossLimit.isFinite() && dailyLossLimit > 0.0 && dailyPnl <= -dailyLossLimit) {
@@ -36,6 +37,11 @@ object RiskAlertEngine {
             add(RiskAlert("drawdown", "Drawdown threshold reached",
                 "Recorded peak-to-current drawdown is " + "%.2f".format(Locale.US, drawdownPercent) +
                     "%, above your " + "%.2f".format(Locale.US, drawdownLimitPercent) + "% threshold."))
+        }
+        if (consecutiveLossEnabled && consecutiveLossLimit > 0 && consecutiveLosses >= consecutiveLossLimit) {
+            add(RiskAlert("loss-streak", "Consecutive-loss limit reached",
+                "The latest recorded journal results contain " + consecutiveLosses +
+                    " consecutive losses; your alert threshold is " + consecutiveLossLimit + "."))
         }
         if (staleSyncEnabled && hasBinanceCredentials &&
             (lastSyncSuccess <= 0L || now - lastSyncSuccess >= staleAfterMillis)) {
@@ -51,12 +57,14 @@ object RiskAlertEngine {
 }
 
 @Composable
-fun RiskAlertsScreen(entries: List<PnlEntry>, dailyPnl: Double?, maxDailyLoss: Double) {
+fun RiskAlertsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: Double) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("risk_alert_settings_v1", Context.MODE_PRIVATE) }
     var dailyEnabled by remember { mutableStateOf(prefs.getBoolean("daily_enabled", true)) }
     var drawdownEnabled by remember { mutableStateOf(prefs.getBoolean("drawdown_enabled", true)) }
     var staleEnabled by remember { mutableStateOf(prefs.getBoolean("stale_enabled", true)) }
+    var streakEnabled by remember { mutableStateOf(prefs.getBoolean("streak_enabled", true)) }
+    var streakLimit by remember { mutableStateOf(prefs.getInt("streak_limit", 3).toString()) }
     var drawdownThreshold by remember { mutableStateOf(prefs.getFloat("drawdown_threshold", 10f).toString()) }
     var staleHours by remember { mutableStateOf(prefs.getInt("stale_hours", 24).toString()) }
     var savedMessage by remember { mutableStateOf("") }
@@ -72,6 +80,10 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, dailyPnl: Double?, maxDailyLoss: D
             if (peak > 0.0) maxDrawdownPct = maxOf(maxDrawdownPct, ((peak - balance) / peak * 100.0).coerceAtLeast(0.0))
         }
     }
+    val recentTradeResults = trades.mapNotNull { trade ->
+        parseRiskDate(trade.date)?.let { it.time to trade.pnl }
+    }.sortedByDescending { it.first }
+    val consecutiveLosses = recentTradeResults.takeWhile { it.second < 0.0 }.size
     val status = remember(context) { BinanceAutoJournalStore.syncStatus(context) }
     val hasCredentials = remember(context) { BinanceCredentialStore(context).read() != null }
     val threshold = drawdownThreshold.toDoubleOrNull()
@@ -79,7 +91,8 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, dailyPnl: Double?, maxDailyLoss: D
     val alerts = RiskAlertEngine.evaluate(
         dailyPnl, maxDailyLoss, dailyEnabled,
         if (ordered.isEmpty()) null else maxDrawdownPct, threshold ?: 10.0, drawdownEnabled,
-        hasCredentials, status.lastSuccess, System.currentTimeMillis(), staleWindow * 3_600_000L, staleEnabled
+        hasCredentials, status.lastSuccess, System.currentTimeMillis(), staleWindow * 3_600_000L, staleEnabled,
+        consecutiveLosses, streakLimit.toIntOrNull() ?: 3, streakEnabled
     )
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -116,19 +129,33 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, dailyPnl: Double?, maxDailyLoss: D
                     }
                     Switch(checked = staleEnabled, onCheckedChange = { staleEnabled = it })
                 }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Consecutive losses", fontWeight = FontWeight.Medium)
+                        Text("Checks the latest dated closed-trade results in the journal.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = streakEnabled, onCheckedChange = { streakEnabled = it })
+                }
+                OutlinedTextField(streakLimit, { streakLimit = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Consecutive losses threshold (1–20)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(staleHours, { staleHours = it.filter(Char::isDigit).take(3) },
                     label = { Text("Stale after (hours, 1–720)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Button(onClick = {
                     val d = drawdownThreshold.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
                     val h = staleHours.toLongOrNull()?.takeIf { it in 1L..720L }
-                    if (d != null && h != null) {
+                    val s = streakLimit.toIntOrNull()?.takeIf { it in 1..20 }
+                    if (d != null && h != null && s != null) {
                         prefs.edit().putBoolean("daily_enabled", dailyEnabled)
                             .putBoolean("drawdown_enabled", drawdownEnabled).putBoolean("stale_enabled", staleEnabled)
-                            .putFloat("drawdown_threshold", d.toFloat()).putInt("stale_hours", h.toInt()).apply()
+                            .putBoolean("streak_enabled", streakEnabled)
+                            .putFloat("drawdown_threshold", d.toFloat()).putInt("stale_hours", h.toInt())
+                            .putInt("streak_limit", s).apply()
                         drawdownThreshold = d.toString()
                         staleHours = h.toString()
+                        streakLimit = s.toString()
                         savedMessage = "Alert settings saved."
-                    } else savedMessage = "Enter a positive drawdown percentage and a stale window from 1 to 720 hours."
+                    } else savedMessage = "Use a positive drawdown percentage, a stale window of 1–720 hours, and a loss-streak threshold of 1–20."
                 }, modifier = Modifier.fillMaxWidth()) { Text("Save alert settings") }
                 if (savedMessage.isNotBlank()) Text(savedMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
