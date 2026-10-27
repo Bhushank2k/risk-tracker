@@ -473,8 +473,10 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     val overlapRows = reconciledDailyPnl.filter { it.discrepancy != null }
     val mismatchRows = overlapRows.filter { kotlin.math.abs(it.discrepancy ?: 0.0) > 0.01 }
     val totalOverlapDifference = overlapRows.sumOf { kotlin.math.abs(it.discrepancy ?: 0.0) }
+    val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     val todayEntry = pnlEntryForDate(entries)
-    val todayPnl = todayEntry?.pnl ?: 0.0
+    val todayReconciled = reconciledDailyPnl.firstOrNull { it.date == todayDate }
+    val todayPnl = todayReconciled?.selectedPnl ?: 0.0
     val chronologicalEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MAX_VALUE }
     val initialBalance = chronologicalEntries.firstOrNull()?.balance ?: 0.0
     val latestLedgerEntry = chronologicalEntries.lastOrNull()
@@ -488,9 +490,9 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             Triple(day, opening, manual)
         }
     }
-    val todayOpeningBalance = todayEntry?.balance ?: latestLedgerEntry?.closing ?: initialBalance
+    val todayOpeningBalance = todayEntry?.balance ?: 0.0
     val todayTarget = (todayOpeningBalance * 0.02).coerceAtLeast(0.0)
-    val todayTargetComplete = todayEntry != null && todayEntry.pnl >= todayTarget
+    val todayTargetComplete = todayOpeningBalance > 0.0 && todayReconciled != null && todayPnl >= todayTarget
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
     val pdfLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) {
