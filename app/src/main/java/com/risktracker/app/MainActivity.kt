@@ -588,11 +588,29 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("PORTFOLIO BALANCE", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        val displayedBalance = livePortfolioBalance ?: stats.currentBalance
-                        Text(displayedBalance.usd(), style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text((if (livePortfolioBalance != null) "Binance Spot + Futures equity · " else "Manual ledger · ") + "₹" + (displayedBalance * inrRate).num(0),
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        if (livePortfolioBalance != null) {
+                            Text(livePortfolioBalance.usd(), style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Binance Spot + USDⓈ-M Futures equity · ₹${(livePortfolioBalance * inrRate).num(0)}",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("Spot estimate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                    Text(liveBinanceBalance?.valueUsdt?.usd() ?: "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("Futures equity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                    Text(liveBinanceFuturesBalance?.totalEquity?.usd() ?: "Unavailable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Text("Last successful refresh: " + (liveBinanceLastUpdated?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "unknown"),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                        } else {
+                            Text("Live balance not synced", style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Refresh Binance to fetch current account equity. Ledger balance: ${stats.currentBalance.usd()} (historical/manual, not a live exchange balance).",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
                         HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
