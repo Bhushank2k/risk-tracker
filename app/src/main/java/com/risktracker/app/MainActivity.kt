@@ -338,6 +338,39 @@ fun LiveTradesScreen() {
                 }
             }
         }
+        if (liveTrades.isNotEmpty()) {
+            item {
+                val futuresPositions = liveTrades.filter { it.market == "USDⓈ-M Futures" }
+                val spotOrders = liveTrades.filter { it.market == "Spot order" }
+                val unrealizedTotal = futuresPositions.sumOf { it.unrealizedPnl }
+                val futuresNotional = futuresPositions.sumOf { it.quantity * it.markPrice }
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("LIVE ACCOUNT SUMMARY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Open Futures positions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(futuresPositions.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Pending Spot orders", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(spotOrders.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        HorizontalDivider()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Total unrealized Futures P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text((if (unrealizedTotal > 0) "+" else "") + unrealizedTotal.usd(), color = pnlColor(unrealizedTotal), fontWeight = FontWeight.Bold)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Approx. open Futures notional", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(futuresNotional.usd(), fontWeight = FontWeight.SemiBold)
+                        }
+                        Text("Notional is estimated as absolute position quantity × mark price; it is exposure, not account equity or margin used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         if (liveTrades.isEmpty() && !loading) {
             item {
                 Card(Modifier.fillMaxWidth()) {
