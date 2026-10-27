@@ -227,7 +227,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -448,7 +448,7 @@ fun LiveTradesScreen() {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onNavigate: (Int) -> Unit = {}, onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
@@ -457,6 +457,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     var liveBinanceLoading by remember { mutableStateOf(false) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
     var showAdd by remember { mutableStateOf(false) }
+    var dashboardRange by remember { mutableStateOf("All") }
     val stats = computeStats(entries)
     val livePortfolioBalance = if (liveBinanceBalance != null && liveBinanceFuturesBalance != null)
         liveBinanceBalance!!.valueUsdt + liveBinanceFuturesBalance!!.totalEquity else null
@@ -555,6 +556,24 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         }
                         Text("Fixed target: 2% of the day's opening balance. Each following day's target rises or falls with its opening balance; a larger closing balance after an over-target day increases the next target automatically. This is a planning benchmark, not a guaranteed return.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val targetProgress = if (todayOpeningBalance > 0.0) (todayPnl / todayTarget.coerceAtLeast(0.01)).coerceIn(0.0, 1.0).toFloat() else 0f
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Target progress", style = MaterialTheme.typography.labelMedium)
+                            Text(if (todayOpeningBalance <= 0.0) "Opening balance needed" else "${(targetProgress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        }
+                        LinearProgressIndicator(progress = { targetProgress }, modifier = Modifier.fillMaxWidth())
+                        Text(
+                            when {
+                                todayOpeningBalance <= 0.0 -> "Data check: add a valid opening balance to calculate today's target."
+                                maxDailyLoss <= 0.0 -> "Risk check: set a daily loss limit in Tools & settings."
+                                todayPnl <= -maxDailyLoss -> "STOP: daily loss limit reached. Avoid new trades until you review your plan."
+                                todayPnl <= -(maxDailyLoss * 0.8) -> "Caution: you have used at least 80% of your daily loss limit."
+                                todayEntry == null && combinedDailyPnl.isEmpty() -> "Data check: no daily P&L recorded or imported yet."
+                                else -> "Risk status: within configured daily loss limit. Keep following your trade plan."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (todayOpeningBalance <= 0.0 || maxDailyLoss <= 0.0) MaterialTheme.colorScheme.onSurfaceVariant else if (todayPnl <= -maxDailyLoss) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -763,6 +782,25 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                     }
                 }
             }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Quick actions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { showAdd = true }, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add P&L")
+                            }
+                            OutlinedButton(onClick = { onNavigate(1) }, modifier = Modifier.weight(1f)) { Text("Trade journal") }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onNavigate(6) }, modifier = Modifier.weight(1f)) { Text("Sync Binance") }
+                            OutlinedButton(onClick = { onNavigate(2) }, modifier = Modifier.weight(1f)) { Text("Position calculator") }
+                        }
+                    }
+                }
+            }
             if (combinedDailyPnl.isNotEmpty()) {
                 item {
                     Card(Modifier.fillMaxWidth()) {
@@ -819,6 +857,19 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             }
             item {
                 Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Daily P&L history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("7D", "30D", "All").forEach { option ->
+                                FilterChip(selected = dashboardRange == option, onClick = { dashboardRange = option }, label = { Text(option) })
+                            }
+                        }
+                        Text("Filters apply to the daily table below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.horizontalScroll(rememberScrollState()).width(1000.dp)) {
                         Row(
                             Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(vertical = 10.dp, horizontal = 8.dp),
@@ -834,7 +885,14 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                             Text("Source", Modifier.width(105.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
                         HorizontalDivider()
-                        tableDailyRows.asReversed().forEach { (day, openingBalance, manualEntry) ->
+                        tableDailyRows.asReversed().filter { row ->
+                            if (dashboardRange == "All") true else {
+                                val latest = tableDailyRows.lastOrNull()?.first?.date?.let { reportDate(it)?.time }
+                                val rowTime = reportDate(row.first.date)?.time
+                                val days = if (dashboardRange == "7D") 7 else 30
+                                latest != null && rowTime != null && rowTime >= latest - days * 24L * 60L * 60L * 1000L
+                            }
+                        }.forEach { (day, openingBalance, manualEntry) ->
                             val dailyPnl = day.selectedPnl
                             val dailyTarget = (openingBalance * 0.02).coerceAtLeast(0.0)
                             val hasOpeningBalance = openingBalance > 0.0
