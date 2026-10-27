@@ -611,6 +611,8 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
     var liveBinanceLoading by remember { mutableStateOf(false) }
     var liveBinanceLastUpdated by remember { mutableStateOf<Long?>(null) }
     var liveBinanceStatus by remember { mutableStateOf("Connect Binance in Binance trade history to load live fills.") }
+    var journalSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(ctx)) }
+    LaunchedEffect(Unit) { journalSyncStatus = BinanceAutoJournalStore.syncStatus(ctx) }
     var showAdd by remember { mutableStateOf(false) }
     var dashboardRange by remember { mutableStateOf("All") }
     val stats = computeStats(entries)
@@ -682,6 +684,22 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("EXCHANGE SYNC", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                Text(journalSyncStatus.state, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            }
+                            TextButton(onClick = { onNavigate(18) }) { Text("Details") }
+                        }
+                        Text(journalSyncStatus.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Last successful sync: " + if (journalSyncStatus.lastSuccess > 0L) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(journalSyncStatus.lastSuccess)) else "Not recorded",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
