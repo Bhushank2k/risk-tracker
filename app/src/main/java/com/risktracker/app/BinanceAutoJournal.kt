@@ -148,6 +148,12 @@ object BinanceAutoJournalStore {
  * current Spot holdings and currently open USDⓈ-M positions. Use Historical import to seed older
  * or closed symbols; Binance doesn't provide a single all-symbol user-trades endpoint.
  */
+internal fun classifyBinanceSyncState(success: Boolean, failureCount: Int, discoverySucceeded: Int): String = when {
+    success -> "Up to date (7-day window)"
+    failureCount > 0 && discoverySucceeded > 0 -> "Partial sync"
+    else -> "Sync failed"
+}
+
 object BinanceAutoJournalRunner {
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
         val attemptedAt = System.currentTimeMillis()
@@ -205,11 +211,7 @@ object BinanceAutoJournalRunner {
         BinanceAutoJournalStore.recordSyncStatus(context, BinanceJournalSyncStatus(
             lastAttempt = attemptedAt,
             lastSuccess = if (success) attemptedAt else priorSuccess,
-            state = when {
-                success -> "Up to date (7-day window)"
-                failures.isNotEmpty() && (discoverySucceeded > 0 || fetched.isNotEmpty()) -> "Partial sync"
-                else -> "Sync failed"
-            },
+            state = classifyBinanceSyncState(success, failures.size, discoverySucceeded),
             detail = detail,
             symbolsAttempted = symbolsAttempted,
             symbolsFailed = symbolFailures,
@@ -225,7 +227,11 @@ object BinanceAutoJournalRunner {
 class BinanceJournalWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
         if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
-        else { BinanceAutoJournalRunner.sync(applicationContext); Result.success() }
+        else {
+            BinanceAutoJournalRunner.sync(applicationContext)
+            val state = BinanceAutoJournalStore.syncStatus(applicationContext).state
+            if (state == "Sync failed" || state == "Partial sync") Result.retry() else Result.success()
+        }
     } catch (_: Exception) { Result.retry() }
 
     companion object {
