@@ -145,6 +145,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Leverage reference" to 3,
             "Trade Risk Gate" to 11,
             "Target planner" to 10,
+            "Risk alerts" to 19,
             "Risk Scenario Lab" to 13
         ),
         "EXCHANGE & DATA" to listOf(
@@ -304,6 +305,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
+                19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
