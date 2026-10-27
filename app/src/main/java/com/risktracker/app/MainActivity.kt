@@ -222,7 +222,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget, importedPnl) {
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, store.dailyProfitTarget, importedPnl, trades) {
                     entries = it
                     store.saveEntries(it)
                 }
@@ -435,7 +435,7 @@ fun LiveTradesScreen() {
 // ---------------- Daily PNL ----------------
 
 @Composable
-fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, importedPnl: List<BinanceDailyResult> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
+fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, dailyProfitTarget: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onChange: (List<PnlEntry>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var liveBinanceTrades by remember { mutableStateOf<List<BinanceActivityItem>>(emptyList()) }
@@ -447,16 +447,17 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
     val stats = computeStats(entries)
     val livePortfolioBalance = if (liveBinanceBalance != null && liveBinanceFuturesBalance != null)
         liveBinanceBalance!!.valueUsdt + liveBinanceFuturesBalance!!.totalEquity else null
-    // Merge manual ledger and synced Binance P&L by date.
-    val manualByDate = entries.associateBy { it.date }
-    val importedByDate = importedPnl.associateBy { it.date }
-    val combinedDates = (manualByDate.keys + importedByDate.keys).toSortedSet()
-    val combinedDailyPnl = combinedDates.associateWith { date ->
-        manualByDate[date]?.pnl ?: (importedByDate[date]?.total ?: 0.0)
-    }
+    // Reconcile by normalized calendar date and never add overlapping sources together.
+    val reconciledDailyPnl = reconcileDailyPnl(entries, importedPnl, trades)
+    val manualByDate = entries.mapNotNull { row -> canonicalPnlDate(row.date)?.let { it to row } }.toMap()
+    val importedByDate = importedPnl.mapNotNull { row -> canonicalPnlDate(row.date)?.let { it to row } }.toMap()
+    val combinedDailyPnl = reconciledDailyPnl.associate { it.date to it.selectedPnl }
     val combinedNetPnl = combinedDailyPnl.values.sum()
     val latestPnlDate = combinedDailyPnl.keys.maxOrNull().orEmpty().ifBlank { "No recorded entries" }
     val latestRecordedPnl = combinedDailyPnl[latestPnlDate] ?: 0.0
+    val overlapRows = reconciledDailyPnl.filter { it.discrepancy != null }
+    val mismatchRows = overlapRows.filter { (it.discrepancy ?: 0.0) > 0.01 }
+    val totalOverlapDifference = overlapRows.sumOf { it.discrepancy ?: 0.0 }
     val todayEntry = pnlEntryForDate(entries)
     val todayPnl = todayEntry?.pnl ?: 0.0
     val lossLimitUsed = if (maxDailyLoss > 0.0) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else 0f
