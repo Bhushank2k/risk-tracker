@@ -54,9 +54,29 @@ object BinanceAutoJournalStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val all = load(context).associateBy { it.id }.toMutableMap()
         var inserted = 0
+        fun sameExecution(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
+            if (a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
+            if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
+            val timeTolerance = 1_000L
+            return kotlin.math.abs(a.time - b.time) <= timeTolerance &&
+                kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+                kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+        }
         incoming.forEach { fill ->
-            if (!all.containsKey(fill.id)) inserted++
-            all[fill.id] = fill
+            val existingById = all[fill.id]
+            if (existingById != null) {
+                all[fill.id] = fill
+                return@forEach
+            }
+            val equivalent = all.values.firstOrNull { sameExecution(it, fill) }
+            if (equivalent == null) {
+                all[fill.id] = fill
+                inserted++
+            } else if (equivalent.id.contains(":csv:") && !fill.id.contains(":csv:")) {
+                // Prefer the exchange API record when the same execution was previously imported from CSV.
+                all.remove(equivalent.id)
+                all[fill.id] = fill
+            }
         }
         val array = JSONArray()
         all.values.sortedBy { it.time }.forEach { fill ->
