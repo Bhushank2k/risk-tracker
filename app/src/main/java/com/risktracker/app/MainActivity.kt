@@ -663,7 +663,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, d
                             Text("Manual daily P&L takes precedence on matching dates; Binance fills missing dates, then closed journal trades fill remaining dates. Overlaps are not added twice. Portfolio balance is separate: live Binance Spot estimate + Futures equity when refreshed, otherwise the manual ledger.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (mismatchRows.isNotEmpty()) {
-                                Text("${mismatchRows.size} overlapping dates differ by more than \\$0.01; total absolute difference: ${totalOverlapDifference.usd()}. Review the values below before treating the combined total as final.",
+                                Text("${mismatchRows.size} overlapping dates differ by more than \$0.01; total absolute difference: ${totalOverlapDifference.usd()}. Review the values below before treating the combined total as final.",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             }
                             combinedDailyPnl.entries.toList().takeLast(30).reversed().forEach { row ->
