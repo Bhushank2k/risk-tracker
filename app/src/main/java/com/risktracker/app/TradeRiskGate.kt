@@ -30,7 +30,8 @@ data class TradePlan(
 
 data class TradeRiskSettings(
     val maxTradeRisk: Double = 5.0, val maxDailyLoss: Double = 20.0,
-    val dailyPnl: Double = 0.0, val maxTradesPerDay: Int = 10, val tradesTakenToday: Int = 0
+    val dailyPnl: Double = 0.0, val maxTradesPerDay: Int = 10, val tradesTakenToday: Int = 0,
+    val dailyPnlKnown: Boolean = true
 )
 data class RiskCheck(val title: String, val passed: Boolean, val detail: String)
 data class TradeRiskEvaluation(
@@ -95,6 +96,9 @@ fun evaluateTradeRisk(
     val checks = listOf(
         RiskCheck("Per-trade risk", plannedRisk <= settings.maxTradeRisk,
             "Estimated loss at stop: " + "%.2f".format(Locale.US, plannedRisk) + "; limit " + "%.2f".format(Locale.US, settings.maxTradeRisk)),
+        RiskCheck("Today's P&L data", settings.dailyPnlKnown,
+            if (settings.dailyPnlKnown) "Today's reconciled P&L is available"
+            else "No daily P&L found for today. Verify or record today's result before relying on the daily loss budget."),
         RiskCheck("Daily loss budget", plannedRisk <= remainingDailyBudget,
             "Remaining budget before this trade: " + "%.2f".format(Locale.US, remainingDailyBudget)),
         RiskCheck("Trade count", settings.tradesTakenToday < settings.maxTradesPerDay,
