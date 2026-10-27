@@ -125,13 +125,39 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Dashboard", "Journal", "Analytics", "Tools")
+    val titles = listOf("Overview", "Journal", "Insights", "Tools")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
-    // Keep global navigation focused on the four primary areas. Specialist screens live in Tools.
+    // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
+    // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
-        "TRACKING" to listOf("Dashboard" to 0, "Trade journal" to 1),
-        "ANALYSIS" to listOf("Analytics" to 8),
-        "TOOLS & SETTINGS" to listOf("Tools & settings" to 7)
+        "OVERVIEW & JOURNAL" to listOf(
+            "Overview" to 0,
+            "Trade journal" to 1
+        ),
+        "ANALYTICS & REVIEWS" to listOf(
+            "Performance analytics" to 8,
+            "Behavioral insights" to 12,
+            "Post-trade reviews" to 14,
+            "Ledger audit" to 15
+        ),
+        "RISK WORKSPACE" to listOf(
+            "Position size calculator" to 2,
+            "Leverage reference" to 3,
+            "Trade Risk Gate" to 11,
+            "Target planner" to 10,
+            "Risk Scenario Lab" to 13
+        ),
+        "EXCHANGE & DATA" to listOf(
+            "Binance sync" to 6,
+            "Binance statements" to 17,
+            "Live trades (read-only)" to 16,
+            "CSV / Sheets sync" to 4,
+            "Crypto tax report" to 9
+        ),
+        "APP" to listOf(
+            "Tools & settings" to 7,
+            "About Risk Tracker" to 5
+        )
     )
 
     Scaffold(
