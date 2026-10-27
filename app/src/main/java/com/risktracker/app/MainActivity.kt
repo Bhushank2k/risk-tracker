@@ -494,15 +494,26 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
         if (uri != null) {
             val document = PdfDocument()
             try {
-                entries.chunked(40).ifEmpty { listOf(emptyList()) }.forEachIndexed { pageIndex, rows ->
+                reconciledDailyPnl.chunked(40).ifEmpty { listOf(emptyList()) }.forEachIndexed { pageIndex, rows ->
                     val page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, pageIndex + 1).create())
                     val paint = Paint().apply { textSize = 16f; color = android.graphics.Color.BLACK }
                     val canvas = page.canvas
-                    canvas.drawText("Risk Tracker - Daily P&L Report", 36f, 42f, paint)
+                    canvas.drawText("Risk Tracker - Reconciled Daily P&L", 36f, 42f, paint)
                     paint.textSize = 10f
-                    canvas.drawText("Net P&L: " + stats.net.usd() + "    Win rate: " + stats.winRate.pct(1) + "    Recorded days: " + entries.size, 36f, 66f, paint)
-                    canvas.drawText("Date                         Opening Balance            Daily P&L            Closing Balance       Discipline", 36f, 94f, paint)
-                    rows.forEachIndexed { index, e -> canvas.drawText(e.date.padEnd(18) + " " + e.balance.usd().padEnd(20) + " " + e.pnl.usd().padEnd(18) + " " + e.closing.usd().padEnd(20) + " " + e.disciplineScore + "/5", 36f, (116 + index * 17).toFloat(), paint) }
+                    canvas.drawText("Combined net P&L: " + combinedNetPnl.usd() + "    Source priority: Binance, manual fallback, journal", 36f, 66f, paint)
+                    canvas.drawText("Date             Opening balance       Daily P&L          Closing balance        Source", 36f, 94f, paint)
+                    rows.forEachIndexed { index, day ->
+                        val opening = tableDailyRows.firstOrNull { it.first.date == day.date }?.second ?: 0.0
+                        val closing = if (opening > 0.0) (opening + day.selectedPnl).usd() else "Not set"
+                        val source = when (day.source) {
+                            DailyPnlSource.BINANCE -> "Binance"
+                            DailyPnlSource.MANUAL -> "Manual"
+                            DailyPnlSource.JOURNAL -> "Journal"
+                        }
+                        val openingText = if (opening > 0.0) opening.usd() else "Not set"
+                        canvas.drawText(day.date.padEnd(17) + openingText.padEnd(22) + day.selectedPnl.usd().padEnd(19) + closing.padEnd(22) + source,
+                            36f, (116 + index * 17).toFloat(), paint)
+                    }
                     canvas.drawText("Page " + (pageIndex + 1), 520f, 820f, paint)
                     document.finishPage(page)
                 }
@@ -884,10 +895,33 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = {
+                        val csvQuote: (String) -> String = { value -> "\"" + value.replace("\"", "\"\"") + "\"" }
+                        val reconciledCsv = buildString {
+                            appendLine("Date,Opening Balance,Daily P&L,Daily Return %,Closing Balance,Target 2%,Target Status,Source")
+                            tableDailyRows.forEach { (day, openingBalance, _) ->
+                                val hasOpening = openingBalance > 0.0
+                                val target = openingBalance * 0.02
+                                val source = when (day.source) {
+                                    DailyPnlSource.BINANCE -> "Binance"
+                                    DailyPnlSource.MANUAL -> "Manual"
+                                    DailyPnlSource.JOURNAL -> "Journal"
+                                }
+                                val closing = if (hasOpening) (openingBalance + day.selectedPnl).toString() else "Not set"
+                                val opening = if (hasOpening) openingBalance.toString() else "Not set"
+                                val returnPct = if (hasOpening) (day.selectedPnl / openingBalance * 100.0).toString() else "Not set"
+                                val targetText = if (hasOpening) target.toString() else "Not set"
+                                val targetStatus = when {
+                                    !hasOpening -> "Opening balance needed"
+                                    day.selectedPnl >= target -> "Target complete"
+                                    else -> "Target incomplete"
+                                }
+                                appendLine(listOf(day.date, opening, day.selectedPnl.toString(), returnPct, closing, targetText, targetStatus, source).joinToString(",") { csvQuote(it) })
+                            }
+                        }
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "text/csv"
-                            putExtra(Intent.EXTRA_SUBJECT, "Daily PNL")
-                            putExtra(Intent.EXTRA_TEXT, entriesToCsv(entries, inrRate))
+                            putExtra(Intent.EXTRA_SUBJECT, "Reconciled Daily P&L")
+                            putExtra(Intent.EXTRA_TEXT, reconciledCsv)
                         }
                         ctx.startActivity(Intent.createChooser(send, "Export CSV"))
                     }) { Text("Export CSV") }
