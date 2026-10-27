@@ -544,14 +544,16 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                         HorizontalDivider()
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(if (todayEntry == null) "Today's P&L" else "Today's P&L",
+                                Text("Today's reconciled P&L",
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(if (todayEntry == null) "No entry yet" else todayPnl.usd(),
+                                Text(if (todayReconciled == null) "No data yet" else todayPnl.usd(),
                                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                                    color = if (todayEntry == null) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(todayPnl))
+                                    color = if (todayReconciled == null) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(todayPnl))
+                                Text("Source: ${todayReconciled?.source?.name ?: "Unavailable"}",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text(
-                                if (todayEntry == null) "Awaiting entry" else if (todayTargetComplete) "Target complete" else "Target incomplete",
+                                if (todayOpeningBalance <= 0.0) "Opening balance needed" else if (todayTargetComplete) "Target complete" else "Target incomplete",
                                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
                                 color = if (todayEntry == null) MaterialTheme.colorScheme.onSurfaceVariant
                                     else if (todayTargetComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
@@ -571,7 +573,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                 maxDailyLoss <= 0.0 -> "Risk check: set a daily loss limit in Tools & settings."
                                 todayPnl <= -maxDailyLoss -> "STOP: daily loss limit reached. Avoid new trades until you review your plan."
                                 todayPnl <= -(maxDailyLoss * 0.8) -> "Caution: you have used at least 80% of your daily loss limit."
-                                todayEntry == null && combinedDailyPnl.isEmpty() -> "Data check: no daily P&L recorded or imported yet."
+                                todayReconciled == null -> "Data check: no daily P&L recorded or imported yet."
                                 else -> "Risk status: within configured daily loss limit. Keep following your trade plan."
                             },
                             style = MaterialTheme.typography.bodySmall,
