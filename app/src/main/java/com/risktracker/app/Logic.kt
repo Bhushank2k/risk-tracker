@@ -324,6 +324,11 @@ class Store(context: Context) {
         loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
         root.put("tradePlans", JSONArray(TradePlanStore(appContext).exportJson()))
         root.put("tradeReviews", JSONArray(TradeReviewStore(appContext).exportJson()))
+        val binanceDaily = JSONArray()
+        BinanceSyncData.load(appContext).forEach { row ->
+            binanceDaily.put(JSONObject().put("date", row.date).put("spotPnl", row.spotPnl).put("futuresPnl", row.futuresPnl))
+        }
+        root.put("binanceDailyPnl", binanceDaily)
         return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
@@ -334,7 +339,19 @@ class Store(context: Context) {
         val daily = (0 until a.length()).map { i -> a.getJSONObject(i).let { PnlEntry(it.getString("date"),it.getDouble("balance"),it.getDouble("pnl"),it.optString("notes",""),it.optInt("disciplineScore",0)) } }
         val b = root.getJSONArray("trades")
         val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
+        val importedBinance = if (root.has("binanceDailyPnl")) {
+            val rows = root.getJSONArray("binanceDailyPnl")
+            (0 until rows.length()).map { i ->
+                val row = rows.getJSONObject(i)
+                BinanceDailyResult(row.getString("date"), row.getDouble("spotPnl"), row.getDouble("futuresPnl"))
+            }.also { rows ->
+                require(rows.all { it.date.isNotBlank() && it.spotPnl.isFinite() && it.futuresPnl.isFinite() }) {
+                    "Backup contains invalid Binance P&L rows."
+                }
+            }
+        } else null
         saveEntries(daily); saveTrades(journal)
+        if (importedBinance != null) BinanceSyncData.replaceAll(appContext, importedBinance)
         if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
         if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
