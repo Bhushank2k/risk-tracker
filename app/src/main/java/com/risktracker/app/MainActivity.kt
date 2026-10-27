@@ -1161,7 +1161,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     val context = LocalContext.current
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
-    var profitTarget by remember { mutableStateOf(store.dailyProfitTarget.toString()) }
     var backupMessage by remember { mutableStateOf("") }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -1184,14 +1183,15 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         MoreDestinationCard("Position & leverage calculator", "Position sizing, stop-loss risk and liquidation estimates") { onNavigate(2) }
         MoreDestinationCard("Trade Risk Gate", "Check planned risk and daily limits before a trade") { onNavigate(11) }
         MoreDestinationCard("Target planner", "Optional balance and goal planning") { onNavigate(10) }
-        Text("Analysis & reviews", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Behavioral intelligence", "Strategy patterns and recurring mistakes") { onNavigate(12) }
-        MoreDestinationCard("Risk Scenario Lab", "Advanced loss-streak and scenario simulations") { onNavigate(13) }
-        MoreDestinationCard("Trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
-        Text("Binance data & reports", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Binance data & imports", "Read-only account activity, historical imports and recovery") { onNavigate(6) }
-        MoreDestinationCard("Live positions & orders", "Current Futures positions and pending Spot orders") { onNavigate(16) }
+        Text("Advanced tools (optional)", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Behavioral intelligence", "Optional strategy patterns and recurring mistakes") { onNavigate(12) }
+        MoreDestinationCard("Risk Scenario Lab", "Optional loss-streak and scenario simulations") { onNavigate(13) }
+        MoreDestinationCard("Trade reviews", "Optional closed-trade reviews and plan adherence") { onNavigate(14) }
+        Text("Binance data", style = MaterialTheme.typography.titleMedium)
+        MoreDestinationCard("Binance data & imports", "API sync, trade CSV, income CSV and historical recovery") { onNavigate(6) }
+        MoreDestinationCard("Live positions & orders", "Optional current Futures positions and pending Spot orders") { onNavigate(16) }
         MoreDestinationCard("Ledger audit & reconciliation", "Check imported coverage, duplicates and totals") { onNavigate(15) }
+        Text("Reports (optional)", style = MaterialTheme.typography.titleMedium)
         MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
         MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         Text("Optional integrations", style = MaterialTheme.typography.titleMedium)
@@ -1203,8 +1203,8 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-        OutlinedTextField(profitTarget, { profitTarget = it }, label = { Text("Daily profit target (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); val p = profitTarget.toDoubleOrNull(); if (d != null && t != null && p != null && d > 0 && t > 0 && p > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; store.dailyProfitTarget = p; backupMessage = "Daily targets and risk limits saved." } else backupMessage = "Enter positive numbers for all targets and limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save targets & risk limits") }
+        Text("Daily profit target is fixed at 2% of the applicable opening balance and is calculated in the Daily P&L dashboard.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved. The daily profit target remains fixed at 2%." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
         Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
