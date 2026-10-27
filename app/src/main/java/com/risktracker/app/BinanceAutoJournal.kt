@@ -202,16 +202,18 @@ object BinanceAutoJournalRunner {
 
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
         val success = failures.isEmpty() && discoverySucceeded > 0
-        val detail = when {
-            success -> "Sync completed for the rolling 7-day window. Historical coverage before this window is not guaranteed."
-            failures.isNotEmpty() -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
-            else -> "No discovery request succeeded. Check network access and read-only API permissions."
+        val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
+        val detail = when (state) {
+            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Historical coverage before this window is not guaranteed."
+            "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
+            else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
+                ?: "No discovery request succeeded. Check network access and read-only API permissions."
         }
         val priorSuccess = previous.lastSuccess
         BinanceAutoJournalStore.recordSyncStatus(context, BinanceJournalSyncStatus(
             lastAttempt = attemptedAt,
             lastSuccess = if (success) attemptedAt else priorSuccess,
-            state = classifyBinanceSyncState(success, failures.size, discoverySucceeded),
+            state = state,
             detail = detail,
             symbolsAttempted = symbolsAttempted,
             symbolsFailed = symbolFailures,
