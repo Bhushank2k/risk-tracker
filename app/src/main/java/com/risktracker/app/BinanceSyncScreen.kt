@@ -60,6 +60,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
     var historyEnd by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
     var historyPreview by remember { mutableStateOf<List<BinanceJournalFill>?>(null) }
     var historyBusy by remember { mutableStateOf(false) }
+    var fillCsvMarket by remember { mutableStateOf("USDⓈ-M Futures") }
+    var fillCsvPreview by remember { mutableStateOf<BinanceFillCsvReport?>(null) }
+    var fillCsvBusy by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     var showTaxReports by remember { mutableStateOf(false) }
@@ -84,6 +87,25 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
     val yearRows = rows.filter { it.date.take(4).toIntOrNull() == selectedYear }
     val yearSpot = yearRows.sumOf { it.spotPnl }
     val yearFutures = yearRows.sumOf { it.futuresPnl }
+    val fillCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            fillCsvBusy = true
+            scope.launch {
+                try {
+                    val report = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use {
+                            BinanceFillCsvImporter.parse(it, fillCsvMarket)
+                        } ?: error("Could not open the selected CSV.")
+                    }
+                    fillCsvPreview = report
+                    status = "Trade CSV preview ready. Review it before importing."
+                } catch (e: Exception) {
+                    status = "Trade CSV import failed: " + (e.message ?: "check the Binance export format")
+                } finally { fillCsvBusy = false }
+            }
+        }
+    }
+
     val incomeCsvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             busy = true
@@ -284,6 +306,40 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
             }
         }
         if (lastSync > 0L) Text("Last sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Binance trade CSV import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Import Spot or USDⓈ-M Futures execution fills. CSV rows are tagged as Binance CSV, sorted by timestamp and deduplicated against repeated CSV imports. This adds execution records to the trade journal; use the yearly Futures income CSV below for historical daily P&L totals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = fillCsvMarket == "Spot", onClick = { fillCsvMarket = "Spot"; fillCsvPreview = null }, label = { Text("Spot") })
+                    FilterChip(selected = fillCsvMarket == "USDⓈ-M Futures", onClick = { fillCsvMarket = "USDⓈ-M Futures"; fillCsvPreview = null }, label = { Text("USDⓈ-M Futures") })
+                }
+                OutlinedButton(
+                    enabled = !fillCsvBusy && !busy,
+                    onClick = { fillCsvPreview = null; fillCsvLauncher.launch(arrayOf("text/*", "text/csv", "application/csv", "application/vnd.ms-excel")) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (fillCsvBusy) "Reading CSV…" else "Choose Binance trade CSV") }
+                fillCsvPreview?.let { preview ->
+                    Text("Preview: ${preview.fills.size} fills · ${preview.fills.map { it.symbol }.distinct().size} symbols · ${preview.duplicateRows} duplicate row(s) skipped · ${preview.ignoredRows} unsupported row(s) ignored")
+                    preview.fills.take(12).forEach { fill ->
+                        Text("${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time))} · ${fill.symbol} ${fill.side} · ${fill.quantity.num(6)} @ ${fill.price.num(6)}" +
+                            (fill.realizedPnl?.let { " · Realized ${it.usd()}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (preview.fills.size > 12) Text("Showing 12 of ${preview.fills.size} fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { fillCsvPreview = null; status = "Trade CSV import cancelled." }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                        Button(onClick = {
+                            val inserted = BinanceAutoJournalStore.merge(context, preview.fills)
+                            fillCsvPreview = null
+                            onJournalImported()
+                            status = "Imported ${inserted} new Binance CSV fill(s). Existing IDs were skipped and records are stored chronologically."
+                        }, modifier = Modifier.weight(1f)) { Text("Confirm import") }
+                    }
+                }
+            }
+        }
+
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
