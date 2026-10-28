@@ -69,7 +69,11 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                             try {
                                 val result = BinanceStatementSyncRunner.sync(context)
                                 rows = BinanceStatementStore.load(context)
-                                status = "Sync finished: ${result.first} new records; ${result.second} total stored. Unsupported categories or API retention limits may result in missing records."
+                                status = if (result.failedCategories.isEmpty()) {
+                                    "Sync finished: ${result.newRecords} new records; ${result.totalRecords} total stored."
+                                } else {
+                                    "Partial sync: ${result.newRecords} new records; ${result.totalRecords} total stored. Failed categories: ${result.failedCategories.joinToString()}. Check API permissions and retry."
+                                }
                             } catch (e: Exception) {
                                 status = "Sync failed: ${e.message ?: "check API access"}"
                             } finally { busy = false }
