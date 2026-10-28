@@ -34,6 +34,8 @@ gradle assembleDebug --no-daemon
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs the unit tests and builds the APK for pushes and pull requests.
 
+The Binance statements screen now summarizes recent completed deposits and withdrawals separately by asset, breaks down saved Futures income by income type and asset, and filters the stored record list by category. Amounts are deliberately not combined across different coins or presented as USD without historical conversion prices. This recent statement window is useful for review, but is not sufficient to reconstruct lifetime starting capital; use complete historical exports and account reconciliation for that calculation.
+
 ## Binance sync and historical coverage
 
 The app includes an optional read-only Binance API integration. Spot realized P&L is estimated using FIFO matching for the symbols discovered by the current account scan. USDⓈ-M Futures P&L imports recent `REALIZED_PNL`, `COMMISSION`, and `FUNDING_FEE` income records. The standard Futures income endpoint has a limited history window, so API sync alone cannot recover every record back to 2018. The automatic execution journal now records sync attempts, the last fully successful sync, fetched/inserted counts, failed symbol requests, and the rolling seven-day window. Partial or failed background syncs request a WorkManager retry, and the Overview links to a dedicated Sync Health screen. A successful seven-day sync is not proof of complete account history; use historical exports and reconciliation for older periods.
