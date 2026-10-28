@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
     var rows by remember { mutableStateOf(BinanceStatementStore.load(context)) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("All") }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
             try {
@@ -77,10 +79,68 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                 Text("Daily background sync is scheduled when Binance credentials are saved.", style = MaterialTheme.typography.bodySmall)
             }
         }
+        val completedDeposits = rows.filter { row ->
+            row.category == "Deposits" && row.status in setOf("1", "6", "SUCCESS", "COMPLETED")
+        }
+        val completedWithdrawals = rows.filter { row ->
+            row.category == "Withdrawals" && row.status in setOf("6", "SUCCESS", "COMPLETED")
+        }
+        val cashFlowByAsset = (completedDeposits.map { it.asset } + completedWithdrawals.map { it.asset })
+            .filter { it.isNotBlank() }.distinct().sorted().map { asset ->
+                val deposits = completedDeposits.filter { it.asset == asset }.sumOf { it.amount }
+                val withdrawals = completedWithdrawals.filter { it.asset == asset }.sumOf { it.amount }
+                Triple(asset, deposits, withdrawals)
+            }
+        val futuresIncomeByType = rows.filter { it.category == "Futures income" }
+            .groupBy { row -> row.details.substringBefore(" | ").ifBlank { "Other income" } }
+            .mapValues { (_, items) -> items.groupBy { it.asset.ifBlank { "Unknown asset" } }.mapValues { (_, assetRows) -> assetRows.sumOf { it.amount } } }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Recent external cash flows", style = MaterialTheme.typography.titleMedium)
+                Text("Completed records only · amounts remain in each asset's own units, not combined into USD.", style = MaterialTheme.typography.bodySmall)
+                if (cashFlowByAsset.isEmpty()) {
+                    Text("No completed deposits or withdrawals in the stored statement window.")
+                } else {
+                    cashFlowByAsset.forEach { (asset, deposits, withdrawals) ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(asset, style = MaterialTheme.typography.titleSmall)
+                            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                                Text("Deposits  " + "%.8f".format(Locale.US, deposits).trimEnd('0').trimEnd('.'))
+                                Text("Withdrawals  " + "%.8f".format(Locale.US, withdrawals).trimEnd('0').trimEnd('.'))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (futuresIncomeByType.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Futures income by type", style = MaterialTheme.typography.titleMedium)
+                    Text("Signed amounts by asset. This is only the saved recent window, not lifetime P&L.", style = MaterialTheme.typography.bodySmall)
+                    futuresIncomeByType.toSortedMap().forEach { (type, byAsset) ->
+                        Text(type, style = MaterialTheme.typography.titleSmall)
+                        byAsset.toSortedMap().forEach { (asset, amount) ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(asset)
+                                Text((if (amount > 0.0) "+" else "") + "%.8f".format(Locale.US, amount).trimEnd('0').trimEnd('.'))
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Text("Stored records: ${rows.size}", style = MaterialTheme.typography.titleMedium)
         val last = BinanceStatementStore.lastSync(context)
         if (last > 0) Text("Last statement sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(last)))
-        rows.take(100).forEach { row ->
+        val categories = listOf("All") + rows.map { it.category }.distinct().sorted()
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            categories.forEach { category ->
+                FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category }, label = { Text(category) })
+            }
+        }
+        val visibleRows = rows.filter { selectedCategory == "All" || it.category == selectedCategory }
+        visibleRows.take(100).forEach { row ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(row.category, style = MaterialTheme.typography.titleSmall)
@@ -91,7 +151,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                 }
             }
         }
-        if (rows.size > 100) Text("Showing newest 100 of ${rows.size} records. CSV export includes all stored records.")
+        if (visibleRows.size > 100) Text("Showing newest 100 of ${visibleRows.size} filtered records. CSV export includes all stored records.")
         if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
     }
