@@ -84,38 +84,36 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                 Text("Daily background sync is scheduled when Binance credentials are saved.", style = MaterialTheme.typography.bodySmall)
             }
         }
-        val completedDeposits = rows.filter { row ->
-            row.category == "Deposits" && row.status in setOf("1", "6", "SUCCESS", "COMPLETED")
-        }
-        val completedWithdrawals = rows.filter { row ->
-            row.category == "Withdrawals" && row.status in setOf("6", "SUCCESS", "COMPLETED")
-        }
-        val cashFlowByAsset = (completedDeposits.map { it.asset } + completedWithdrawals.map { it.asset })
-            .filter { it.isNotBlank() }.distinct().sorted().map { asset ->
-                val deposits = completedDeposits.filter { it.asset == asset }.sumOf { it.amount }
-                val withdrawals = completedWithdrawals.filter { it.asset == asset }.sumOf { it.amount }
-                Triple(asset, deposits, withdrawals)
-            }
-        val futuresIncomeByType = rows.filter { it.category == "Futures income" }
-            .groupBy { row -> row.details.substringBefore(" | ").ifBlank { "Other income" } }
-            .mapValues { (_, items) -> items.groupBy { it.asset.ifBlank { "Unknown asset" } }.mapValues { (_, assetRows) -> assetRows.sumOf { it.amount } } }
+        val reconciliation = BinanceCapitalReconciliationEngine.reconcile(rows)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Recent external cash flows", style = MaterialTheme.typography.titleMedium)
-                Text("Completed records only · amounts remain in each asset's own units, not combined into USD.", style = MaterialTheme.typography.bodySmall)
-                if (cashFlowByAsset.isEmpty()) {
-                    Text("No completed deposits or withdrawals in the stored statement window.")
+                Text("Capital reconciliation", style = MaterialTheme.typography.titleMedium)
+                Text("Net external cash flow by asset. Deposits minus withdrawals; internal transfers and trading income are kept separate.", style = MaterialTheme.typography.bodySmall)
+                if (reconciliation.assetFlows.isEmpty()) {
+                    Text("No completed deposits or withdrawals found in the stored statement history.")
                 } else {
-                    cashFlowByAsset.forEach { (asset, deposits, withdrawals) ->
+                    reconciliation.assetFlows.forEach { flow ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(asset, style = MaterialTheme.typography.titleSmall)
+                            Column(Modifier.weight(1f)) {
+                                Text(flow.asset, style = MaterialTheme.typography.titleSmall)
+                                Text("${flow.completedDepositCount} deposits · ${flow.completedWithdrawalCount} withdrawals", style = MaterialTheme.typography.bodySmall)
+                            }
                             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                                Text("Deposits  " + "%.8f".format(Locale.US, deposits).trimEnd('0').trimEnd('.'))
-                                Text("Withdrawals  " + "%.8f".format(Locale.US, withdrawals).trimEnd('0').trimEnd('.'))
+                                Text("Net " + "%.8f".format(Locale.US, flow.netExternalFlow).trimEnd('0').trimEnd('.'))
+                                Text("In ${"%.8f".format(Locale.US, flow.deposits).trimEnd('0').trimEnd('.')} · Out ${"%.8f".format(Locale.US, flow.withdrawals).trimEnd('0').trimEnd('.')}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
                 }
+                val firstRecord = reconciliation.firstRecordTime
+                val lastRecord = reconciliation.lastRecordTime
+                if (firstRecord != null && lastRecord != null) {
+                    Text("Stored records span " +
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(firstRecord)) +
+                        " – " + SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(lastRecord)) +
+                        " · ${reconciliation.totalStoredRecords} records", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Starting capital is not inferred: the API sync covers a recent, best-effort window and may miss older cash flows. Import verified historical Binance exports before treating this as lifetime reconciliation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
         if (futuresIncomeByType.isNotEmpty()) {
