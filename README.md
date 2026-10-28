@@ -34,7 +34,7 @@ gradle assembleDebug --no-daemon
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions runs the unit tests and builds the APK for pushes and pull requests.
 
-The Binance statements screen now summarizes recent completed deposits and withdrawals separately by asset, breaks down saved Futures income by income type and asset, and filters the stored record list by category. Amounts are deliberately not combined across different coins or presented as USD without historical conversion prices. This recent statement window is useful for review, but is not sufficient to reconstruct lifetime starting capital; use complete historical exports and account reconciliation for that calculation.
+The Binance statements screen now summarizes recent completed deposits and withdrawals separately by asset, breaks down saved Futures income by income type and asset, filters the stored record list by category, and reports which statement categories failed during a partial sync instead of silently implying every category succeeded. Amounts are deliberately not combined across different coins or presented as USD without historical conversion prices. This recent statement window is useful for review, but is not sufficient to reconstruct lifetime starting capital; use complete historical exports and account reconciliation for that calculation.
 
 ## Binance sync and historical coverage
 
