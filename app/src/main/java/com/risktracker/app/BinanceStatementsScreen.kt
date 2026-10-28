@@ -3,6 +3,7 @@ package com.risktracker.app
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -134,7 +135,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
         val last = BinanceStatementStore.lastSync(context)
         if (last > 0) Text("Last statement sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(last)))
         val categories = listOf("All") + rows.map { it.category }.distinct().sorted()
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             categories.forEach { category ->
                 FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = category }, label = { Text(category) })
             }
