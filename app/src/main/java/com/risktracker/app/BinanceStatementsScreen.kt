@@ -116,6 +116,12 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                 Text("Starting capital is not inferred: the API sync covers a recent, best-effort window and may miss older cash flows. Import verified historical Binance exports before treating this as lifetime reconciliation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
+        val futuresIncomeByType = rows.filter { it.category == "Futures income" }
+            .groupBy { row -> row.details.substringBefore(" | ").ifBlank { "Other income" } }
+            .mapValues { (_, items) ->
+                items.groupBy { it.asset.ifBlank { "Unknown asset" } }
+                    .mapValues { (_, assetRows) -> assetRows.sumOf { it.amount } }
+            }
         if (futuresIncomeByType.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
