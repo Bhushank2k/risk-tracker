@@ -180,8 +180,12 @@ object BinanceStatementSyncRunner {
 
 class BinanceStatementWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = try {
-        if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
-        else { BinanceStatementSyncRunner.sync(applicationContext); Result.success() }
+        if (BinanceCredentialStore(applicationContext).read() == null) {
+            Result.success()
+        } else {
+            val sync = BinanceStatementSyncRunner.sync(applicationContext)
+            if (sync.failedCategories.isEmpty()) Result.success() else Result.retry()
+        }
     } catch (_: Exception) { Result.retry() }
     companion object {
         fun schedule(context: Context) {
