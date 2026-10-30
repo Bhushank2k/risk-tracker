@@ -61,7 +61,7 @@ fun TradeJournalScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Closed trades · estimates from your recorded prices and fees", style = MaterialTheme.typography.bodySmall)
+                    Text("Manual / external trades only · estimates from recorded prices and fees. Do not re-enter Binance-imported executions.", style = MaterialTheme.typography.bodySmall)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
