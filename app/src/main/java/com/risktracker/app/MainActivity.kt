@@ -142,7 +142,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "RISK WORKSPACE" to listOf(
             "Position size calculator" to 2,
-            "Leverage reference" to 3,
             "Trade Risk Gate" to 11,
             "Target planner" to 10,
             "Risk alerts" to 19,
@@ -282,7 +281,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                3 -> LeverageScreen(input)
                 4 -> SyncScreen(store, entries, syncedCount) { synced ->
                     entries = synced
                     syncedCount = synced.size
@@ -927,7 +925,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         if (integrationsExpanded) {
             MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
         }
-        MoreDestinationCard("About Risk Tracker", "App details and risk disclaimer") { onNavigate(5) }
         HorizontalDivider()
         Text("App settings", style = MaterialTheme.typography.titleMedium)
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
