@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +32,6 @@ fun PremiumOverviewScreen(
     onChange: (List<PnlEntry>) -> Unit
 ) {
     val context = LocalContext.current
-    var showAdd by remember { mutableStateOf(false) }
     val snapshot = remember { BinanceAccountSnapshotStore(context).load() }
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
@@ -86,7 +84,7 @@ fun PremiumOverviewScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Account balance", accountEquity?.usd() ?: "Unavailable", "Latest Binance snapshot", Modifier.weight(1f))
-                    SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "Not set", "Last recorded balance", Modifier.weight(1f))
+                    SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "Unavailable", "Latest saved balance", Modifier.weight(1f))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Total profit / loss", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
@@ -112,7 +110,7 @@ fun PremiumOverviewScreen(
                             Text(daily.last().date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } else {
-                        Text("Add daily results to see your performance trend here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Performance trend will appear when fetched trading data is available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -125,7 +123,6 @@ fun PremiumOverviewScreen(
                             Text("Daily loss limit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("Based on today's recorded result", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        TextButton(onClick = { onNavigate(11) }) { Text("Settings") }
                     }
                     if (riskRemaining != null && riskUsed != null) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -135,7 +132,7 @@ fun PremiumOverviewScreen(
                         LinearProgressIndicator(progress = { riskUsed }, modifier = Modifier.fillMaxWidth(), color = if (riskUsed >= 1f) DashboardRed else MaterialTheme.colorScheme.primary)
                         Text((riskUsed * 100).toInt().toString() + "% of your daily loss limit used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Text("Set a daily loss limit and record today's result to use this reminder.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Risk usage will appear when a saved daily loss limit and today's result are available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -150,7 +147,7 @@ fun PremiumOverviewScreen(
             }
         }
         if (recentTrades.isEmpty()) {
-            item { Text("No trades yet. Add your first trade to start tracking performance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { Text("No fetched trade data available yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
             items(recentTrades, key = { it.id }) { trade ->
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
@@ -165,13 +162,8 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add daily result")
-                }
-                OutlinedButton(onClick = { onNavigate(8) }, modifier = Modifier.fillMaxWidth()) { Text("View full reports") }
+            OutlinedButton(onClick = { onNavigate(8) }, modifier = Modifier.fillMaxWidth()) {
+                Text("View full reports")
             }
         }
         item {
@@ -179,12 +171,6 @@ fun PremiumOverviewScreen(
         }
     }
 
-    if (showAdd) {
-        AddEntryDialog(entries.lastOrNull(), onDismiss = { showAdd = false }) { entry ->
-            onChange(entries + entry)
-            showAdd = false
-        }
-    }
 }
 
 @Composable
