@@ -32,9 +32,13 @@ fun canonicalPnlDate(value: String): String? {
 }
 
 /**
- * Creates one P&L row per calendar day. Binance history takes precedence when available; manual records are fallback values;
- * journal trades fill dates absent from both.
- * Overlap discrepancies are retained for transparency rather than silently added together.
+ * Creates one P&L row per calendar day using a strict, non-additive source order:
+ * imported Binance P&L > manually recorded daily P&L > estimated manual-journal P&L.
+ * Binance totals win when present; manual records are fallback values, and journal estimates
+ * fill only dates absent from both. Overlaps are retained for audit rather than added together.
+ *
+ * Note: imported Spot P&L may be FIFO-estimated and Binance history may be incomplete; source
+ * precedence does not imply that every imported day has complete exchange coverage.
  */
 fun reconcileDailyPnl(
     entries: List<PnlEntry>,
