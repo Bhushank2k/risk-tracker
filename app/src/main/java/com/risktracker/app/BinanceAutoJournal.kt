@@ -104,8 +104,19 @@ object BinanceAutoJournalStore {
         return inserted
     }
 
-    fun knownSymbols(context: Context, market: String): Set<String> =
-        load(context).filter { it.market == market }.map { it.symbol }.toSet()
+    fun knownSymbols(context: Context, market: String): Set<String> {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet("symbols_${market.hashCode()}", emptySet()) ?: emptySet()
+        return saved + load(context).filter { it.market == market }.map { it.symbol }
+    }
+
+    fun rememberSymbols(context: Context, market: String, symbols: Set<String>) {
+        if (symbols.isEmpty()) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val key = "symbols_${market.hashCode()}"
+        val merged = (prefs.getStringSet(key, emptySet()) ?: emptySet()) + symbols
+        prefs.edit().putStringSet(key, merged).apply()
+    }
 
     fun lastSync(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
@@ -170,13 +181,14 @@ object BinanceAutoJournalRunner {
 
         val api = BinanceApi(credentials.first, credentials.second)
         val end = attemptedAt
+        // Keep a rolling overlap to catch late updates and avoid gaps after the device is offline.
         val start = end - 7L * 24 * 60 * 60 * 1000
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
         val failures = mutableListOf<String>()
         var discoverySucceeded = 0
 
-        runCatching { api.recentSpotTransactions().forEach { knownSpot += it.symbol } }
+        runCatching { knownSpot += api.recentSpotSymbols() }
             .onSuccess { discoverySucceeded++ }
             .onFailure { failures += "Spot symbol discovery: ${it.message ?: "request failed"}" }
         runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
@@ -185,6 +197,9 @@ object BinanceAutoJournalRunner {
         runCatching { knownFutures += api.recentFuturesSymbols(start, end) }
             .onSuccess { discoverySucceeded++ }
             .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
+
+        BinanceAutoJournalStore.rememberSymbols(context, "Spot", knownSpot)
+        BinanceAutoJournalStore.rememberSymbols(context, "USDⓈ-M Futures", knownFutures)
 
         val fetched = mutableListOf<BinanceJournalFill>()
         var symbolsAttempted = 0
@@ -204,7 +219,7 @@ object BinanceAutoJournalRunner {
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Historical coverage before this window is not guaranteed."
+            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Binance symbol discovery is automatic for current Spot holdings and Futures income/positions; older closed Spot pairs may not be discoverable through Binance's symbol-scoped trade-history API."
             "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."
