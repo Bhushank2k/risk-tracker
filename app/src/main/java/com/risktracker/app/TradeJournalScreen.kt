@@ -65,14 +65,14 @@ fun TradeJournalScreen(
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
-                    Text("Add")
+                    Text("External")
                 }
             }
         }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Performance", style = MaterialTheme.typography.titleMedium)
+                    Text("Manual / external performance", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         JournalMetric("Net P&L", stats.netPnl.usd(), pnlColor(stats.netPnl))
                         JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.primary)
@@ -143,40 +143,7 @@ fun TradeJournalScreen(
                 }
             }
         }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Exchange execution journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("${exchangeFills.size} imported fills · Binance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OutlinedButton(onClick = onSyncExchange) { Text("Sync now") }
-                    }
-                    Text("Exchange fills are stored separately from manually recorded closed trades. Each row retains its exchange trade ID, timestamp and fee. Futures realized P&L is reported by Binance; Spot fills are not assigned an invented closed-trade P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (exchangeFills.isEmpty()) {
-                        Text("No exchange fills imported yet. Connect Binance under Tools → Binance trade history, then preview a historical range or wait for automatic sync.", style = MaterialTheme.typography.bodyMedium)
-                    } else {
-                        exchangeFills.take(100).forEach { fill ->
-                            HorizontalDivider()
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text("${fill.symbol} · ${fill.side}", fontWeight = FontWeight.SemiBold)
-                                    Text("${fill.market} · " + (if (fill.id.contains(":csv:")) "Source: Binance CSV" else "Source: Binance API") + " · " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(fill.time)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("Qty ${fill.quantity.num(6)} @ ${fill.price.num(6)} · Notional ${fill.quoteAmount.usd()}", style = MaterialTheme.typography.bodySmall)
-                                    Text("Fee ${fill.fee.num(6)} ${fill.feeAsset} · Order ${fill.orderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    fill.realizedPnl?.let { Text(it.usd(), color = pnlColor(it), fontWeight = FontWeight.SemiBold) }
-                                    Text("Trade ID " + fill.id.substringAfterLast(":"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        if (exchangeFills.size > 100) Text("Showing the latest 100 of ${exchangeFills.size} fills. Export support for exchange fills can be added separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
+        item { BinancePositionJournalSection(exchangeFills, onSyncExchange) }
         item {
             OutlinedButton(
                 onClick = {
@@ -204,15 +171,15 @@ fun TradeJournalScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Your journal starts here", style = MaterialTheme.typography.titleMedium)
-                        Text("Add a closed trade to see net P&L, win rate, profit factor and drawdown.", style = MaterialTheme.typography.bodyMedium)
+                        Text("No manual / external trades", style = MaterialTheme.typography.titleMedium)
+                        Text("Binance executions are grouped automatically above. Add a trade here only if it happened outside the connected Binance account.", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = { showAdd = true }) { Text("Add first trade") }
+                        Button(onClick = { showAdd = true }) { Text("Add external trade") }
                     }
                 }
             }
         } else {
-            item { Text("Closed trades", style = MaterialTheme.typography.titleMedium) }
+            item { Text("Manual / external closed trades", style = MaterialTheme.typography.titleMedium) }
             items(filteredTrades, key = { it.id }) { trade ->
                 val tradePnl = trade.pnl
                 Card(Modifier.fillMaxWidth()) {
