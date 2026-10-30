@@ -889,24 +889,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
-    var advancedToolsExpanded by remember { mutableStateOf(false) }
-    var reportsExpanded by remember { mutableStateOf(false) }
-    var integrationsExpanded by remember { mutableStateOf(false) }
-    var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
-    val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
-    }
-    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            try {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file")
-                pendingBackupRaw = raw
-                backupMessage = "Backup file loaded. Confirm below before replacing current journal and daily records."
-            } catch (e: Exception) {
-                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
-            }
-        }
-    }
     var tradingExpanded by remember { mutableStateOf(true) }
     var riskExpanded by remember { mutableStateOf(false) }
     var exchangeExpanded by remember { mutableStateOf(false) }
@@ -1041,8 +1023,8 @@ private fun MoreMenuSection(
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onToggle) {
-                    Icon(if (expanded) Icons.Default.Warning else Icons.Default.Add,
-                        contentDescription = if (expanded) "Collapse $title" else "Expand $title")
+                    Text(if (expanded) "−" else "+", style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (expanded) content()
