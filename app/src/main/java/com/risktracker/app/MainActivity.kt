@@ -607,6 +607,8 @@ fun LiveTradesScreen() {
 
 @Composable
 fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, importedPnl: List<BinanceDailyResult> = emptyList(), trades: List<TradeEntry> = emptyList(), onNavigate: (Int) -> Unit = {}, onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {}, onChange: (List<PnlEntry>) -> Unit) {
+    PremiumOverviewScreen(entries, importedPnl, trades, maxDailyLoss, onNavigate, onChange)
+    return
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val savedAccountSnapshot = remember { BinanceAccountSnapshotStore(ctx).load() }
