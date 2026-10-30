@@ -800,7 +800,7 @@ fun PnlScreen(entries: List<PnlEntry>, syncedCount: Int, maxDailyLoss: Double, i
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (importedPnl.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else pnlColor(importedPnl.sumOf { it.total })
                                 )
-                                Text("From imported Binance daily history", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Futures income + estimated Spot FIFO for currently held assets; closed Spot-only assets may be missing.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text("Starting capital", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
