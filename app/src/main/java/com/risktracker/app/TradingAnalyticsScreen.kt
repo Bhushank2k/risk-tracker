@@ -122,10 +122,10 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                     Text("${validFills.size} fetched executions · executed quote amount, counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
-                }
-                volumeByQuoteAsset.forEach { (asset, amount) ->
-                    Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                    volumeByQuoteAsset.forEach { (asset, amount) ->
+                        Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                    }
                 }
             }
         }
