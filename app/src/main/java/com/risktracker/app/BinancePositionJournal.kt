@@ -139,8 +139,9 @@ object BinancePositionJournal {
         fun addClose(fill: BinanceJournalFill, quantity: Double, fraction: Double) {
             closedQuantity += quantity
             exitNotional += quantity * fill.price
-            if (fill.realizedPnl?.isFinite() == true) {
-                realizedPnl += fill.realizedPnl
+            val exchangePnl = fill.realizedPnl
+            if (exchangePnl != null && exchangePnl.isFinite()) {
+                realizedPnl += exchangePnl
                 hasRealizedPnl = true
             } else {
                 missingClosePnl = true
