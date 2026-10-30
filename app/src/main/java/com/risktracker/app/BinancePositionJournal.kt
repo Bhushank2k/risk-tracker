@@ -15,6 +15,7 @@ data class BinancePositionCycle(
     val symbol: String,
     val market: String,
     val direction: String,
+    val firstObservedCycle: Boolean,
     val startTime: Long,
     val endTime: Long,
     val openedQuantity: Double,
@@ -54,13 +55,14 @@ object BinancePositionJournal {
             .toSortedMap(compareBy<Triple<String, String, String>> { it.third }.thenBy { it.first })
             .forEach { (_, rows) ->
                 var builder: CycleBuilder? = null
+                var firstCycle = true
                 rows.sortedWith(compareBy<BinanceJournalFill> { it.time }.thenBy { it.id }).forEach { fill ->
                     val signed = if (fill.side.equals("BUY", true)) fill.quantity else -fill.quantity
                     val current = builder
                     if (current == null || abs(current.netQuantity) < EPSILON ||
                         current.netQuantity * signed > 0.0) {
-                        val active = current ?: CycleBuilder(fill.symbol, fill.market, fill.time)
-                            .also { builder = it }
+                        val active = current ?: CycleBuilder(fill.symbol, fill.market, fill.time, firstCycle)
+                            .also { builder = it; firstCycle = false }
                         active.addOpen(fill, abs(signed))
                         active.netQuantity += signed
                     } else {
@@ -75,7 +77,8 @@ object BinancePositionJournal {
                         val remainder = fill.quantity - closingQty
                         if (remainder > EPSILON) {
                             val remainderFraction = remainder / fill.quantity
-                            val next = CycleBuilder(fill.symbol, fill.market, fill.time)
+                            val next = CycleBuilder(fill.symbol, fill.market, fill.time, firstCycle)
+                            firstCycle = false
                             next.addOpen(fill, remainder, remainderFraction)
                             next.netQuantity = if (signed > 0) remainder else -remainder
                             builder = next
@@ -110,7 +113,8 @@ object BinancePositionJournal {
     private class CycleBuilder(
         val symbol: String,
         val market: String,
-        start: Long
+        start: Long,
+        private val firstObservedCycle: Boolean
     ) {
         var netQuantity = 0.0
         private var openedQuantity = 0.0
@@ -162,6 +166,7 @@ object BinancePositionJournal {
                 symbol = symbol.uppercase(),
                 market = market,
                 direction = direction,
+                firstObservedCycle = firstObservedCycle,
                 startTime = firstTime,
                 endTime = lastTime,
                 openedQuantity = openedQuantity,
