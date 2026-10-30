@@ -110,7 +110,7 @@ fun BinancePositionJournalSection(
                             Text(group.symbol, fontWeight = FontWeight.SemiBold)
                             Text("${group.fills.size} fills · Bought ${group.baseQuantityBought.num(5)} · Sold ${group.baseQuantitySold.num(5)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(group.quoteVolume.usd(), fontWeight = FontWeight.SemiBold)
+                        Text(group.quoteVolume.num(), fontWeight = FontWeight.SemiBold)
                     }
                     if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
