@@ -115,6 +115,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         reconcileDailyPnl(entries, importedPnl, trades).firstOrNull { it.date == todayPnlDate }
     }
     var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
+    var exchangeSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         if (BinanceCredentialStore(context).read() != null) {
@@ -122,6 +123,16 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             runCatching {
                 withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
                 exchangeFills = BinanceAutoJournalStore.load(context)
+                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+            }
+        }
+    }
+    LaunchedEffect(tab) {
+        if (tab == 20 && BinanceCredentialStore(context).read() != null) {
+            appScope.launch {
+                runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
+                exchangeFills = BinanceAutoJournalStore.load(context)
+                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
             }
         }
     }
@@ -307,7 +318,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills)
+                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
