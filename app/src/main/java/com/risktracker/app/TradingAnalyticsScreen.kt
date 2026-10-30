@@ -1,6 +1,8 @@
 package com.risktracker.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -40,7 +42,19 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
         it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
             it.quantity.isFinite() && it.price.isFinite()
     }
-    val volume = validFills.sumOf { it.quoteAmount }
+    fun quoteAsset(symbol: String): String {
+        val normalized = symbol.uppercase(Locale.ROOT)
+        return listOf("USDT", "USDC", "BUSD", "FDUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD")
+            .firstOrNull { normalized.endsWith(it) } ?: "QUOTE"
+    }
+    val volumeByQuoteAsset = validFills.groupBy { quoteAsset(it.symbol) }
+        .mapValues { (_, rows) -> rows.sumOf { it.quoteAmount } }
+        .toList().sortedByDescending { it.second }
+    val volumeSummary = when (volumeByQuoteAsset.size) {
+        0 -> "—"
+        1 -> volumeByQuoteAsset.first().second.num() + " " + volumeByQuoteAsset.first().first
+        else -> "${volumeByQuoteAsset.size} quote assets"
+    }
     val realized = validFills.mapNotNull { it.realizedPnl?.takeIf(Double::isFinite) }
     val winning = realized.filter { it > 0.0 }
     val losing = realized.filter { it < 0.0 }
@@ -86,7 +100,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
             }
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf<Pair<String, Int?>>("Today" to 1, "7D" to 7, "30D" to 30, "90D" to 90, "All" to null)
                     .forEach { (label, days) ->
                         FilterChip(
@@ -103,11 +117,15 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("TOTAL EXECUTED VOLUME", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(volume.usd(), style = MaterialTheme.typography.headlineLarge,
+                    Text(volumeSummary, style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${validFills.size} fetched executions · quote-asset notional summed once per fill",
+                    Text("${validFills.size} fetched executions · executed quote amount, counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
+                }
+                volumeByQuoteAsset.forEach { (asset, amount) ->
+                    Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
                 }
             }
         }
@@ -219,7 +237,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
             }
         }
         item {
-            Text("Data scope: saved Binance Spot and USDⓈ-M Futures fills available on this device. Volume is the sum of executed quote amounts (buy and sell turnover). Pair P&L is summed from exchange-reported realized P&L. Historical completeness depends on the symbols and date ranges successfully imported or synced.",
+            Text("Data scope: saved Binance Spot and USDⓈ-M Futures fills available on this device. Volume is the sum of executed quote amounts (buy and sell turnover), grouped by detected quote asset; no conversion to USD is assumed. Pair P&L is summed from exchange-reported realized P&L. Historical completeness depends on the symbols and date ranges successfully imported or synced.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
