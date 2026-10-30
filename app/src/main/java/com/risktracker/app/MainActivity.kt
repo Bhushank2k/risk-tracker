@@ -136,7 +136,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Journal", "Insights", "Tools")
+    val titles = listOf("Overview", "Journal", "Analytics", "More")
     val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Menu)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
@@ -242,8 +242,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             ) {
                 titles.forEachIndexed { i, title ->
                     NavigationBarItem(
-                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; 2 -> tab == 8; else -> tab !in setOf(0, 1, 8) },
-                        onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 8; else -> 7 } },
+                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; 2 -> tab == 20; else -> tab !in setOf(0, 1, 20) },
+                        onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 20; else -> 7 } },
                         icon = { Icon(icons[i], contentDescription = null) },
                         label = { Text(title) },
                         colors = NavigationBarItemDefaults.colors(
