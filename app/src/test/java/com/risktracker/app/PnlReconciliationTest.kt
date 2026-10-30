@@ -21,6 +21,18 @@ class PnlReconciliationTest {
         assertEquals(1.0, rows.single().discrepancy!!, 0.0001)
     }
 
+    @Test fun manualDailyPnlIsFallbackAndIsNotAddedToJournalEstimate() {
+        val manual = listOf(PnlEntry("2026-06-08", 100.0, 7.0))
+        val trades = listOf(
+            TradeEntry("a", "2026-06-08", "BTCUSDT", "Long", 100.0, 102.0, 1.0)
+        )
+        val rows = reconcileDailyPnl(manual, emptyList(), trades)
+        assertEquals(1, rows.size)
+        assertEquals(DailyPnlSource.MANUAL, rows.single().source)
+        assertEquals(7.0, rows.single().selectedPnl, 0.0001)
+        assertEquals(2.0, rows.single().journalPnl!!, 0.0001)
+    }
+
     @Test fun usesBinanceAndJournalOnlyForDaysWithoutHigherPrioritySources() {
         val imported = listOf(BinanceDailyResult("2026-06-07", 1.0, 2.0))
         val trades = listOf(
