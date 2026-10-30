@@ -123,6 +123,7 @@ object BinancePositionJournal {
         private var exitNotional = 0.0
         private var realizedPnl = 0.0
         private var hasRealizedPnl = false
+        private var missingClosePnl = false
         private var feeTotals = linkedMapOf<String, Double>()
         private val rows = mutableListOf<BinanceJournalFill>()
         private var firstTime = start
@@ -141,6 +142,8 @@ object BinancePositionJournal {
             if (fill.realizedPnl?.isFinite() == true) {
                 realizedPnl += fill.realizedPnl
                 hasRealizedPnl = true
+            } else {
+                missingClosePnl = true
             }
             addCommon(fill, fraction)
         }
@@ -157,7 +160,8 @@ object BinancePositionJournal {
         }
 
         fun build(): BinancePositionCycle {
-            val direction = if (rows.firstOrNull()?.side.equals("SELL", true)) "SHORT" else "LONG"
+            val baseDirection = if (rows.firstOrNull()?.side.equals("SELL", true)) "SHORT" else "LONG"
+            val direction = if (firstObservedCycle) "$baseDirection (inferred)" else baseDirection
             val safeOpened = openedQuantity.takeIf { it > EPSILON }
             val safeClosed = closedQuantity.takeIf { it > EPSILON }
             val id = "${symbol.uppercase()}|${firstTime}|${sequence}|${direction}"
@@ -173,7 +177,7 @@ object BinancePositionJournal {
                 closedQuantity = closedQuantity,
                 averageEntryPrice = if (safeOpened != null) entryNotional / safeOpened else null,
                 averageExitPrice = if (safeClosed != null) exitNotional / safeClosed else null,
-                realizedPnl = if (hasRealizedPnl) realizedPnl else null,
+                realizedPnl = if (hasRealizedPnl && !missingClosePnl) realizedPnl else null,
                 feeTotals = feeTotals.toMap(),
                 fillCount = rows.size,
                 unclosedQuantity = abs(netQuantity),
