@@ -61,18 +61,18 @@ fun TradeJournalScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Manual / external trades only · estimates from recorded prices and fees. Do not re-enter Binance-imported executions.", style = MaterialTheme.typography.bodySmall)
+                    Text("External trades only · Binance executions are imported automatically.", style = MaterialTheme.typography.bodySmall)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
-                    Text("External")
+                    Text("Add external")
                 }
             }
         }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Manual / external performance", style = MaterialTheme.typography.titleMedium)
+                    Text("External Trade Performance", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         JournalMetric("Net P&L", stats.netPnl.usd(), pnlColor(stats.netPnl))
                         JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.primary)
@@ -110,7 +110,7 @@ fun TradeJournalScreen(
                             }
                         }
                     }
-                    Text("Based on manually recorded closed trades currently matching your filters. Exchange fills are not included as closed trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Manual trades only; Binance fills are shown in Binance Positions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -171,15 +171,15 @@ fun TradeJournalScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No manual / external trades", style = MaterialTheme.typography.titleMedium)
-                        Text("Binance executions are grouped automatically above. Add a trade here only if it happened outside the connected Binance account.", style = MaterialTheme.typography.bodyMedium)
+                        Text("No external trades", style = MaterialTheme.typography.titleMedium)
+                        Text("Binance executions are imported above. Add only trades from outside Binance.", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = { showAdd = true }) { Text("Add external trade") }
                     }
                 }
             }
         } else {
-            item { Text("Manual / external closed trades", style = MaterialTheme.typography.titleMedium) }
+            item { Text("External Closed Trades", style = MaterialTheme.typography.titleMedium) }
             items(filteredTrades, key = { it.id }) { trade ->
                 val tradePnl = trade.pnl
                 Card(Modifier.fillMaxWidth()) {
@@ -218,7 +218,7 @@ fun TradeJournalScreen(
         }
         item {
             Text(
-                "Journal records are stored locally on this device and are separate from Daily PNL / Google Sheets sync. P&L excludes funding, slippage and exchange-specific contract rules.",
+                "External trades are stored locally and kept separate from Binance imports.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
