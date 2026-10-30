@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import java.text.SimpleDateFormat
 
 private data class PairAnalytics(
     val symbol: String,
@@ -21,7 +23,10 @@ private data class PairAnalytics(
 )
 
 @Composable
-fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
+fun TradingAnalyticsScreen(
+    fills: List<BinanceJournalFill>,
+    syncStatus: BinanceJournalSyncStatus
+) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
     val now = System.currentTimeMillis()
     val filtered = remember(fills, periodDays, now) {
@@ -110,6 +115,31 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                 Text("Automatically calculated from saved Binance executions. No manual entries are used.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("Binance sync", fontWeight = FontWeight.SemiBold)
+                            Text(syncStatus.state, color = if (syncStatus.state.startsWith("Up to date"))
+                                MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium)
+                        }
+                        Text(
+                            if (syncStatus.lastSuccess > 0L)
+                                "Last successful sync: " + SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(syncStatus.lastSuccess))
+                            else "No successful automatic sync recorded yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text("Automatic background refresh approximately every 6 hours; opening this page also requests a refresh.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!syncStatus.state.startsWith("Up to date") && syncStatus.detail.isNotBlank()) {
+                            Text(syncStatus.detail, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
             }
         }
         item {
