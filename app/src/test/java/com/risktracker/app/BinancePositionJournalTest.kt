@@ -31,6 +31,7 @@ class BinancePositionJournalTest {
         assertEquals(1, cycles.size)
         val cycle = cycles.single()
         assertEquals("LONG", cycle.direction)
+        assertTrue(cycle.firstObservedCycle)
         assertEquals(2.0, cycle.openedQuantity, 1e-9)
         assertEquals(2.0, cycle.closedQuantity, 1e-9)
         assertEquals(110.0, cycle.averageEntryPrice!!, 1e-9)
@@ -64,6 +65,7 @@ class BinancePositionJournalTest {
         assertEquals(1.0, cycles[0].closedQuantity, 1e-9)
         assertEquals(10.0, cycles[0].realizedPnl!!, 1e-9)
         assertEquals("SHORT", cycles[1].direction)
+        assertFalse(cycles[1].firstObservedCycle)
         assertEquals(0.5, cycles[1].unclosedQuantity, 1e-9)
         assertTrue(cycles[1].isUnclosed)
     }
