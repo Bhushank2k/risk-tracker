@@ -195,9 +195,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                         BinanceJournalWorker.schedule(context)
                         hasSaved = true
                         secret = ""
-                        status = "Credentials saved encrypted on this device. Daily background sync is scheduled."
+                        status = "Credentials saved encrypted on this device. Binance trade history will sync automatically about every 6 hours and when you open Trading Analytics."
                     } catch (e: Exception) { status = e.message ?: "Could not save credentials." }
-                }, modifier = Modifier.fillMaxWidth()) { Text("Save & enable daily sync") }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Save & enable automatic sync") }
                 Text("Create an API key with read-only account access only. Do not enable Spot/Futures trading or withdrawals. API keys are encrypted using Android Keystore and are excluded from backups.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
