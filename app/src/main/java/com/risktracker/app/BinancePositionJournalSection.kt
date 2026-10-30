@@ -115,7 +115,7 @@ fun BinancePositionJournalSection(
                     if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Unclosed means the imported execution sequence has not returned to zero net quantity; it does not confirm the position is currently open. Results depend on imported symbols and date coverage. Fees remain in their original assets and are not converted.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Unclosed means the imported execution sequence has not returned to zero net quantity; it does not confirm the position is currently open. Results depend on imported symbols and date coverage. Fees remain in their original assets and are not converted. Per-position realized P&L excludes funding income/fees because those are account income events, not execution fills.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
