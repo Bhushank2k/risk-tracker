@@ -70,6 +70,8 @@ fun PremiumOverviewScreen(
     }
     val lossUsed = if (maxDailyLoss > 0.0 && todayPnl != null) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else null
     val balancePoints = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }.takeLast(30).map { it.closing }
+    val chartLineColor = MaterialTheme.colorScheme.primary
+    val chartGridColor = MaterialTheme.colorScheme.outlineVariant
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -189,8 +191,8 @@ fun PremiumOverviewScreen(
                                 val y = size.height * (1.0 - (value - low) / span).toFloat()
                                 if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
                             }
-                            drawLine(MaterialTheme.colorScheme.outlineVariant, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
-                            drawPath(line, DashboardGreen, style = Stroke(width = 3.dp.toPx()))
+                            drawLine(chartGridColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1.dp.toPx())
+                            drawPath(line, chartLineColor, style = Stroke(width = 3.dp.toPx()))
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(balancePoints.first().usd(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
