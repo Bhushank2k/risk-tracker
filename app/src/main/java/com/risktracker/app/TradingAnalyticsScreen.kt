@@ -17,7 +17,7 @@ import java.util.Locale
 private data class PairAnalytics(
     val symbol: String,
     val realizedPnl: Double,
-    val realizedExecutions: Int
+    val realizedOrders: Int
 )
 
 @Composable
@@ -55,9 +55,18 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
         1 -> volumeByQuoteAsset.first().second.num() + " " + volumeByQuoteAsset.first().first
         else -> "${volumeByQuoteAsset.size} quote assets"
     }
-    val realized = validFills.mapNotNull { it.realizedPnl?.takeIf(Double::isFinite) }
-    val winning = realized.filter { it > 0.0 }
-    val losing = realized.filter { it < 0.0 }
+    // Aggregate partial fills from the same exchange order before classifying a win or loss.
+    val realizedOrders = validFills
+        .filter { it.realizedPnl?.isFinite() == true }
+        .groupBy { fill ->
+            "${fill.exchange}|${fill.market}|${fill.symbol}|" +
+                (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
+        }
+        .values
+        .map { rows -> rows.sumOf { it.realizedPnl ?: 0.0 } }
+        .filter { it.isFinite() }
+    val winning = realizedOrders.filter { it > 0.0 }
+    val losing = realizedOrders.filter { it < 0.0 }
     val grossProfit = winning.sum()
     val grossLoss = -losing.sum()
     val netPnl = grossProfit - grossLoss
@@ -73,7 +82,11 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
         .filter { it.realizedPnl?.isFinite() == true }
         .groupBy { it.symbol.ifBlank { "Unknown pair" } }
         .map { (symbol, rows) ->
-            PairAnalytics(symbol, rows.sumOf { it.realizedPnl ?: 0.0 }, rows.size)
+            val orderCount = rows.groupBy { fill ->
+                "${fill.exchange}|${fill.market}|" +
+                    (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
+            }.size
+            PairAnalytics(symbol, rows.sumOf { it.realizedPnl ?: 0.0 }, orderCount)
         }
         .sortedByDescending { it.realizedPnl }
     val bestPair = pairStats.firstOrNull { it.realizedPnl > 0.0 }
@@ -142,7 +155,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                     AnalyticsMetric("Profit factor", profitFactor?.let { if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it) } ?: "—",
                         Modifier.weight(1f))
                 }
-                Text("P&L includes only exchange fills with a reported realized P&L value. Open or non-realizing executions are excluded from win/loss calculations.",
+                Text("P&L includes only exchange fills with reported realized P&L. Partial fills from the same exchange order are combined before classifying a win or loss; open or non-realizing orders are excluded.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -175,7 +188,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                         Text("No realized winning or losing executions in this period.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("$decisiveCount realized executions · wins: ${winning.size} · losses: ${losing.size}",
+                    Text("$decisiveCount realized close orders · wins: ${winning.size} · losses: ${losing.size}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -202,7 +215,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(pair.symbol, fontWeight = FontWeight.SemiBold)
-                                    Text("${pair.realizedExecutions} realized executions",
+                                    Text("${pair.realizedOrders} realized orders",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -237,7 +250,7 @@ fun TradingAnalyticsScreen(fills: List<BinanceJournalFill>) {
             }
         }
         item {
-            Text("Data scope: saved Binance Spot and USDⓈ-M Futures fills available on this device. Volume is the sum of executed quote amounts (buy and sell turnover), grouped by detected quote asset; no conversion to USD is assumed. Pair P&L is summed from exchange-reported realized P&L. Historical completeness depends on the symbols and date ranges successfully imported or synced.",
+            Text("Data scope: saved Binance Spot and USDⓈ-M Futures fills available on this device. Volume is the sum of executed quote amounts (buy and sell turnover), grouped by detected quote asset; no conversion to USD is assumed. Pair P&L is summed from exchange-reported realized P&L. Win/loss ratios aggregate partial fills by exchange order. Historical completeness depends on the symbols and date ranges successfully imported or synced.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
