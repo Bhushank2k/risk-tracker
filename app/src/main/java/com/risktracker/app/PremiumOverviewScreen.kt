@@ -10,8 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,18 +58,18 @@ fun PremiumOverviewScreen(
     val grossProfit = trades.filter { it.pnl > 0.0 }.sumOf { it.pnl }
     val grossLoss = -trades.filter { it.pnl < 0.0 }.sumOf { it.pnl }
     val profitFactor = if (grossLoss > 0.0) grossProfit / grossLoss else null
-    val latestBalance = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }.lastOrNull()?.closing
+    val latestBalance = entries.sortedBy { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.lastOrNull()?.closing
     val maxDrawdown = run {
         var peak = 0.0
         var worst = 0.0
-        entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }.forEach { row ->
+        entries.sortedBy { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.forEach { row ->
             peak = maxOf(peak, row.closing)
             if (peak > 0.0) worst = maxOf(worst, (peak - row.closing) / peak * 100.0)
         }
         worst
     }
     val lossUsed = if (maxDailyLoss > 0.0 && todayPnl != null) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else null
-    val balancePoints = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }.takeLast(30).map { it.closing }
+    val balancePoints = entries.sortedBy { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.takeLast(30).map { it.closing }
     val chartLineColor = MaterialTheme.colorScheme.primary
     val chartGridColor = MaterialTheme.colorScheme.outlineVariant
 
@@ -87,7 +87,7 @@ fun PremiumOverviewScreen(
                 }
                 Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer) {
                     Row(Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         Text("RISK FIRST", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -158,7 +158,7 @@ fun PremiumOverviewScreen(
                             Text("Performance snapshot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("Closed trade journal · estimates after entered fees", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.TrendingUp, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         DashboardInlineMetric("CLOSED TRADES", closedTrades.toString())
@@ -212,7 +212,7 @@ fun PremiumOverviewScreen(
                             Text("Daily risk guard", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text("Advisory limit based on recorded daily P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.primary)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Remaining loss budget", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -264,7 +264,7 @@ fun PremiumOverviewScreen(
         if (trades.isEmpty()) {
             item { Text("No closed trades yet. Add your first trade to start measuring execution quality.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
-            items(trades.sortedByDescending { reportDate(it.date)?.time ?: Long.MIN_VALUE }.take(4), key = { it.id }) { trade ->
+            items(trades.sortedByDescending { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.take(4), key = { it.id }) { trade ->
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -328,4 +328,12 @@ private fun DashboardInlineMetric(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
+}
+
+
+private fun dashboardReportDate(value: String): Date? {
+    listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "M/d/yyyy").forEach { pattern ->
+        try { return SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }.parse(value) } catch (_: Exception) { }
+    }
+    return null
 }
