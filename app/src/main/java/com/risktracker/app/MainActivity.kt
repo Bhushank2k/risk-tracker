@@ -135,6 +135,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Trade journal" to 1
         ),
         "ANALYTICS & REVIEWS" to listOf(
+            "Trading Analytics" to 20,
             "Performance analytics" to 8,
             "Behavioral insights" to 12,
             "Post-trade reviews" to 14,
@@ -306,6 +307,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                20 -> TradingAnalyticsScreen(exchangeFills)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
