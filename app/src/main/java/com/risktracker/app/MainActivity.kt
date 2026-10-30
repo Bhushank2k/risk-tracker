@@ -627,6 +627,66 @@ fun PnlScreen(
 }
 
 @Composable
+fun BalanceChart(entries: List<PnlEntry>) {
+    if (entries.size < 2) return
+    var metric by remember { mutableStateOf("Balance") }
+    var range by remember { mutableStateOf("All") }
+    val datedEntries = entries.sortedBy { reportDate(it.date)?.time ?: Long.MIN_VALUE }
+    var cumulative = 0.0
+    val allPoints = datedEntries.map { entry ->
+        cumulative += entry.pnl
+        entry to if (metric == "Balance") entry.closing else cumulative
+    }
+    val latestDate = datedEntries.mapNotNull { reportDate(it.date) }.maxByOrNull { it.time }
+    val rangeDays = when (range) { "1W" -> 7; "1M" -> 30; "3M" -> 90; else -> null }
+    val filteredPoints = if (rangeDays == null || latestDate == null) allPoints else {
+        val cutoff = latestDate.time - rangeDays * 24L * 60L * 60L * 1000L
+        allPoints.filter { (entry, _) -> reportDate(entry.date)?.time?.let { it >= cutoff } == true }
+            .ifEmpty { allPoints }
+    }
+    val points = filteredPoints.map { it.second }
+    val lo = points.minOrNull() ?: 0.0
+    val hi = points.maxOrNull() ?: 0.0
+    val line = MaterialTheme.colorScheme.primary
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Balance", "Net P&L").forEach { option ->
+                    FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("1W", "1M", "3M", "All").forEach { option ->
+                    FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
+                }
+            }
+            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+                val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
+                val path = Path()
+                points.forEachIndexed { i, value ->
+                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
+                    val y = (size.height * (1 - (value - lo) / rangeValue)).toFloat()
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, line, style = Stroke(width = 4f))
+                drawLine(Color.LightGray.copy(alpha = 0.5f), Offset(0f, size.height), Offset(size.width, size.height))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+
+@Composable
 fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> Unit) {
     val today = remember { SimpleDateFormat("d/M/yyyy", Locale.getDefault()).format(Date()) }
     var date by remember { mutableStateOf(today) }
