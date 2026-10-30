@@ -49,7 +49,7 @@ class BinancePositionJournalTest {
             fill("3", "BUY", 1.5, 80.0, 3, 30.0)
         ))
         assertEquals(1, cycles.size)
-        assertEquals("SHORT", cycles.single().direction)
+        assertEquals("SHORT (inferred)", cycles.single().direction)
         assertEquals(2.0, cycles.single().closedQuantity, 1e-9)
         assertEquals(35.0, cycles.single().realizedPnl!!, 1e-9)
     }
@@ -68,6 +68,17 @@ class BinancePositionJournalTest {
         assertFalse(cycles[1].firstObservedCycle)
         assertEquals(0.5, cycles[1].unclosedQuantity, 1e-9)
         assertTrue(cycles[1].isUnclosed)
+    }
+
+    @Test
+    fun doesNotShowPartialExchangePnlAsACompletePositionTotal() {
+        val cycles = BinancePositionJournal.futuresCycles(listOf(
+            fill("1", "BUY", 1.0, 100.0, 1, 0.0),
+            fill("2", "SELL", 0.5, 110.0, 2, 5.0),
+            fill("3", "SELL", 0.5, 120.0, 3, null)
+        ))
+        assertEquals(1, cycles.size)
+        assertEquals(null, cycles.single().realizedPnl)
     }
 
     @Test
