@@ -907,35 +907,73 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Tools & settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Quick tools", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
-        MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
-        Text("Binance & data", style = MaterialTheme.typography.titleMedium)
-        MoreDestinationCard("Binance data & imports", "API sync, CSV imports and account-history recovery") { onNavigate(6) }
-        MoreDestinationCard("Ledger audit & reconciliation", "Check coverage, duplicates and daily totals") { onNavigate(15) }
-        OutlinedButton(onClick = { reportsExpanded = !reportsExpanded }, modifier = Modifier.fillMaxWidth()) {
-            Text((if (reportsExpanded) "▾ " else "▸ ") + "Reports & exchange tools")
+    var tradingExpanded by remember { mutableStateOf(true) }
+    var riskExpanded by remember { mutableStateOf(false) }
+    var exchangeExpanded by remember { mutableStateOf(false) }
+    var reportsExpanded by remember { mutableStateOf(false) }
+    var integrationsExpanded by remember { mutableStateOf(false) }
+    var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
+    val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
+    }
+    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Could not read file")
+                pendingBackupRaw = raw
+                backupMessage = "Backup file loaded. Confirm below before replacing current journal and daily records."
+            } catch (e: Exception) {
+                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
+            }
         }
-        if (reportsExpanded) {
-            MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
-            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
-            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Workspace", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Your trading tools, exchange data and reports in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        OutlinedButton(onClick = { advancedToolsExpanded = !advancedToolsExpanded }, modifier = Modifier.fillMaxWidth()) {
-            Text((if (advancedToolsExpanded) "▾ " else "▸ ") + "Advanced tools")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("QUICK ACCESS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MoreQuickTile("Trading\nAnalytics", "P&L and stats", Modifier.weight(1f)) { onNavigate(20) }
+                    MoreQuickTile("Trade\nJournal", "Your executions", Modifier.weight(1f)) { onNavigate(1) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MoreQuickTile("Position\nCalculator", "Size and leverage", Modifier.weight(1f)) { onNavigate(2) }
+                    MoreQuickTile("Binance\nSync", "Exchange connection", Modifier.weight(1f)) { onNavigate(6) }
+                }
+            }
         }
-        if (advancedToolsExpanded) {
-            MoreDestinationCard("Target planner", "Optional balance and goal planning") { onNavigate(10) }
-            MoreDestinationCard("Behavioral intelligence", "Explore patterns and recurring mistakes") { onNavigate(12) }
+        MoreMenuSection("Trading & reviews", "Journal, performance and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
+            MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
+            MoreDestinationCard("Performance analytics", "Review performance trends and statistics") { onNavigate(8) }
+            MoreDestinationCard("Behavioral insights", "Find patterns and recurring trading mistakes") { onNavigate(12) }
+            MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
+        }
+        MoreMenuSection("Risk workspace", "Plan position size and control trading risk", riskExpanded, { riskExpanded = !riskExpanded }) {
+            MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
+            MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
+            MoreDestinationCard("Target planner", "Plan optional balance and trading goals") { onNavigate(10) }
+            MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
             MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
-            MoreDestinationCard("Trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
         }
-        OutlinedButton(onClick = { integrationsExpanded = !integrationsExpanded }, modifier = Modifier.fillMaxWidth()) {
-            Text((if (integrationsExpanded) "▾ " else "▸ ") + "Optional integrations")
+        MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
+            MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
+            MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
+            MoreDestinationCard("Ledger audit", "Check coverage, duplicates and daily totals") { onNavigate(15) }
+            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
+            MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         }
-        if (integrationsExpanded) {
+        MoreMenuSection("Reports & integrations", "Tax summaries and optional external data tools", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
+            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
             MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
         }
         HorizontalDivider()
@@ -985,14 +1023,62 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
 }
 
 @Composable
+private fun MoreMenuSection(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onToggle) {
+                    Icon(if (expanded) Icons.Default.Warning else Icons.Default.Add,
+                        contentDescription = if (expanded) "Collapse $title" else "Expand $title")
+                }
+            }
+            if (expanded) content()
+        }
+    }
+}
+
+@Composable
+private fun MoreQuickTile(title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(15.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(13.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
