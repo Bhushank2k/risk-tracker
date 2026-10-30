@@ -454,6 +454,37 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         return output.distinctBy { it.id }.sortedBy { it.time }
     }
 
+    /**
+     * Discover currently tradable Spot pairs for assets present in the account.
+     * Binance Spot trade history is symbol-scoped; this is the safest automatic discovery
+     * available without brute-forcing every listed market or asking the user to type symbols.
+     */
+    fun recentSpotSymbols(): Set<String> {
+        val account = signedGetObject("https://api.binance.com", "/api/v3/account", emptyList())
+        val balances = account.optJSONArray("balances") ?: JSONArray()
+        val assets = (0 until balances.length()).mapNotNull { i ->
+            val row = balances.getJSONObject(i)
+            val asset = row.optString("asset")
+            val total = (row.optString("free").toDoubleOrNull() ?: 0.0) +
+                (row.optString("locked").toDoubleOrNull() ?: 0.0)
+            asset.takeIf { it.isNotBlank() && total > 0.0 &&
+                it !in setOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI") }
+        }.toSet()
+        if (assets.isEmpty()) return emptySet()
+        val info = publicGet("https://api.binance.com/api/v3/exchangeInfo")
+        val preferredQuotes = listOf("USDT", "USDC", "BTC", "ETH", "BNB", "FDUSD", "EUR")
+        val rows = info.optJSONArray("symbols") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { i ->
+            val row = rows.getJSONObject(i)
+            val base = row.optString("baseAsset")
+            val quote = row.optString("quoteAsset")
+            row.optString("symbol").takeIf {
+                row.optString("status") == "TRADING" && base in assets && quote in preferredQuotes
+            }?.let { Triple(preferredQuotes.indexOf(quote), it, base) }
+        }.sortedWith(compareBy<Triple<Int, String, String>> { it.first }.thenBy { it.second })
+            .map { it.second }.take(100).toSet()
+    }
+
     /** Recent Spot fills for currently held non-stable assets. Read-only endpoint; no orders are placed. */
     fun recentSpotTransactions(): List<BinanceActivityItem> {
         val account = signedGetObject("https://api.binance.com", "/api/v3/account", emptyList())
