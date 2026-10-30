@@ -27,26 +27,26 @@ fun BinancePositionJournalSection(
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Binance position journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${fills.size} saved executions · Binance source of truth", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Binance Positions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("${fills.size} executions · Binance auto-sync", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 OutlinedButton(onClick = onSync) { Text("Sync now") }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PositionJournalMetric("Position cycles", cycles.size.toString())
-                PositionJournalMetric("Unclosed in history", unclosed.toString())
+                PositionJournalMetric("Partial history", unclosed.toString())
                 PositionJournalMetric("Closed cycles", closed.toString())
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Exchange-reported realized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Realized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(realized.usd(), color = pnlColor(realized), fontWeight = FontWeight.Bold)
             }
-            Text("Futures positions are reconstructed from chronological fills using one-way net exposure. Partial entries/exits are grouped; a reversal starts a new cycle. This history cannot reliably reconstruct hedge-mode positions because Binance positionSide is not stored in imported fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("One-way Futures reconstruction; hedge-mode positions are not separated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             if (cycles.isEmpty()) {
-                Text("No USDⓈ-M Futures position cycles found yet. Sync Binance or import historical executions to build this journal.", style = MaterialTheme.typography.bodyMedium)
+                Text("No positions found. Sync Binance to load executions.", style = MaterialTheme.typography.bodyMedium)
             } else {
-                Text("USDⓈ-M Futures positions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Futures Positions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 cycles.take(100).forEach { cycle ->
                     val isExpanded = cycle.key in expanded
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -54,7 +54,7 @@ fun BinancePositionJournalSection(
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text("${cycle.symbol} · ${cycle.direction}", fontWeight = FontWeight.SemiBold)
-                                    Text("${if (cycle.isUnclosed) "Unclosed in imported history" else "Closed position"} · ${cycle.fillCount} fills", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${if (cycle.isUnclosed) "Partial history" else "Closed position"} · ${cycle.fillCount} fills", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 cycle.realizedPnl?.let {
                                     Text(it.usd(), color = pnlColor(it), fontWeight = FontWeight.Bold)
@@ -102,8 +102,8 @@ fun BinancePositionJournalSection(
 
             if (spotGroups.isNotEmpty()) {
                 HorizontalDivider()
-                Text("Spot execution activity", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text("Spot buys and sells are grouped by pair, but not labeled as closed positions or assigned realized P&L. Deposits, withdrawals and inventory held before the imported date range can change the true position cost basis.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Spot Activity", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Activity only; cost basis and realized P&L need complete inventory history.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 spotGroups.take(20).forEach { group ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -115,7 +115,7 @@ fun BinancePositionJournalSection(
                     if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Unclosed means the imported execution sequence has not returned to zero net quantity; it does not confirm the position is currently open. Results depend on imported symbols and date coverage. Fees remain in their original assets and are not converted. Per-position realized P&L excludes funding income/fees because those are account income events, not execution fills.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Partial history may not reflect live positions. Fees stay in original assets; funding is excluded from position P&L.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
