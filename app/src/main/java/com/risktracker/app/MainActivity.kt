@@ -141,34 +141,30 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
-        "OVERVIEW & JOURNAL" to listOf(
+        "HOME" to listOf(
             "Overview" to 0,
-            "Trade journal" to 1
+            "Trade Journal" to 1
         ),
-        "ANALYTICS & REVIEWS" to listOf(
+        "ANALYTICS" to listOf(
             "Trading Analytics" to 20,
-            "Performance analytics" to 8,
-            "Behavioral insights" to 12,
             "Post-trade reviews" to 14,
             "Ledger audit" to 15
         ),
-        "RISK WORKSPACE" to listOf(
-            "Position size calculator" to 2,
+        "RISK MANAGEMENT" to listOf(
+            "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
-            "Target planner" to 10,
             "Risk alerts" to 19,
             "Risk Scenario Lab" to 13
         ),
-        "EXCHANGE & DATA" to listOf(
-            "Binance sync" to 6,
+        "BINANCE & DATA" to listOf(
+            "Binance Sync" to 6,
             "Sync health" to 18,
-            "Binance statements" to 17,
-            "Live trades (read-only)" to 16,
-            "CSV / Sheets sync" to 4,
-            "Crypto tax report" to 9
+            "Live positions & orders" to 16,
+            "Account statements" to 17
         ),
-        "APP" to listOf(
-            "Tools & settings" to 7,
+        "REPORTS & APP" to listOf(
+            "Crypto tax report" to 9,
+            "Settings" to 7,
             "About Risk Tracker" to 5
         )
     )
@@ -934,16 +930,14 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                 }
             }
         }
-        MoreMenuSection("Trading & reviews", "Journal, performance and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
+        MoreMenuSection("Analytics", "Execution results and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
             MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
-            MoreDestinationCard("Performance analytics", "Review performance trends and statistics") { onNavigate(8) }
-            MoreDestinationCard("Behavioral insights", "Find patterns and recurring trading mistakes") { onNavigate(12) }
             MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
+            MoreDestinationCard("Ledger audit", "Check imported history, duplicates and daily totals") { onNavigate(15) }
         }
         MoreMenuSection("Risk workspace", "Plan position size and control trading risk", riskExpanded, { riskExpanded = !riskExpanded }) {
             MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
             MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
-            MoreDestinationCard("Target planner", "Plan optional balance and trading goals") { onNavigate(10) }
             MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
             MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
         }
@@ -954,9 +948,8 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
             MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         }
-        MoreMenuSection("Reports & integrations", "Tax summaries and optional external data tools", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
+        MoreMenuSection("Reports", "Tax summaries and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
             MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
-            MoreDestinationCard("Google Sheets sync", "Optional sync for Daily P&L") { onNavigate(4) }
         }
         HorizontalDivider()
         Text("App settings", style = MaterialTheme.typography.titleMedium)
