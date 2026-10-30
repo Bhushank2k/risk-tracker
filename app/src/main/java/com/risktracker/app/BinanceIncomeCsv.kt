@@ -12,9 +12,9 @@ import java.util.TimeZone
 /**
  * Imports Binance USDⓈ-M Futures income-history CSV exports.
  *
- * Expected fields are Binance's income-history columns (symbol, incomeType, income,
- * asset, time, tranId, tradeId); header aliases are accepted for common export variants.
- * Only realized P&L, commission and funding income affect daily net P&L.
+ * Daily net trading P&L uses the same income types as the live API collector:
+ * realized P&L, commission, funding fees and insurance-clear adjustments.
+ * Transfers and other non-trading cash movements remain excluded.
  */
 data class BinanceIncomeImportReport(
     val daily: Map<String, Double>,
@@ -28,7 +28,8 @@ data class BinanceIncomeImportReport(
 
 object BinanceIncomeCsvImporter {
     private val utc = TimeZone.getTimeZone("UTC")
-    private val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE")
+    // Keep this set aligned with BinanceApi.futuresDailyPnl().
+    private val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")
 
     fun parse(input: InputStream, selectedYear: Int): Map<String, Double> =
         parseWithReport(input, selectedYear).daily
@@ -100,7 +101,7 @@ object BinanceIncomeCsvImporter {
             accepted++
         }
         require(accepted > 0) {
-            "No REALIZED_PNL, COMMISSION, or FUNDING_FEE rows were found. Choose a Binance USDⓈ-M Futures income-history export."
+            "No REALIZED_PNL, COMMISSION, FUNDING_FEE or INSURANCE_CLEAR rows were found. Choose a Binance USDⓈ-M Futures income-history export."
         }
         return BinanceIncomeImportReport(
             daily = daily,
