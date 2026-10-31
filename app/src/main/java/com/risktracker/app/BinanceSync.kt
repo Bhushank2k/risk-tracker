@@ -245,18 +245,16 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         )
     }
 
-    /** Read-only snapshot of open USDⓈ-M Futures positions and Spot open orders. */
-    fun liveTrades(): List<BinanceLiveTrade> {
-        val result = mutableListOf<BinanceLiveTrade>()
+    /** Read-only USDⓈ-M Futures positions only; suitable for lightweight Dashboard polling. */
+    fun futuresPositions(): List<BinanceLiveTrade> {
         val positions = signedGetArray("https://fapi.binance.com", "/fapi/v2/positionRisk", emptyList())
-        for (i in 0 until positions.length()) {
+        return (0 until positions.length()).mapNotNull { i ->
             val p = positions.getJSONObject(i)
             val amount = p.optString("positionAmt").toDoubleOrNull() ?: p.optDouble("positionAmt")
-            if (kotlin.math.abs(amount) < 1e-12) continue
-            result += BinanceLiveTrade(
+            if (kotlin.math.abs(amount) < 1e-12) return@mapNotNull null
+            BinanceLiveTrade(
                 id = "futures:" + p.optString("symbol") + ":" + p.optString("positionSide"),
-                symbol = p.optString("symbol"),
-                market = "USDⓈ-M Futures",
+                symbol = p.optString("symbol"), market = "USDⓈ-M Futures",
                 side = if (amount > 0) "LONG" else "SHORT",
                 quantity = kotlin.math.abs(amount),
                 entryPrice = p.optString("entryPrice").toDoubleOrNull() ?: p.optDouble("entryPrice"),
@@ -266,7 +264,12 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 liquidationPrice = p.optString("liquidationPrice").toDoubleOrNull() ?: p.optDouble("liquidationPrice"),
                 status = "OPEN"
             )
-        }
+        }.sortedBy { it.symbol }
+    }
+
+    /** Read-only snapshot of open USDⓈ-M Futures positions and Spot open orders. */
+    fun liveTrades(): List<BinanceLiveTrade> {
+        val result = futuresPositions().toMutableList()
         val orders = signedGetArray("https://api.binance.com", "/api/v3/openOrders", emptyList())
         for (i in 0 until orders.length()) {
             val o = orders.getJSONObject(i)
