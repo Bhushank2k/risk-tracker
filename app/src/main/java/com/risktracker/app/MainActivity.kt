@@ -289,15 +289,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                4 -> SyncScreen(store, entries, syncedCount) { synced ->
-                    entries = synced
-                    syncedCount = synced.size
-                }
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
                 8 -> InsightsScreen(entries, trades, importedPnl, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
-                10 -> TargetScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
                     maxTradeRisk = store.maxTradeRisk,
                     maxDailyLoss = store.maxDailyLoss,
@@ -306,7 +301,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
                     dailyPnlKnown = todayReconciledPnl != null
                 ))
-                12 -> BehavioralInsightsScreen(trades)
                 13 -> RiskScenarioLabScreen()
                 14 -> TradeReviewScreen(trades)
                 15 -> LedgerAuditScreen()
@@ -889,7 +883,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var riskExpanded by remember { mutableStateOf(false) }
     var exchangeExpanded by remember { mutableStateOf(false) }
     var reportsExpanded by remember { mutableStateOf(false) }
-    var integrationsExpanded by remember { mutableStateOf(false) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -922,7 +915,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MoreQuickTile("Trading\nAnalytics", "P&L and stats", Modifier.weight(1f)) { onNavigate(20) }
-                    MoreQuickTile("Trade\nJournal", "Your executions", Modifier.weight(1f)) { onNavigate(1) }
+                    MoreQuickTile("Trade\nJournal", "External trades & Binance positions", Modifier.weight(1f)) { onNavigate(1) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MoreQuickTile("Position\nCalculator", "Size and leverage", Modifier.weight(1f)) { onNavigate(2) }
@@ -944,15 +937,14 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
             MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
             MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
-            MoreDestinationCard("Ledger audit", "Check coverage, duplicates and daily totals") { onNavigate(15) }
             MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
             MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         }
-        MoreMenuSection("Reports", "Tax summaries and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
+        MoreMenuSection("Reports & app", "Tax summaries, app information and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
             MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+            MoreDestinationCard("About Risk Tracker", "App version, developer and important disclosures") { onNavigate(5) }
         }
         HorizontalDivider()
-        Text("App settings", style = MaterialTheme.typography.titleMedium)
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
