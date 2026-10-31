@@ -40,6 +40,18 @@ internal object TradeIdeaPaperJournal {
         save(context, rows)
     }
 
+    fun recordPartial(context: Context, symbol: String, partialR: Double = 0.75) {
+        val rows = history(context)
+        for (i in rows.length() - 1 downTo 0) {
+            val row = rows.optJSONObject(i) ?: continue
+            if (row.optString("symbol") == symbol && !row.has("closedAt")) {
+                rows.put(i, JSONObject(row.toString()).put("partialR", partialR))
+                save(context, rows)
+                return
+            }
+        }
+    }
+
     fun recordExit(context: Context, symbol: String, exitPrice: Double, outcome: String) {
         val rows = history(context)
         for (i in rows.length() - 1 downTo 0) {
@@ -50,7 +62,13 @@ internal object TradeIdeaPaperJournal {
             val side = row.optString("side")
             val risk = abs(entry - stop)
             if (risk <= 0.0) return
-            val rMultiple = if (side == "LONG") (exitPrice - entry) / risk else (entry - exitPrice) / risk
+            val rawR = if (side == "LONG") (exitPrice - entry) / risk else (entry - exitPrice) / risk
+            val partialR = row.optDouble("partialR", 0.0)
+            val rMultiple = when {
+                outcome == "TARGET2" -> 2.0
+                partialR != 0.0 -> partialR + rawR * 0.5
+                else -> rawR
+            }
             val closed = JSONObject(row.toString())
                 .put("exitPrice", exitPrice)
                 .put("outcome", outcome)
