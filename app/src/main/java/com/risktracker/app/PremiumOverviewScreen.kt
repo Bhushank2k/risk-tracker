@@ -170,7 +170,7 @@ fun PremiumOverviewScreen(
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(position.symbol, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                        Text(position.side + " · " + position.leverage + "× · Isolated/cross mode not supplied",
+                                        Text(position.side + " · " + position.leverage + "×",
                                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Text((if (position.unrealizedPnl > 0.0) "+" else "") + position.unrealizedPnl.usd(),
@@ -197,6 +197,7 @@ fun PremiumOverviewScreen(
                     } else {
                         Text(if (!hasBinanceCredentials) "Connect Binance in Binance Sync to load actual open positions."
                             else if (positionsLoading) "Fetching current USDⓈ-M Futures positions…"
+                            else if (positionsStatus.startsWith("Refresh failed")) "Could not confirm whether positions are open. Check the connection and refresh."
                             else "No open Futures positions were returned by Binance.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
