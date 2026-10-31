@@ -50,6 +50,70 @@ private data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
 )
 
+internal object TradeIdeaCache {
+    private const val PREFS = "market_scan_cache_v1"
+    private const val KEY = "latest_scan"
+
+    fun load(context: android.content.Context): Pair<Long, List<TradeIdea>>? = runCatching {
+        val root = JSONObject(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(KEY, null) ?: return null)
+        val timestamp = root.optLong("updatedAt", 0L)
+        val rows = root.optJSONArray("ideas") ?: return null
+        val ideas = (0 until rows.length()).mapNotNull { i ->
+            val x = rows.optJSONObject(i) ?: return@mapNotNull null
+            val reasonsJson = x.optJSONArray("reasons") ?: JSONArray()
+            val reasons = (0 until reasonsJson.length()).map { reasonsJson.optString(it) }
+            val stats = x.optJSONObject("backtest") ?: JSONObject()
+            TradeIdea(
+                symbol = x.getString("symbol"), side = x.getString("side"), score = x.getInt("score"),
+                volume = x.getDouble("volume"), change = x.getDouble("change"), last = x.getDouble("last"),
+                entry = x.getDouble("entry"), stop = x.getDouble("stop"), target1 = x.getDouble("target1"),
+                target2 = x.getDouble("target2"), entryTriggered = x.getBoolean("entryTriggered"),
+                rsi = x.getDouble("rsi"), volumeRatio = x.getDouble("volumeRatio"),
+                bias4h = x.getString("bias4h"), bias1h = x.getString("bias1h"), setup = x.getString("setup"),
+                reasons = reasons, warning = x.getString("warning"), horizon = x.getString("horizon"),
+                bias5m = x.getString("bias5m"),
+                spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
+                fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
+                backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR"))
+            )
+        }
+        if (timestamp <= 0L || ideas.isEmpty()) null else timestamp to ideas
+    }.getOrNull()
+
+    fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
+        runCatching {
+            val rows = JSONArray()
+            ideas.forEach { idea ->
+                val reasons = JSONArray().apply { idea.reasons.forEach { put(it) } }
+                val stats = JSONObject().put("trades", idea.backtest.trades)
+                    .put("wins", idea.backtest.wins).put("averageR", idea.backtest.averageR)
+                rows.put(JSONObject()
+                    .put("symbol", idea.symbol).put("side", idea.side).put("score", idea.score)
+                    .put("volume", idea.volume).put("change", idea.change).put("last", idea.last)
+                    .put("entry", idea.entry).put("stop", idea.stop).put("target1", idea.target1)
+                    .put("target2", idea.target2).put("entryTriggered", idea.entryTriggered)
+                    .put("rsi", idea.rsi).put("volumeRatio", idea.volumeRatio)
+                    .put("bias4h", idea.bias4h).put("bias1h", idea.bias1h).put("setup", idea.setup)
+                    .put("reasons", reasons).put("warning", idea.warning).put("horizon", idea.horizon)
+                    .put("bias5m", idea.bias5m)
+                    .put("spreadBps", idea.spreadBps ?: JSONObject.NULL)
+                    .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
+                    .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
+                    .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
+                    .put("backtest", stats))
+            }
+            val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
+            context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+                .edit().putString(KEY, root.toString()).apply()
+        }
+    }
+
+    private fun JSONObject.optNullableDouble(key: String): Double? {
+        if (!has(key) || isNull(key)) return null
+        return optDouble(key).takeIf { it.isFinite() }
+    }
+}
+
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
 
@@ -284,14 +348,16 @@ internal object BinanceMarketScanner {
 
 @Composable
 fun DailyTradeIdeasScreen() {
-    var ideas by remember { mutableStateOf<List<TradeIdea>>(emptyList()) }
+    val context = LocalContext.current
+    val cachedScan = remember { TradeIdeaCache.load(context) }
+    var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
     var loading by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Refresh to scan live Binance USDT-M perpetual markets. No API key is required.") }
+    var status by remember { mutableStateOf(if (cachedScan != null) "Showing saved scan while fresh Binance data loads…" else "Refresh to scan live Binance USDT-M perpetual markets. No API key is required.") }
     var error by remember { mutableStateOf<String?>(null) }
-    var updatedAt by remember { mutableStateOf<Long?>(null) }
+    var updatedAt by remember { mutableStateOf(cachedScan?.first) }
+    var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
     var equityInput by remember { mutableStateOf("") }
-    val context = LocalContext.current
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
     val scope = rememberCoroutineScope()
@@ -308,8 +374,12 @@ fun DailyTradeIdeasScreen() {
         loading = true; error = null; status = "Connecting to Binance public market data…"
         scope.launch {
             try {
-                ideas = BinanceMarketScanner.scan { status = it }
-                updatedAt = System.currentTimeMillis()
+                val freshIdeas = BinanceMarketScanner.scan { status = it }
+                val scanTime = System.currentTimeMillis()
+                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
+                ideas = freshIdeas
+                updatedAt = scanTime
+                showingCached = false
                 paperStats = TradeIdeaPaperJournal.stats(context)
                 status = "Scan complete. " + ideas.count { it.side != "WAIT" && it.score >= 70 } + " qualified directional ideas from " + ideas.size + " analysed pairs."
                 if (ideas.isEmpty()) error = "No complete readings returned. Retry the scan."
@@ -366,7 +436,7 @@ fun DailyTradeIdeasScreen() {
                             } else enableTradeAlerts()
                         })
                     }
-                    updatedAt?.let { Text("Updated " + SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(it)), style = MaterialTheme.typography.labelSmall) }
+                    updatedAt?.let { Text((if (showingCached) "Cached scan · refresh pending · " else "Updated ") + SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = if (showingCached) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant) }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             }
