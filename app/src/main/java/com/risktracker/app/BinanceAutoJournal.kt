@@ -181,8 +181,10 @@ internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, 
     if (ordered.isEmpty()) return emptyList<String>() to 0
     if (ordered.size <= limit) return ordered to 0
     val start = offset.mod(ordered.size)
-    val count = minOf(limit, ordered.size)
-    val batch = List(count) { ordered[(start + it) % ordered.size] }
+    // Stop at the end of the ordered list; wrapping within a batch repeats symbols
+    // and can starve the final entries when the symbol count is not a multiple of limit.
+    val count = minOf(limit, ordered.size - start)
+    val batch = ordered.subList(start, start + count)
     return batch to ((start + count) % ordered.size)
 }
 
