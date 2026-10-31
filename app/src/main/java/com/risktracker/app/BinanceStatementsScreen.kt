@@ -52,13 +52,13 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(onClick = onBack) { Text("Back to Binance sync") }
-        Text("Binance account statements", style = MaterialTheme.typography.headlineSmall)
-        Text("Read-only sync of available deposits, withdrawals, distributions, transfers and Futures income. Records are deduplicated and saved separately from your existing journal and Daily P&L.", style = MaterialTheme.typography.bodyMedium)
+        Text("Account activity", style = MaterialTheme.typography.headlineSmall)
+        Text("Read-only Binance history for deposits, withdrawals, distributions, transfers and Futures income. Records are deduplicated and kept separate from your journal and Daily P&L.", style = MaterialTheme.typography.bodyMedium)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Coverage matters", style = MaterialTheme.typography.titleMedium)
-                Text("Binance does not expose every account statement through one endpoint. API history limits vary by statement type, and this first version fetches a recent 7-day window for supported categories. It does not guarantee a complete archive back to 2019 or include every Spot trade, order, fiat, earn, or tax document.")
-                Text("For a complete historical archive, also download Binance's official account data export and import the CSV files through Historical trades & India tax reports.", style = MaterialTheme.typography.bodySmall)
+                Text("Recent history only", style = MaterialTheme.typography.titleMedium)
+                Text("This screen fetches a recent 7-day window for supported categories. Binance API history limits vary by statement type, so this is not a lifetime archive and does not include every Spot trade, order, fiat, Earn, or tax document.")
+                Text("For older activity, download Binance's official account data export and use the historical import tools where supported.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     if (BinanceCredentialStore(context).read() == null) {
                         status = "Save read-only Binance API credentials on the previous screen first."
