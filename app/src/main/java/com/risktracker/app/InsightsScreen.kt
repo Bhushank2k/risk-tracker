@@ -214,7 +214,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
                     Text(snapshot.netPnl.usd(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("${snapshot.winningDays} positive days · ${snapshot.losingDays} negative days",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("Source mix: $manualDays manual · $binanceDays Binance-only · $journalDays journal-only days. Manual records take precedence on overlap.",
+                    Text("Source mix: $manualDays manual · $binanceDays Binance-only · $journalDays journal-only days. Binance imported P&L takes precedence on overlap, then manual daily P&L, then estimated journal P&L.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                     if (overlapCount > 0) {
                         Text("$overlapCount overlapping dates are available for reconciliation. Open Dashboard to compare manual and Binance amounts.",
@@ -261,7 +261,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         }
         item {
             Text(
-                "P&L metrics normalize dates and select one value per day: manual daily entry first, Binance imported P&L second, then closed journal trades. Overlaps are not added twice; compare them on Dashboard. Balance trend and percentage drawdown require at least two manual daily balance records; drawdown is not inferred from P&L-only sources. Journal trade count is all-time.",
+                "P&L metrics normalize dates and select one value per day: Binance imported P&L first, manual daily entry second, then estimated closed-journal P&L. Overlaps are not added twice; compare them on Dashboard. Balance trend and percentage drawdown require at least two manual daily balance records; drawdown is not inferred from P&L-only sources. Journal trade count is all-time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
