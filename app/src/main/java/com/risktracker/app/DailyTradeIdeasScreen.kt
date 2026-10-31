@@ -114,8 +114,27 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    private fun microstructure(symbol: String): MarketMicrostructure {
-        val bookData = runCatching { JSONObject(get("/fapi/v1/depth?symbol=$symbol&limit=20")) }.getOrNull()
+    private suspend fun microstructure(symbol: String): MarketMicrostructure = coroutineScope {
+        val bookTask = async(Dispatchers.IO) {
+            runCatching { JSONObject(get("/fapi/v1/depth?symbol=$symbol&limit=20")) }.getOrNull()
+        }
+        val fundingTask = async(Dispatchers.IO) {
+            runCatching {
+                JSONObject(get("/fapi/v1/premiumIndex?symbol=$symbol"))
+                    .optString("lastFundingRate").toDoubleOrNull()
+            }.getOrNull()
+        }
+        val oiTask = async(Dispatchers.IO) {
+            runCatching {
+                val rows = JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
+                if (rows.length() < 2) null else {
+                    val old = rows.getJSONObject(0).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
+                    val latest = rows.getJSONObject(rows.length() - 1).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
+                    if (old <= 0.0) null else (latest / old - 1.0) * 100.0
+                }
+            }.getOrNull()
+        }
+        val bookData = bookTask.await()
         val bids = bookData?.optJSONArray("bids") ?: JSONArray()
         val asks = bookData?.optJSONArray("asks") ?: JSONArray()
         val bid = bids.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
@@ -128,18 +147,7 @@ internal object BinanceMarketScanner {
         val bidValue = notional(bids)
         val askValue = notional(asks)
         val imbalance = if (bidValue + askValue <= 0.0) null else (bidValue - askValue) / (bidValue + askValue)
-        val funding = runCatching {
-            JSONObject(get("/fapi/v1/premiumIndex?symbol=$symbol")).optString("lastFundingRate").toDoubleOrNull()
-        }.getOrNull()
-        val oiChange = runCatching {
-            val rows = JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
-            if (rows.length() < 2) null else {
-                val old = rows.getJSONObject(0).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                val latest = rows.getJSONObject(rows.length() - 1).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                if (old <= 0.0) null else (latest / old - 1.0) * 100.0
-            }
-        }.getOrNull()
-        return MarketMicrostructure(spread, imbalance, funding, oiChange)
+        MarketMicrostructure(spread, imbalance, fundingTask.await(), oiTask.await())
     }
 
     suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
@@ -159,18 +167,20 @@ internal object BinanceMarketScanner {
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
         }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        val gate = Semaphore(2)
+        val gate = Semaphore(4)
         progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
         coroutineScope {
             candidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
-                        val h4 = candles(ticker.symbol, "4h", 200)
-                        val h1 = candles(ticker.symbol, "1h", 200)
-                        val m15 = candles(ticker.symbol, "15m", 200)
-                        val m5 = candles(ticker.symbol, "5m", 90)
-                        val micro = microstructure(ticker.symbol)
-                        evaluate(ticker, h4, h1, m15, m5, micro)
+                        coroutineScope {
+                            val h4Task = async(Dispatchers.IO) { candles(ticker.symbol, "4h", 200) }
+                            val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 200) }
+                            val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 200) }
+                            val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 90) }
+                            val microTask = async { microstructure(ticker.symbol) }
+                            evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
+                        }
                     }.getOrNull()
                 }
             } }.awaitAll().filterNotNull().sortedByDescending { it.score }
