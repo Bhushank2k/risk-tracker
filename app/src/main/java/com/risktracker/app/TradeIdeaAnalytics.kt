@@ -51,11 +51,42 @@ internal data class TradeIdeaBacktestStats(
     val wins: Int = 0,
     val averageR: Double = 0.0
 ) {
+    val losses: Int get() = (trades - wins).coerceAtLeast(0)
     val winRatePercent: Double get() = if (trades == 0) 0.0 else wins.toDouble() / trades * 100.0
+    val lossRatePercent: Double get() = if (trades == 0) 0.0 else losses.toDouble() / trades * 100.0
+    val hasUsableEstimate: Boolean get() = trades >= MINIMUM_ESTIMATE_SAMPLES
+    val confidenceLabel: String get() = when {
+        trades < MINIMUM_ESTIMATE_SAMPLES -> "Insufficient data"
+        trades < 50 -> "Preliminary · build 50+ samples"
+        else -> "Historical estimate · 50+ samples"
+    }
+    val winRateLower95: Double? get() = wilsonBounds()?.first
+    val winRateUpper95: Double? get() = wilsonBounds()?.second
+
+    private fun wilsonBounds(): Pair<Double, Double>? {
+        if (!hasUsableEstimate) return null
+        val n = trades.toDouble()
+        val p = wins.toDouble() / n
+        val z = 1.96
+        val denominator = 1.0 + z * z / n
+        val center = (p + z * z / (2.0 * n)) / denominator
+        val margin = z * kotlin.math.sqrt((p * (1.0 - p) / n) + (z * z / (4.0 * n * n))) / denominator
+        return ((center - margin) * 100.0).coerceIn(0.0, 100.0) to
+            ((center + margin) * 100.0).coerceIn(0.0, 100.0)
+    }
+
+    companion object {
+        const val MINIMUM_ESTIMATE_SAMPLES = 30
+    }
 }
 
 internal object TradeIdeaBacktest {
-    fun run(h4: List<BacktestCandle>, h1: List<BacktestCandle>, m15: List<BacktestCandle>): TradeIdeaBacktestStats {
+    fun run(
+        h4: List<BacktestCandle>,
+        h1: List<BacktestCandle>,
+        m15: List<BacktestCandle>,
+        sideFilter: String? = null
+    ): TradeIdeaBacktestStats {
         if (m15.size < 80 || h4.size < 55 || h1.size < 25) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
         var i = 60
@@ -109,7 +140,7 @@ internal object TradeIdeaBacktest {
                     previousClose >= triggerRows.minOf { it.low } && volumeRatio >= 1.2 -> -1
                 else -> 0
             }
-            if (side == 0) { i++; continue }
+            if (side == 0 || (sideFilter == "LONG" && side < 0) || (sideFilter == "SHORT" && side > 0)) { i++; continue }
             val atrRows = recent.zipWithNext { p, c ->
                 maxOf(c.high - c.low, abs(c.high - p.close), abs(c.low - p.close))
             }.takeLast(14)
