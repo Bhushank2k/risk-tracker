@@ -38,10 +38,11 @@ fun PremiumOverviewScreen(
     var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var balanceRefreshing by remember { mutableStateOf(false) }
     var balanceStatus by remember { mutableStateOf("") }
+    val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
     val balanceScope = rememberCoroutineScope()
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
-        if (BinanceCredentialStore(context).read() == null) {
+        if (!hasBinanceCredentials) {
             balanceStatus = "Connect Binance read-only API credentials in Binance Sync."
             return
         }
@@ -58,6 +59,25 @@ fun PremiumOverviewScreen(
     }
     LaunchedEffect(Unit) { refreshAccountBalance() }
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
+    val snapshotAgeMs = snapshot?.let { (System.currentTimeMillis() - it.savedAt).coerceAtLeast(0L) }
+    val snapshotAgeLabel = snapshotAgeMs?.let { age ->
+        val minutes = age / 60_000L
+        when {
+            minutes < 1L -> "just now"
+            minutes < 60L -> "$minutes min ago"
+            minutes < 24L * 60L -> "${minutes / 60L} hr ago"
+            else -> "${minutes / (24L * 60L)} days ago"
+        }
+    }
+    val balanceHeadline = when {
+        snapshot == null && !hasBinanceCredentials -> "Connect Binance read-only API credentials in Binance Sync."
+        snapshot == null && balanceRefreshing -> "Fetching your first Binance account snapshot…"
+        snapshot == null -> "No account snapshot saved yet. Refresh to fetch your Spot and Futures equity."
+        balanceRefreshing -> "Refreshing · showing your last saved snapshot"
+        balanceStatus.startsWith("Refresh failed") -> "Refresh failed · showing saved data from ${snapshotAgeLabel ?: "an earlier sync"}"
+        snapshotAgeMs != null && snapshotAgeMs >= 24L * 60L * 60L * 1000L -> "Saved account data · ${snapshotAgeLabel}"
+        else -> "Binance account data · updated ${snapshotAgeLabel}"
+    }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val daily = remember(entries, importedPnl, trades) {
         reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
@@ -111,13 +131,18 @@ fun PremiumOverviewScreen(
                     SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "Unavailable", "Latest saved balance", Modifier.weight(1f))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(snapshot?.let { "Spot ${it.spot.valueUsdt.usd()} · Futures ${it.futures.totalEquity.usd()}" } ?: "Connect Binance to load your account balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(snapshot?.let { "Last updated " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(it.savedAt)) } ?: balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(balanceHeadline, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (snapshot != null) {
+                            Text("Spot ${snapshot.spot.valueUsdt.usd()} · Futures ${snapshot.futures.totalEquity.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Snapshot saved " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(snapshot.savedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing) { Text(if (balanceRefreshing) "Refreshing…" else "Refresh") }
+                    TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing && hasBinanceCredentials) { Text(if (balanceRefreshing) "Refreshing…" else "Refresh") }
                 }
-                if (balanceStatus.isNotBlank() && snapshot != null) Text(balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (snapshot != null && snapshot.spot.unpricedAssets > 0) {
+                    Text("${snapshot.spot.unpricedAssets} Spot assets could not be priced and are excluded from the displayed total.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Total profit / loss", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
                     SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
