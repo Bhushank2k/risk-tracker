@@ -165,8 +165,8 @@ internal object BinanceMarketScanner {
             candidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
-                        val h4 = candles(ticker.symbol, "4h", 90)
-                        val h1 = candles(ticker.symbol, "1h", 90)
+                        val h4 = candles(ticker.symbol, "4h", 120)
+                        val h1 = candles(ticker.symbol, "1h", 500)
                         val m15 = candles(ticker.symbol, "15m", 1000)
                         val m5 = candles(ticker.symbol, "5m", 90)
                         val micro = microstructure(ticker.symbol)
@@ -280,8 +280,8 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf<Long?>(null) }
     var filter by remember { mutableStateOf("All") }
     var equityInput by remember { mutableStateOf("") }
-    var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     val context = LocalContext.current
+    var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
     val scope = rememberCoroutineScope()
     fun enableTradeAlerts() {
@@ -362,8 +362,8 @@ fun DailyTradeIdeasScreen() {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ScannerStat("Pairs scanned", ideas.size.toString(), Modifier.weight(1f))
-                ScannerStat("Qualified", ideas.count { it.side != "WAIT" && it.score >= 65 }.toString(), Modifier.weight(1f))
-                ScannerStat("Watch only", ideas.count { it.side == "WAIT" || it.score < 65 }.toString(), Modifier.weight(1f))
+                ScannerStat("Qualified", ideas.count { it.side != "WAIT" && it.score >= 70 }.toString(), Modifier.weight(1f))
+                ScannerStat("Watch only", ideas.count { it.side == "WAIT" || it.score < 70 }.toString(), Modifier.weight(1f))
             }
         }
         item {
@@ -462,7 +462,7 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
 @Composable
 private fun TradeIdeaCard(idea: TradeIdea) {
     var expanded by remember { mutableStateOf(false) }
-    val qualified = idea.side != "WAIT" && idea.score >= 65
+    val qualified = idea.side != "WAIT" && idea.score >= 70
     val tint = if (!qualified) MaterialTheme.colorScheme.onSurfaceVariant else if (idea.side == "LONG") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
