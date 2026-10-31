@@ -160,7 +160,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Binance Sync" to 6,
             "Sync health" to 18,
             "Live positions & orders" to 16,
-            "Account statements" to 17
+            "Account activity" to 17
         ),
         "REPORTS & APP" to listOf(
             "Crypto tax report" to 9,
@@ -938,7 +938,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
             MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
             MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
-            MoreDestinationCard("Account statements", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
+            MoreDestinationCard("Account activity", "Recent deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         }
         MoreMenuSection("Reports & app", "Tax summaries, app information and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
             MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
