@@ -157,17 +157,17 @@ internal object BinanceMarketScanner {
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }.take(12)
+        }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        val gate = Semaphore(4)
-        progress("Checking 4H, 1H, 15M and 5M trends plus order-book, funding and open-interest data for " + candidates.size + " liquid pairs…")
+        val gate = Semaphore(2)
+        progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
         coroutineScope {
             candidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
-                        val h4 = candles(ticker.symbol, "4h", 1500)
-                        val h1 = candles(ticker.symbol, "1h", 1500)
-                        val m15 = candles(ticker.symbol, "15m", 1500)
+                        val h4 = candles(ticker.symbol, "4h", 200)
+                        val h1 = candles(ticker.symbol, "1h", 200)
+                        val m15 = candles(ticker.symbol, "15m", 200)
                         val m5 = candles(ticker.symbol, "5m", 90)
                         val micro = microstructure(ticker.symbol)
                         evaluate(ticker, h4, h1, m15, m5, micro)
@@ -326,6 +326,7 @@ fun DailyTradeIdeasScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("MARKET OPPORTUNITIES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("Daily trade ideas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Full liquid-market scan · all active USDT perpetuals above $5M 24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Rules-based scanner for liquid Binance USDⓈ-M USDT perpetual contracts. Each coin shows its own historical win/loss estimate when enough completed replay samples exist; estimates are not guarantees or future predictions.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
