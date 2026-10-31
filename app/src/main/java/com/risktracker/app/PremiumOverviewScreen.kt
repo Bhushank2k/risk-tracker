@@ -21,6 +21,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 private val DashboardGreen = Color(0xFF16865D)
 private val DashboardRed = Color(0xFFD34B55)
@@ -39,6 +40,42 @@ fun PremiumOverviewScreen(
     var balanceRefreshing by remember { mutableStateOf(false) }
     var balanceStatus by remember { mutableStateOf("") }
     val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
+    var livePositions by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
+    var positionsLoading by remember { mutableStateOf(false) }
+    var positionsStatus by remember { mutableStateOf(if (hasBinanceCredentials) "Connecting to Binance Futures…" else "Connect read-only Binance credentials to show your open positions.") }
+    var positionsUpdatedAt by remember { mutableStateOf<Long?>(null) }
+    val positionsScope = rememberCoroutineScope()
+    fun refreshLivePositions() {
+        if (positionsLoading) return
+        val credentials = BinanceCredentialStore(context).read()
+        if (credentials == null) {
+            positionsStatus = "Connect read-only Binance credentials in Binance Sync."
+            return
+        }
+        positionsLoading = true
+        positionsScope.launch {
+            try {
+                val rows = withContext(Dispatchers.IO) {
+                    BinanceApi(credentials.first, credentials.second).futuresPositions()
+                }
+                livePositions = rows
+                positionsUpdatedAt = System.currentTimeMillis()
+                positionsStatus = if (rows.isEmpty()) "No open USDⓈ-M Futures positions." else "Live Binance Futures positions"
+            } catch (e: Exception) {
+                positionsStatus = "Refresh failed · showing last successful positions" +
+                    (e.message?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+            } finally {
+                positionsLoading = false
+            }
+        }
+    }
+    LaunchedEffect(hasBinanceCredentials) {
+        refreshLivePositions()
+        while (hasBinanceCredentials) {
+            delay(10_000L)
+            refreshLivePositions()
+        }
+    }
     val balanceScope = rememberCoroutineScope()
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
@@ -104,6 +141,73 @@ fun PremiumOverviewScreen(
                 Text("YOUR TRADING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                 Text("Overview", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("LIVE POSITIONS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("${livePositions.size} open Futures position${if (livePositions.size == 1) "" else "s"}",
+                                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(onClick = { refreshLivePositions() }, enabled = !positionsLoading && hasBinanceCredentials) {
+                            Text(if (positionsLoading) "Updating…" else "Refresh")
+                        }
+                    }
+                    val totalPositionPnl = livePositions.sumOf { it.unrealizedPnl }
+                    if (livePositions.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Combined unrealized P&L", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text((if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(),
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                                color = if (totalPositionPnl >= 0.0) DashboardGreen else DashboardRed)
+                        }
+                        HorizontalDivider()
+                        livePositions.forEachIndexed { index, position ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(position.symbol, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text(position.side + " · " + position.leverage + "× · Isolated/cross mode not supplied",
+                                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text((if (position.unrealizedPnl > 0.0) "+" else "") + position.unrealizedPnl.usd(),
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (position.unrealizedPnl >= 0.0) DashboardGreen else DashboardRed)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(position.entryPrice.usd(4), style = MaterialTheme.typography.labelSmall)
+                                    Text("Mark", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(position.markPrice.usd(4), style = MaterialTheme.typography.labelSmall)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Quantity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(position.quantity.num(6), style = MaterialTheme.typography.labelSmall)
+                                    Text("Liq. price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(if (position.liquidationPrice > 0.0) position.liquidationPrice.usd(4) else "—",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (position.liquidationPrice > 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                            if (index < livePositions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    } else {
+                        Text(if (!hasBinanceCredentials) "Connect Binance in Binance Sync to load actual open positions."
+                            else if (positionsLoading) "Fetching current USDⓈ-M Futures positions…"
+                            else "No open Futures positions were returned by Binance.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    positionsUpdatedAt?.let {
+                        Text("Last successful refresh " + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(it)) + " · auto-refresh every 10 sec while Dashboard is open",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Read-only Binance data. P&L is unrealized and may change; this section never places or modifies orders.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         item {
