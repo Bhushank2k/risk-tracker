@@ -18,6 +18,9 @@ import androidx.compose.ui.platform.LocalContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val DashboardGreen = Color(0xFF16865D)
 private val DashboardRed = Color(0xFFD34B55)
@@ -32,7 +35,28 @@ fun PremiumOverviewScreen(
     onChange: (List<PnlEntry>) -> Unit
 ) {
     val context = LocalContext.current
-    val snapshot = remember { BinanceAccountSnapshotStore(context).load() }
+    var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
+    var balanceRefreshing by remember { mutableStateOf(false) }
+    var balanceStatus by remember { mutableStateOf("") }
+    val balanceScope = rememberCoroutineScope()
+    fun refreshAccountBalance() {
+        if (balanceRefreshing) return
+        if (BinanceCredentialStore(context).read() == null) {
+            balanceStatus = "Connect Binance read-only API credentials in Binance Sync."
+            return
+        }
+        balanceRefreshing = true
+        balanceStatus = "Refreshing Binance account balance…"
+        balanceScope.launch {
+            try {
+                snapshot = withContext(Dispatchers.IO) { BinanceAccountSnapshotRunner.refresh(context) }
+                balanceStatus = "Updated from Binance"
+            } catch (_: Exception) {
+                balanceStatus = "Refresh failed · showing last saved balance"
+            } finally { balanceRefreshing = false }
+        }
+    }
+    LaunchedEffect(Unit) { refreshAccountBalance() }
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val daily = remember(entries, importedPnl, trades) {
@@ -83,9 +107,17 @@ fun PremiumOverviewScreen(
             Spacer(Modifier.height(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SimpleMetricCard("Account balance", accountEquity?.usd() ?: "Unavailable", "Latest Binance snapshot", Modifier.weight(1f))
+                    SimpleMetricCard("Account balance", accountEquity?.usd() ?: "Unavailable", "Spot + Futures equity", Modifier.weight(1f))
                     SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "Unavailable", "Latest saved balance", Modifier.weight(1f))
                 }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(snapshot?.let { "Spot ${it.spot.valueUsdt.usd()} · Futures ${it.futures.totalEquity.usd()}" } ?: "Connect Binance to load your account balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(snapshot?.let { "Last updated " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(it.savedAt)) } ?: balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing) { Text(if (balanceRefreshing) "Refreshing…" else "Refresh") }
+                }
+                if (balanceStatus.isNotBlank() && snapshot != null) Text(balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Total profit / loss", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
                     SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
@@ -167,7 +199,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Text("Balances and results use your saved exchange snapshot, daily records and closed trade journal. Figures may differ from live exchange values.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Account balance combines estimated Spot value in USDT with USDⓈ-M Futures equity. Unpriced Spot assets are excluded; Ledger balance is separate.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
