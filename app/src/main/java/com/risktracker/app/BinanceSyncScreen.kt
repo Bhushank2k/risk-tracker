@@ -153,34 +153,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.weight(1f)) { Text("Tax reports") }
-            OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.weight(1f)) { Text("Statements") }
+            OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.weight(1f)) { Text("Account activity") }
         }
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Historical import workflow", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("1", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Column(Modifier.weight(1f)) {
-                        Text("Choose a year", fontWeight = FontWeight.Medium)
-                        Text("Download the complete Binance USDⓈ-M Futures income export for that year.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("2", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Column(Modifier.weight(1f)) {
-                        Text("Review the preview", fontWeight = FontWeight.Medium)
-                        Text("Check totals, duplicate rows and changed dates before applying anything.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Row(verticalAlignment = androidx.compose.ui.Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("3", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Column(Modifier.weight(1f)) {
-                        Text("Confirm or restore", fontWeight = FontWeight.Medium)
-                        Text("Only the selected year's Futures totals are replaced; Spot and other years stay unchanged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
+        Text("1 · CONNECTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Read-only API credentials", style = MaterialTheme.typography.titleMedium)
@@ -227,6 +202,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                 }
             }
         }
+        if (lastSync > 0L) Text("Last account P&L sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("2 · TRADE HISTORY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Trade journal sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -305,7 +282,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                 }
             }
         }
-        if (lastSync > 0L) Text("Last sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall)
+        Text("CSV IMPORT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Binance trade CSV import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -340,6 +317,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
             }
         }
 
+        Text("3 · HISTORICAL FUTURES P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
