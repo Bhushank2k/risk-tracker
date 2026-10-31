@@ -407,7 +407,7 @@ fun DailyTradeIdeasScreen() {
                 Text("MARKET OPPORTUNITIES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("Daily trade ideas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Full liquid-market scan · all active USDT perpetuals above $5M 24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Rules-based scanner for liquid Binance USDⓈ-M USDT perpetual contracts. Each coin shows its own historical win/loss estimate when enough completed replay samples exist; estimates are not guarantees or future predictions.",
+                Text("Binance USDⓈ-M USDT perpetuals · historical estimates shown when sample size allows.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Card(Modifier.fillMaxWidth()) {
@@ -517,18 +517,11 @@ fun DailyTradeIdeasScreen() {
         }
         items(visible, key = { it.symbol }) { TradeIdeaCard(it) }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("How to use these ideas", fontWeight = FontWeight.SemiBold)
-                    Text("The per-coin win/loss estimate is based on that coin's historical 4H/1H/15M strategy replay (LONG/SHORT results are direction-filtered; WAIT uses both directions). It is an observed historical frequency, not a calibrated future probability. It is hidden below 30 completed samples; 30–49 is preliminary and 50+ is still not a guarantee. The replay excludes fees, slippage, historical order-book/funding data and the live 5M filter. Directional ideas require aligned 4H, 1H, 15M and 5M trends, with spread and order-book checks where available. Entry is a breakout reference, not a live order. Stop uses 1.5× 15M ATR; targets use 1.5R and 2.5R.",
-                        style = MaterialTheme.typography.bodySmall)
-                    Text("Risk guide: plan no more than 0.5% of equity per trade and keep leverage at or below 3×. Include fees, slippage and funding. Skip wide spreads, weak volume, stale data or unclear invalidation.",
-                        style = MaterialTheme.typography.bodySmall)
-                    Text("Historical replay uses the available 4H/1H/15M candles and a conservative stop-first rule if stop and target occur in the same candle. It excludes historical order-book/funding data, fees, slippage and the live 5M filter, so it is research only—not a complete backtest of the live signal.", style = MaterialTheme.typography.bodySmall)
-                    Text("Exit plan in alerts: book 50% at 1.5R; move the remaining stop to breakeven, then trail it 1R behind the best price observed. Close the remainder at 2.5R (2.0R total on the full position if both targets fill). Alerts monitor up to three confirmed signal plans at a time. Stop and target notifications use public ticker checks and may be delayed; they do not monitor or close your actual Binance positions. Read-only public market data only. Verify prices and contract rules on Binance before trading.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            Text(
+                "Research only. Historical results are not predictions; scanner entries are references, not orders. Verify price, spread, fees and contract rules before trading.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
