@@ -164,12 +164,6 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("More analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Card(onClick = { onNavigate(12) }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Behavioral intelligence", fontWeight = FontWeight.SemiBold)
-                        Text("Find patterns in strategies and recurring mistakes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
                 Card(onClick = { onNavigate(14) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Trade reviews", fontWeight = FontWeight.SemiBold)
