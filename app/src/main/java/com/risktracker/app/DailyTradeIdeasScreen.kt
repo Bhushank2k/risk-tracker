@@ -444,7 +444,7 @@ fun DailyTradeIdeasScreen() {
                     Text("Risk guide: plan no more than 0.5% of equity per trade and keep leverage at or below 3×. Include fees, slippage and funding. Skip wide spreads, weak volume, stale data or unclear invalidation.",
                         style = MaterialTheme.typography.bodySmall)
                     Text("Historical replay uses the available 4H/1H/15M candles and a conservative stop-first rule if stop and target occur in the same candle. It excludes historical order-book/funding data, fees, slippage and the live 5M filter, so it is research only—not a complete backtest of the live signal.", style = MaterialTheme.typography.bodySmall)
-                    Text("Alerts monitor up to three confirmed signal plans at a time. Stop and target notifications use public ticker checks and may be delayed; they do not monitor or close your actual Binance positions. Read-only public market data only. Verify prices and contract rules on Binance before trading.",
+                    Text("Exit plan in alerts: book 50% at 1.5R; move the remaining stop to breakeven, then trail it 1R behind the best price observed. Close the remainder at 2.5R (2.0R total on the full position if both targets fill). Alerts monitor up to three confirmed signal plans at a time. Stop and target notifications use public ticker checks and may be delayed; they do not monitor or close your actual Binance positions. Read-only public market data only. Verify prices and contract rules on Binance before trading.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
