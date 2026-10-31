@@ -52,7 +52,7 @@ internal object TradeIdeaPaperJournal {
         }
     }
 
-    fun recordExit(context: Context, symbol: String, exitPrice: Double, outcome: String) {
+    fun recordExit(context: Context, symbol: String, exitPrice: Double, outcome: String, riskDistance: Double? = null) {
         val rows = history(context)
         for (i in rows.length() - 1 downTo 0) {
             val row = rows.optJSONObject(i) ?: continue
@@ -60,7 +60,7 @@ internal object TradeIdeaPaperJournal {
             val entry = row.optDouble("entry", 0.0)
             val stop = row.optDouble("stop", 0.0)
             val side = row.optString("side")
-            val risk = abs(entry - stop)
+            val risk = riskDistance?.takeIf { it > 0.0 } ?: abs(entry - stop)
             if (risk <= 0.0) return
             val rawR = if (side == "LONG") (exitPrice - entry) / risk else (entry - exitPrice) / risk
             val partialR = row.optDouble("partialR", 0.0)
