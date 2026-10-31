@@ -372,7 +372,7 @@ fun BinanceSyncHealthScreen() {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sync health", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text(
-                        "Monitor automatic Binance execution-history collection. This screen reports sync attempts; it cannot prove that the exchange has returned every historical trade.",
+                        "Automatic Binance execution-history sync status.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -494,7 +494,7 @@ fun LiveTradesScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Read-only snapshot from Binance: open USDⓈ-M Futures positions and pending Spot orders. This does not place, edit, or close orders.",
+                    Text("Binance snapshot · open Futures positions and pending Spot orders.",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                         if (loading) {
@@ -552,7 +552,7 @@ fun LiveTradesScreen() {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Nothing open yet", fontWeight = FontWeight.SemiBold)
-                        Text("After connecting Binance, tap Refresh. Only currently open Futures positions and unfilled Spot orders appear here; completed trades remain in trade history.",
+                        Text("No open Futures positions or unfilled Spot orders.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
