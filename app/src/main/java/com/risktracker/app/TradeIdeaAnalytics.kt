@@ -118,23 +118,27 @@ internal object TradeIdeaBacktest {
             if (!riskDistance.isFinite() || riskDistance <= 0.0) { i++; continue }
             val entry = if (side > 0) triggerRows.maxOf { it.high } else triggerRows.minOf { it.low }
             val stop = entry - side * riskDistance
-            val target = entry + side * riskDistance * 2.5
+            val target1 = entry + side * riskDistance * 1.5
+            val target2 = entry + side * riskDistance * 2.5
+            var target1Reached = false
             var exitIndex = -1
             var resultR = 0.0
             for (j in i + 1 until m15.size) {
                 val candle = m15[j]
                 val stopHit = if (side > 0) candle.low <= stop else candle.high >= stop
-                val targetHit = if (side > 0) candle.high >= target else candle.low <= target
+                val target1Hit = if (side > 0) candle.high >= target1 else candle.low <= target1
+                val target2Hit = if (side > 0) candle.high >= target2 else candle.low <= target2
                 if (stopHit) {
                     exitIndex = j
-                    resultR = -1.0
+                    resultR = if (target1Reached) 0.25 else -1.0
                     break
                 }
-                if (targetHit) {
+                if (target2Hit) {
                     exitIndex = j
-                    resultR = 2.5
+                    resultR = 2.0
                     break
                 }
+                if (target1Hit) target1Reached = true
             }
             if (exitIndex >= 0) {
                 outcomes.add(resultR)
