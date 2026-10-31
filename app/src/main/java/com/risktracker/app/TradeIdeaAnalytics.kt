@@ -68,13 +68,25 @@ internal object TradeIdeaBacktest {
             val h1Close = oneHour.map { it.close }
             val recent = m15.subList(0, i + 1)
             val mClose = recent.map { it.close }
-            val e4Fast = ema(h4Close, 9) ?: run { i++; continue }
-            val e4Slow = ema(h4Close, 21) ?: run { i++; continue }
-            val e4Base = ema(h4Close, 50) ?: run { i++; continue }
-            val e1Fast = ema(h1Close, 9) ?: run { i++; continue }
-            val e1Slow = ema(h1Close, 21) ?: run { i++; continue }
-            val mFast = ema(mClose, 9) ?: run { i++; continue }
-            val mSlow = ema(mClose, 21) ?: run { i++; continue }
+            val e4FastValue = ema(h4Close, 9)
+            val e4SlowValue = ema(h4Close, 21)
+            val e4BaseValue = ema(h4Close, 50)
+            val e1FastValue = ema(h1Close, 9)
+            val e1SlowValue = ema(h1Close, 21)
+            val mFastValue = ema(mClose, 9)
+            val mSlowValue = ema(mClose, 21)
+            if (e4FastValue == null || e4SlowValue == null || e4BaseValue == null ||
+                e1FastValue == null || e1SlowValue == null || mFastValue == null || mSlowValue == null) {
+                i++
+                continue
+            }
+            val e4Fast = e4FastValue
+            val e4Slow = e4SlowValue
+            val e4Base = e4BaseValue
+            val e1Fast = e1FastValue
+            val e1Slow = e1SlowValue
+            val mFast = mFastValue
+            val mSlow = mSlowValue
             val vwapRows = recent.takeLast(24)
             val totalVolume = vwapRows.sumOf { it.volume }
             if (totalVolume <= 0.0) { i++; continue }
