@@ -284,21 +284,6 @@ fun DailyTradeIdeasScreen() {
                             } else enableTradeAlerts()
                         })
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold)
-                            Text("Background checks about every 15 minutes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                context.getSharedPreferences(TradeIdeaNotifications.PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
-                                TradeIdeaNotifications.cancel(context)
-                                alertsEnabled = false
-                            } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else enableTradeAlerts()
-                        })
-                    }
                     updatedAt?.let { Text("Updated " + SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(it)), style = MaterialTheme.typography.labelSmall) }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
