@@ -280,6 +280,7 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf<Long?>(null) }
     var filter by remember { mutableStateOf("All") }
     var equityInput by remember { mutableStateOf("") }
+    var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     val context = LocalContext.current
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
     val scope = rememberCoroutineScope()
@@ -298,6 +299,7 @@ fun DailyTradeIdeasScreen() {
             try {
                 ideas = BinanceMarketScanner.scan { status = it }
                 updatedAt = System.currentTimeMillis()
+                paperStats = TradeIdeaPaperJournal.stats(context)
                 status = "Scan complete. " + ideas.count { it.side != "WAIT" && it.score >= 70 } + " qualified directional ideas from " + ideas.size + " analysed pairs."
                 if (ideas.isEmpty()) error = "No complete readings returned. Retry the scan."
             } catch (e: Exception) {
@@ -306,7 +308,7 @@ fun DailyTradeIdeasScreen() {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) { paperStats = TradeIdeaPaperJournal.stats(context); refresh() }
     val visible = ideas.filter {
         when (filter) {
             "Scalp" -> it.horizon == "Intraday / scalp"
@@ -389,6 +391,27 @@ fun DailyTradeIdeasScreen() {
                         ScannerMetric("Approx. margin at 3×", "$" + "%,.2f".format(Locale.US, sizing.marginAtMaxLeverage))
                         ScannerMetric("Planned loss at stop", "$" + "%,.2f".format(Locale.US, sizing.riskAmount) + " (" + "%.2f".format(Locale.US, sizing.actualRiskPercent) + "%)")
                         Text("Estimate excludes fees, funding, slippage and exchange quantity/step-size filters. Recheck before placing an order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Paper-trade validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Tracks confirmed alert setups only. Build at least 50 completed examples per setup before considering real-money use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (paperStats.isEmpty()) {
+                        Text("No completed paper trades yet. Enable entry & exit notifications to begin collecting confirmed examples.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        paperStats.forEach { stat ->
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(stat.setup, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                                ScannerMetric("Completed samples", stat.closedTrades.toString() + " / 50")
+                                ScannerMetric("Win rate", "%.1f%%".format(Locale.US, stat.winRatePercent))
+                                ScannerMetric("Average result", "%+.2fR".format(Locale.US, stat.averageR))
+                                LinearProgressIndicator(progress = { (stat.closedTrades / 50f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
                     }
                 }
             }
