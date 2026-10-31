@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -278,6 +279,7 @@ fun DailyTradeIdeasScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     var updatedAt by remember { mutableStateOf<Long?>(null) }
     var filter by remember { mutableStateOf("All") }
+    var equityInput by remember { mutableStateOf("") }
     val context = LocalContext.current
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
     val scope = rememberCoroutineScope()
@@ -296,7 +298,7 @@ fun DailyTradeIdeasScreen() {
             try {
                 ideas = BinanceMarketScanner.scan { status = it }
                 updatedAt = System.currentTimeMillis()
-                status = "Scan complete. " + ideas.count { it.side != "WAIT" && it.score >= 65 } + " qualified directional ideas from " + ideas.size + " analysed pairs."
+                status = "Scan complete. " + ideas.count { it.side != "WAIT" && it.score >= 70 } + " qualified directional ideas from " + ideas.size + " analysed pairs."
                 if (ideas.isEmpty()) error = "No complete readings returned. Retry the scan."
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
@@ -311,10 +313,10 @@ fun DailyTradeIdeasScreen() {
             "Swing" -> it.horizon == "Swing bias"
             "Long" -> it.side == "LONG"
             "Short" -> it.side == "SHORT"
-            "Watch" -> it.side == "WAIT" || it.score < 65
+            "Watch" -> it.side == "WAIT" || it.score < 70
             else -> true
         }
-    }.sortedWith(compareByDescending<TradeIdea> { it.side != "WAIT" && it.score >= 65 }.thenByDescending { it.score })
+    }.sortedWith(compareByDescending<TradeIdea> { it.side != "WAIT" && it.score >= 70 }.thenByDescending { it.score })
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -363,6 +365,35 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
+            val sizingIdea = ideas.firstOrNull { it.side != "WAIT" && it.score >= 70 }
+            val sizing = sizingIdea?.let {
+                TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop)
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Enter your futures account equity in USDT. Uses 0.5% planned risk and caps notional exposure at 3× equity.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                    if (sizingIdea == null) {
+                        Text("No qualified setup to size yet. Refresh the scan first.", style = MaterialTheme.typography.bodySmall)
+                    } else if (sizing == null) {
+                        Text("Enter valid equity to calculate quantity for " + sizingIdea.symbol + ".", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text(sizingIdea.symbol + " · " + sizingIdea.side + " · 0.5% risk", fontWeight = FontWeight.SemiBold)
+                        ScannerMetric("Suggested quantity", "%.6f".format(Locale.US, sizing.quantity))
+                        ScannerMetric("Notional value", "$" + "%,.2f".format(Locale.US, sizing.notional))
+                        ScannerMetric("Approx. margin at 3×", "$" + "%,.2f".format(Locale.US, sizing.marginAtMaxLeverage))
+                        ScannerMetric("Planned loss at stop", "$" + "%,.2f".format(Locale.US, sizing.riskAmount) + " (" + "%.2f".format(Locale.US, sizing.actualRiskPercent) + "%)")
+                        Text("Estimate excludes fees, funding, slippage and exchange quantity/step-size filters. Recheck before placing an order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item {
             Text("Filter results", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 listOf("All", "Scalp", "Swing", "Long", "Short", "Watch").forEach {
@@ -384,10 +415,11 @@ fun DailyTradeIdeasScreen() {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("How to use these ideas", fontWeight = FontWeight.SemiBold)
-                    Text("Score is a checklist score, not a probability of profit. Directional ideas require aligned 4H, 1H and 15M trends. Entry is a breakout confirmation reference, not a live order. Stop uses 1.5× 15M ATR; targets use 1.5R and 2.5R.",
+                    Text("Score is a checklist score, not a probability of profit. Directional ideas require aligned 4H, 1H, 15M and 5M trends, with spread and order-book checks where available. Funding and open-interest changes are shown as risk context. Entry is a breakout reference, not a live order. Stop uses 1.5× 15M ATR; targets use 1.5R and 2.5R.",
                         style = MaterialTheme.typography.bodySmall)
                     Text("Risk guide: plan no more than 0.5% of equity per trade and keep leverage at or below 3×. Include fees, slippage and funding. Skip wide spreads, weak volume, stale data or unclear invalidation.",
                         style = MaterialTheme.typography.bodySmall)
+                    Text("Historical replay uses the available 4H/1H/15M candles and a conservative stop-first rule if stop and target occur in the same candle. It excludes historical order-book/funding data, fees, slippage and the live 5M filter, so it is research only—not a complete backtest of the live signal.", style = MaterialTheme.typography.bodySmall)
                     Text("Alerts monitor up to three confirmed signal plans at a time. Stop and target notifications use public ticker checks and may be delayed; they do not monitor or close your actual Binance positions. Read-only public market data only. Verify prices and contract rules on Binance before trading.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -442,8 +474,18 @@ private fun TradeIdeaCard(idea: TradeIdea) {
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
-                Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
+                ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
+                ScannerMetric("Depth imbalance", idea.bookImbalance?.let { "%+.2f".format(Locale.US, it) } ?: "Unavailable")
+                ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
+                ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
+                HorizontalDivider()
+                Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                Text(if (idea.backtest.trades == 0) "No completed historical signals in the replay window." else
+                    "Win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
+                    "%+.2f".format(Locale.US, idea.backtest.averageR) + "R. Aim for at least 50 samples before relying on this setup.",
+                    style = MaterialTheme.typography.bodySmall)
                 idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
@@ -456,5 +498,13 @@ private fun IdeaLevel(label: String, value: Double) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun ScannerMetric(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
     }
 }
