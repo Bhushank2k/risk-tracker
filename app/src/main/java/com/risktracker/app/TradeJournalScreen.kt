@@ -61,7 +61,7 @@ fun TradeJournalScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("External trades only · Binance executions are imported automatically.", style = MaterialTheme.typography.bodySmall)
+                    Text("External trades", style = MaterialTheme.typography.bodySmall)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
@@ -172,7 +172,7 @@ fun TradeJournalScreen(
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("No external trades", style = MaterialTheme.typography.titleMedium)
-                        Text("Binance executions are imported above. Add only trades from outside Binance.", style = MaterialTheme.typography.bodyMedium)
+                        Text("Add a trade from another exchange or a manual record.", style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = { showAdd = true }) { Text("Add external trade") }
                     }
