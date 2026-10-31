@@ -72,6 +72,7 @@ fun PremiumOverviewScreen(
     val balanceHeadline = when {
         snapshot == null && !hasBinanceCredentials -> "Connect Binance read-only API credentials in Binance Sync."
         snapshot == null && balanceRefreshing -> "Fetching your first Binance account snapshot…"
+        snapshot == null && balanceStatus.startsWith("Refresh failed") -> "First Binance refresh failed. No account balance is available yet."
         snapshot == null -> "No account snapshot saved yet. Refresh to fetch your Spot and Futures equity."
         balanceRefreshing -> "Refreshing · showing your last saved snapshot"
         balanceStatus.startsWith("Refresh failed") -> "Refresh failed · showing saved data from ${snapshotAgeLabel ?: "an earlier sync"}"
