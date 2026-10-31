@@ -1,6 +1,8 @@
 package com.risktracker.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -207,6 +209,7 @@ fun DailyTradeIdeasScreen() {
             } finally { loading = false }
         }
     }
+    LaunchedEffect(Unit) { refresh() }
     val visible = ideas.filter {
         when (filter) {
             "Scalp" -> it.horizon == "Intraday / scalp"
@@ -251,7 +254,7 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Text("Filter results", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 listOf("All", "Scalp", "Swing", "Long", "Short", "Watch").forEach {
                     FilterChip(selected = filter == it, onClick = { filter = it }, label = { Text(it) })
                 }
