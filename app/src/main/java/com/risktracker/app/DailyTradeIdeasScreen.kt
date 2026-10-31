@@ -156,7 +156,7 @@ private object BinanceMarketScanner {
             score += if (volumeRatio >= 1.2) 15 else if (volumeRatio >= 0.8) 7 else 0
             if (rsi in 45.0..68.0 || rsi in 32.0..55.0) score += 10
             score += if (t.quoteVolume >= 100_000_000) 10 else if (t.quoteVolume >= 20_000_000) 7 else 4
-            if (t.change * if (side == "LONG") 1 else -1 > 0) score += 5
+            if (t.change * (if (side == "LONG") 1 else -1) > 0) score += 5
         } else if (volumeRatio >= 1.2) score += 5
         score = score.coerceIn(0, 100)
         val trigger = if (side == "LONG") m.dropLast(1).takeLast(5).maxOf { it.high }
