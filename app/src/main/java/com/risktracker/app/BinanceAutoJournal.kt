@@ -118,6 +118,15 @@ object BinanceAutoJournalStore {
         prefs.edit().putStringSet(key, merged).apply()
     }
 
+    fun symbolCursor(context: Context, market: String): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt("symbol_cursor_${market.hashCode()}", 0)
+
+    fun saveSymbolCursor(context: Context, market: String, cursor: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt("symbol_cursor_${market.hashCode()}", cursor.coerceAtLeast(0)).apply()
+    }
+
     fun lastSync(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
@@ -165,6 +174,18 @@ internal fun classifyBinanceSyncState(success: Boolean, failureCount: Int, disco
     else -> "Sync failed"
 }
 
+/** Selects a deterministic rotating batch so symbol sets larger than the API-work cap are not starved. */
+internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, limit: Int = 100): Pair<List<String>, Int> {
+    require(limit > 0) { "Batch limit must be positive." }
+    val ordered = symbols.distinct().sorted()
+    if (ordered.isEmpty()) return emptyList<String>() to 0
+    if (ordered.size <= limit) return ordered to 0
+    val start = offset.mod(ordered.size)
+    val count = minOf(limit, ordered.size)
+    val batch = List(count) { ordered[(start + it) % ordered.size] }
+    return batch to ((start + count) % ordered.size)
+}
+
 object BinanceAutoJournalRunner {
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
         val attemptedAt = System.currentTimeMillis()
@@ -201,11 +222,24 @@ object BinanceAutoJournalRunner {
         BinanceAutoJournalStore.rememberSymbols(context, "Spot", knownSpot)
         BinanceAutoJournalStore.rememberSymbols(context, "USDⓈ-M Futures", knownFutures)
 
+        val spotBatch = selectBinanceSymbolBatch(
+            knownSpot, BinanceAutoJournalStore.symbolCursor(context, "Spot")
+        )
+        val futuresBatch = selectBinanceSymbolBatch(
+            knownFutures, BinanceAutoJournalStore.symbolCursor(context, "USDⓈ-M Futures")
+        )
+        BinanceAutoJournalStore.saveSymbolCursor(context, "Spot", spotBatch.second)
+        BinanceAutoJournalStore.saveSymbolCursor(context, "USDⓈ-M Futures", futuresBatch.second)
+        val coverageLimited = spotBatch.first.size < knownSpot.size || futuresBatch.first.size < knownFutures.size
+        if (coverageLimited) {
+            failures += "Known symbols exceed the 100-per-market sync batch; this run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols. Remaining symbols rotate into later syncs."
+        }
+
         val fetched = mutableListOf<BinanceJournalFill>()
         var symbolsAttempted = 0
         var symbolFailures = 0
-        (knownSpot.take(100).map { "Spot" to it } +
-            knownFutures.take(100).map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
+        (spotBatch.first.map { "Spot" to it } +
+            futuresBatch.first.map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
             symbolsAttempted++
             val result = runCatching {
                 if (market == "Spot") api.spotExecutionHistory(symbol, start, end)
