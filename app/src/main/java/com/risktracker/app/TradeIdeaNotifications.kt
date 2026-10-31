@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 
 private data class TradeIdeaAlertPlan(
     val symbol: String, val side: String, val entry: Double, val stop: Double,
-    val target1: Double, val target2: Double, val target1Reached: Boolean = false
+    val target1: Double, val target2: Double, val setup: String, val target1Reached: Boolean = false
 )
 
 object TradeIdeaNotifications {
@@ -87,7 +87,7 @@ private object TradeIdeaAlertPlanStore {
                 val p = TradeIdeaAlertPlan(
                     row.getString("symbol"), row.getString("side"), row.getDouble("entry"),
                     row.getDouble("stop"), row.getDouble("target1"), row.getDouble("target2"),
-                    row.optBoolean("target1Reached", false)
+                    row.optString("setup", "Trend continuation"), row.optBoolean("target1Reached", false)
                 )
                 p.symbol to p
             }.getOrNull()
@@ -98,7 +98,7 @@ private object TradeIdeaAlertPlanStore {
         val rows = JSONArray()
         plans.values.forEach { p ->
             rows.put(JSONObject().put("symbol", p.symbol).put("side", p.side).put("entry", p.entry)
-                .put("stop", p.stop).put("target1", p.target1).put("target2", p.target2)
+                .put("stop", p.stop).put("target1", p.target1).put("target2", p.target2).put("setup", p.setup)
                 .put("target1Reached", p.target1Reached))
         }
         context.getSharedPreferences(TradeIdeaNotifications.PREFS, Context.MODE_PRIVATE)
@@ -114,12 +114,15 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             val ideas = BinanceMarketScanner.scan { }
             val plans = TradeIdeaAlertPlanStore.load(context)
             ideas.filter {
-                it.entryTriggered && it.score >= 70 && it.volumeRatio >= 1.2 &&
+                it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
+                    (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
+                    (it.oiChangePct == null || it.oiChangePct > -1.0) &&
                     it.side in setOf("LONG", "SHORT") && it.symbol !in plans
             }.sortedByDescending { it.score }.take((3 - plans.size).coerceAtLeast(0)).forEach { idea ->
                 plans[idea.symbol] = TradeIdeaAlertPlan(
-                    idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2
+                    idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup
                 )
+                TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop)
                 TradeIdeaNotifications.notify(
                     context, idea.symbol, "entry", "${idea.side} setup confirmed: ${idea.symbol}",
                     "15M breakout confirmed with volume. Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed."
@@ -134,6 +137,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                         context, symbol, "invalid", "Setup invalidated: $symbol",
                         "Multi-timeframe direction no longer agrees with the original ${plan.side} setup. Reassess manually; no order was changed."
                     )
+                    TradeIdeaPaperJournal.recordExit(context, symbol, current.last, "INVALIDATED")
                     plans.remove(symbol)
                     return@forEach
                 }
@@ -145,17 +149,19 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     stopHit -> {
                         TradeIdeaNotifications.notify(context, symbol, "stop", "Stop level reached: $symbol",
                             "Latest price ~${price}; original ${plan.side} stop reference ~${plan.stop} reached. Review any real position immediately.")
+                        TradeIdeaPaperJournal.recordExit(context, symbol, plan.stop, "STOP")
+                        plans.remove(symbol)
+                    }
+                    target2Hit -> {
+                        TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
+                            "Latest price ~${price}; target 2 reference ~${plan.target2}. Review closing remaining planned risk. No order placed.")
+                        TradeIdeaPaperJournal.recordExit(context, symbol, plan.target2, "TARGET2")
                         plans.remove(symbol)
                     }
                     !plan.target1Reached && target1Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
                             "Latest price ~${price}; target 1 reference ~${plan.target1}. Consider your planned partial-exit rules. No order placed.")
                         plans[symbol] = plan.copy(target1Reached = true)
-                    }
-                    plan.target1Reached && target2Hit -> {
-                        TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
-                            "Latest price ~${price}; target 2 reference ~${plan.target2}. Review closing remaining planned risk. No order placed.")
-                        plans.remove(symbol)
                     }
                 }
             }
