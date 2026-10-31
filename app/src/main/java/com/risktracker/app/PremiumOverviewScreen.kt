@@ -134,15 +134,15 @@ fun PremiumOverviewScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(balanceHeadline, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (snapshot != null) {
-                            Text("Spot ${snapshot.spot.valueUsdt.usd()} · Futures ${snapshot.futures.totalEquity.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Snapshot saved " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(snapshot.savedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        snapshot?.let { currentSnapshot ->
+                            Text("Spot ${currentSnapshot.spot.valueUsdt.usd()} · Futures ${currentSnapshot.futures.totalEquity.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Snapshot saved " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(currentSnapshot.savedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing && hasBinanceCredentials) { Text(if (balanceRefreshing) "Refreshing…" else "Refresh") }
                 }
-                if (snapshot != null && snapshot.spot.unpricedAssets > 0) {
-                    Text("${snapshot.spot.unpricedAssets} Spot assets could not be priced and are excluded from the displayed total.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                snapshot?.takeIf { it.spot.unpricedAssets > 0 }?.let { currentSnapshot ->
+                    Text("${currentSnapshot.spot.unpricedAssets} Spot assets could not be priced and are excluded from the displayed total.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Total profit / loss", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
