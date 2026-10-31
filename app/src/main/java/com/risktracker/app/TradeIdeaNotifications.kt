@@ -159,6 +159,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                         plans.remove(symbol)
                     }
                     !plan.target1Reached && target1Hit -> {
+                        TradeIdeaPaperJournal.recordPartial(context, symbol)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
                             "Latest price ~${price}; target 1 reference ~${plan.target1}. Consider your planned partial-exit rules. No order placed.")
                         plans[symbol] = plan.copy(target1Reached = true)
