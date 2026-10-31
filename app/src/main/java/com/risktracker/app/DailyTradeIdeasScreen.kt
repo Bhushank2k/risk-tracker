@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
@@ -45,7 +46,12 @@ internal data class TradeIdea(
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
 
-    fun latestPrice(symbol: String): Double? = runCatching {\n        val row = JSONObject(get(\"/fapi/v1/ticker/price?symbol=\" + symbol))\n        row.optString(\"price\").toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }\n    }.getOrNull()\n\n    private fun get(path: String): String {
+    fun latestPrice(symbol: String): Double? = runCatching {
+        val row = JSONObject(get("/fapi/v1/ticker/price?symbol=" + symbol))
+        row.optString("price").toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }
+    }.getOrNull()
+
+    private fun get(path: String): String {
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.connectTimeout = 12000
         c.readTimeout = 16000
@@ -170,7 +176,13 @@ internal object BinanceMarketScanner {
         score = score.coerceIn(0, 100)
         val trigger = if (side == "LONG") m.dropLast(1).takeLast(5).maxOf { it.high }
             else if (side == "SHORT") m.dropLast(1).takeLast(5).minOf { it.low } else t.last
-        val previousClose = m[m.lastIndex - 1].close\n        val entryTriggered = when (side) {\n            \"LONG\" -> last.close > trigger && previousClose <= trigger && volumeRatio >= 1.2\n            \"SHORT\" -> last.close < trigger && previousClose >= trigger && volumeRatio >= 1.2\n            else -> false\n        }\n        val entry = if (side == \"LONG\" || side == \"SHORT\") trigger else t.last
+        val previousClose = m[m.lastIndex - 1].close
+        val entryTriggered = when (side) {
+            "LONG" -> last.close > trigger && previousClose <= trigger && volumeRatio >= 1.2
+            "SHORT" -> last.close < trigger && previousClose >= trigger && volumeRatio >= 1.2
+            else -> false
+        }
+        val entry = if (side == "LONG" || side == "SHORT") trigger else t.last
         val distance = atr * 1.5
         val stop = if (side == "LONG") entry - distance else if (side == "SHORT") entry + distance else 0.0
         val sign = if (side == "LONG") 1.0 else -1.0
@@ -184,7 +196,7 @@ internal object BinanceMarketScanner {
             else -> "Conditional only: wait for a fresh 15M close through the trigger. Check spread and funding."
         }
         val horizon = if ((bull4 || bear4) && (bull1 || bear1)) "Swing bias" else "Intraday / scalp"
-        return TradeIdea(t.symbol, side, score, t.quoteVolume, t.changePct, t.last, entry, stop, t1, t2,
+        return TradeIdea(t.symbol, side, score, t.quoteVolume, t.changePct, t.last, entry, stop, t1, t2, entryTriggered,
             rsi, volumeRatio, if (bull4) "Bullish" else if (bear4) "Bearish" else "Mixed",
             if (bull1) "Bullish" else if (bear1) "Bearish" else "Mixed",
             if (side == "WAIT") "Trend alignment watch" else if (volumeRatio >= 1.2) "Trend continuation with volume" else "Trend pullback",
@@ -200,7 +212,17 @@ fun DailyTradeIdeasScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     var updatedAt by remember { mutableStateOf<Long?>(null) }
     var filter by remember { mutableStateOf("All") }
+    val context = LocalContext.current
+    var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
     val scope = rememberCoroutineScope()
+    fun enableTradeAlerts() {
+        TradeIdeaNotifications.setEnabled(context, true)
+        TradeIdeaNotifications.schedule(context)
+        alertsEnabled = true
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) enableTradeAlerts()
+    }
     fun refresh() {
         if (loading) return
         loading = true; error = null; status = "Connecting to Binance public market data…"
@@ -246,7 +268,37 @@ fun DailyTradeIdeasScreen() {
                         Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(8.dp))
                         Text(if (loading) "Scanning markets…" else if (updatedAt == null) "Scan markets now" else "Refresh scan")
                     }
-                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)\n                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {\n                        Column(Modifier.weight(1f)) {\n                            Text(\"Entry & exit notifications\", fontWeight = FontWeight.SemiBold)\n                            Text(\"Background checks about every 15 minutes\", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)\n                        }\n                        Switch(checked = alertsEnabled, onCheckedChange = { enabled ->\n                            if (!enabled) {\n                                context.getSharedPreferences(TradeIdeaNotifications.PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean(\"enabled\", false).apply()\n                                TradeIdeaNotifications.cancel(context)\n                                alertsEnabled = false\n                            } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {\n                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)\n                            } else enableTradeAlerts()\n                        })\n                    }
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold)
+                            Text("Background checks about every 15 minutes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                TradeIdeaNotifications.setEnabled(context, false)
+                                TradeIdeaNotifications.cancel(context)
+                                alertsEnabled = false
+                            } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else enableTradeAlerts()
+                        })
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold)
+                            Text("Background checks about every 15 minutes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                context.getSharedPreferences(TradeIdeaNotifications.PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                TradeIdeaNotifications.cancel(context)
+                                alertsEnabled = false
+                            } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else enableTradeAlerts()
+                        })
+                    }
                     updatedAt?.let { Text("Updated " + SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(it)), style = MaterialTheme.typography.labelSmall) }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
