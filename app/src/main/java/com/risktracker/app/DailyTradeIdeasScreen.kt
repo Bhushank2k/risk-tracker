@@ -165,9 +165,9 @@ internal object BinanceMarketScanner {
             candidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
-                        val h4 = candles(ticker.symbol, "4h", 120)
-                        val h1 = candles(ticker.symbol, "1h", 500)
-                        val m15 = candles(ticker.symbol, "15m", 1000)
+                        val h4 = candles(ticker.symbol, "4h", 1500)
+                        val h1 = candles(ticker.symbol, "1h", 1500)
+                        val m15 = candles(ticker.symbol, "15m", 1500)
                         val m5 = candles(ticker.symbol, "5m", 90)
                         val micro = microstructure(ticker.symbol)
                         evaluate(ticker, h4, h1, m15, m5, micro)
@@ -260,7 +260,8 @@ internal object BinanceMarketScanner {
         val replay = TradeIdeaBacktest.run(
             h4.map { BacktestCandle(it.high, it.low, it.close, it.volume, it.closeTime) },
             h1.map { BacktestCandle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m.map { BacktestCandle(it.high, it.low, it.close, it.volume, it.closeTime) }
+            m.map { BacktestCandle(it.high, it.low, it.close, it.volume, it.closeTime) },
+            side.takeIf { it == "LONG" || it == "SHORT" }
         )
         return TradeIdea(t.symbol, side, score, t.quoteVolume, t.changePct, t.last, entry, stop, t1, t2, entryTriggered,
             rsi, volumeRatio, if (bull4) "Bullish" else if (bear4) "Bearish" else "Mixed",
@@ -325,7 +326,7 @@ fun DailyTradeIdeasScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("MARKET OPPORTUNITIES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("Daily trade ideas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("Rules-based scanner for liquid Binance USDⓈ-M USDT perpetual contracts. It ranks market conditions; it does not predict prices or place orders.",
+                Text("Rules-based scanner for liquid Binance USDⓈ-M USDT perpetual contracts. Each coin shows its own historical win/loss estimate when enough completed replay samples exist; estimates are not guarantees or future predictions.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Card(Modifier.fillMaxWidth()) {
@@ -438,7 +439,7 @@ fun DailyTradeIdeasScreen() {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("How to use these ideas", fontWeight = FontWeight.SemiBold)
-                    Text("Score is a checklist score, not a probability of profit. Directional ideas require aligned 4H, 1H, 15M and 5M trends, with spread and order-book checks where available. Funding and open-interest changes are shown as risk context. Entry is a breakout reference, not a live order. Stop uses 1.5× 15M ATR; targets use 1.5R and 2.5R.",
+                    Text("The per-coin win/loss estimate is based on that coin's historical 4H/1H/15M strategy replay (LONG/SHORT results are direction-filtered; WAIT uses both directions). It is an observed historical frequency, not a calibrated future probability. It is hidden below 30 completed samples; 30–49 is preliminary and 50+ is still not a guarantee. The replay excludes fees, slippage, historical order-book/funding data and the live 5M filter. Directional ideas require aligned 4H, 1H, 15M and 5M trends, with spread and order-book checks where available. Entry is a breakout reference, not a live order. Stop uses 1.5× 15M ATR; targets use 1.5R and 2.5R.",
                         style = MaterialTheme.typography.bodySmall)
                     Text("Risk guide: plan no more than 0.5% of equity per trade and keep leverage at or below 3×. Include fees, slippage and funding. Skip wide spreads, weak volume, stale data or unclear invalidation.",
                         style = MaterialTheme.typography.bodySmall)
@@ -488,6 +489,7 @@ private fun TradeIdeaCard(idea: TradeIdea) {
                 Text("24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("$" + "%,.0f".format(Locale.US, idea.volume), style = MaterialTheme.typography.bodySmall)
             }
+            HistoricalOutcomePanel(idea)
             if (qualified) {
                 HorizontalDivider()
                 Text(if (idea.entryTriggered) "15M breakout confirmed · check live price before entry" else "Conditional plan · wait for a 15M close through trigger", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -505,9 +507,9 @@ private fun TradeIdeaCard(idea: TradeIdea) {
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
                 HorizontalDivider()
                 Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                Text(if (idea.backtest.trades == 0) "No completed historical signals in the replay window." else
-                    "Win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                    "%+.2f".format(Locale.US, idea.backtest.averageR) + "R. Aim for at least 50 samples before relying on this setup.",
+                Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
+                    else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
+                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R. This is historical performance, not a forecast.",
                     style = MaterialTheme.typography.bodySmall)
                 idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -529,5 +531,47 @@ private fun ScannerMetric(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun HistoricalOutcomePanel(idea: TradeIdea) {
+    val stats = idea.backtest
+    val sideLabel = if (idea.side == "WAIT") "Combined LONG + SHORT replay" else idea.side + " historical replay"
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Historical win / loss", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (stats.hasUsableEstimate) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Historical wins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("%.1f%%".format(Locale.US, stats.winRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Historical losses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("%.1f%%".format(Locale.US, stats.lossRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                }
+                val lower = stats.winRateLower95 ?: 0.0
+                val upper = stats.winRateUpper95 ?: 100.0
+                Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (stats.trades < 50) {
+                    Text("Preliminary: collect at least 50 completed samples before relying on this history.", style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Historical results only; not a guarantee or a prediction of the next trade.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
