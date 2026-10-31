@@ -272,7 +272,7 @@ fun DailyTradeIdeasScreen() {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold)
-                            Text("Background checks about every 15 minutes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Best-effort checks ~15 min; Android may delay", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
                             if (!enabled) {
@@ -322,7 +322,7 @@ fun DailyTradeIdeasScreen() {
                         style = MaterialTheme.typography.bodySmall)
                     Text("Risk guide: plan no more than 0.5% of equity per trade and keep leverage at or below 3×. Include fees, slippage and funding. Skip wide spreads, weak volume, stale data or unclear invalidation.",
                         style = MaterialTheme.typography.bodySmall)
-                    Text("Read-only public market data only. The scanner cannot place, edit or close orders. Verify prices and contract rules on Binance before trading.",
+                    Text("Alerts monitor up to three confirmed signal plans at a time. Stop and target notifications use public ticker checks and may be delayed; they do not monitor or close your actual Binance positions. Read-only public market data only. Verify prices and contract rules on Binance before trading.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -369,7 +369,7 @@ private fun TradeIdeaCard(idea: TradeIdea) {
             }
             if (qualified) {
                 HorizontalDivider()
-                Text("Conditional plan · wait for a fresh 15M close", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Text(if (idea.entryTriggered) "15M breakout confirmed · check live price before entry" else "Conditional plan · wait for a 15M close through trigger", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 IdeaLevel("Entry trigger", idea.entry); IdeaLevel("Stop-loss reference", idea.stop)
                 IdeaLevel("Target 1 · 1.5R", idea.target1); IdeaLevel("Target 2 · 2.5R", idea.target2)
             } else Text("No trade: trend alignment is incomplete or score is below qualification threshold.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
