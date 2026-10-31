@@ -39,4 +39,25 @@ class BinanceSyncStatusTest {
             discoverySucceeded = 0
         ))
     }
+    @Test
+    fun symbolBatchRotatesWithoutStarvingLaterSymbols() {
+        val symbols = (1..205).map { "COIN%03dUSDT".format(it) }
+        val first = selectBinanceSymbolBatch(symbols, offset = 0)
+        val second = selectBinanceSymbolBatch(symbols, offset = first.second)
+        val third = selectBinanceSymbolBatch(symbols, offset = second.second)
+
+        assertEquals(100, first.first.size)
+        assertEquals(100, second.first.size)
+        assertEquals(5, third.first.size)
+        assertEquals(205, (first.first + second.first + third.first).distinct().size)
+        assertEquals(0, third.second)
+    }
+
+    @Test
+    fun smallSymbolSetDoesNotNeedRotation() {
+        val batch = selectBinanceSymbolBatch(listOf("ETHUSDT", "BTCUSDT"), offset = 99)
+        assertEquals(listOf("BTCUSDT", "ETHUSDT"), batch.first)
+        assertEquals(0, batch.second)
+    }
+
 }
