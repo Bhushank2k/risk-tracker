@@ -64,14 +64,14 @@ fun LedgerAuditScreen() {
         }
 
         if (report == null) {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("No saved import report for $year", fontWeight = FontWeight.SemiBold)
                     Text("Import a Binance USDⓈ-M Futures income CSV from Binance data to populate coverage and duplicate-row metadata.")
                 }
             }
         } else {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Import coverage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     AuditRow("First activity", report.firstActivityDate.ifBlank { "—" })
@@ -83,14 +83,14 @@ fun LedgerAuditScreen() {
                     AuditRow("Imported Futures total", importedTotal.usd())
                 }
             }
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Rows by income type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (report.rowsByType.isEmpty()) Text("No income-type breakdown was saved.")
                     report.rowsByType.toSortedMap().forEach { (type, count) -> AuditRow(type, count.toString()) }
                 }
             }
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Optional source-total reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Enter the independently verified total from your complete Binance statement. This value is stored with the existing year reconciliation settings.")
