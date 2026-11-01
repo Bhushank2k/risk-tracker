@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
@@ -363,7 +364,8 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf(cachedScan?.first) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    var density by remember { mutableStateOf("Standard") }
+    var density by remember { mutableStateOf("Compact") }
+    var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var equityInput by remember { mutableStateOf("") }
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
@@ -462,31 +464,32 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ScannerStat("Ideas", ideas.size.toString(), Modifier.weight(1f))
                 ScannerStat("Ready", readyCount.toString(), Modifier.weight(1f))
-                ScannerStat("Monitor", monitorCount.toString(), Modifier.weight(1f))
-                ScannerStat("Tracking", trackedCount.toString(), Modifier.weight(1f))
+                if (monitorCount > 0) ScannerStat("Monitor", monitorCount.toString(), Modifier.weight(1f))
+                if (trackedCount > 0) ScannerStat("Tracking", trackedCount.toString(), Modifier.weight(1f))
             }
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Market scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Full liquid-market scan · Binance Futures public data", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Market scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(longCount.toString() + " long · " + shortCount.toString() + " short · " + waitCount.toString() + " no direction", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { refresh() }, enabled = !loading) { Text(if (loading) "Scanning…" else "Refresh") }
+                            TextButton(onClick = { scanExpanded = !scanExpanded }) { Text(if (scanExpanded) "Hide" else "Details") }
+                        }
                     }
+                    if (scanExpanded) {
+                    Text("Full liquid-market scan · Binance Futures public data", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
                         ScannerStat("SHORT", shortCount.toString(), Modifier.weight(1f))
-                        ScannerStat("WAIT", waitCount.toString(), Modifier.weight(1f))
+                        ScannerStat("No direction", waitCount.toString(), Modifier.weight(1f))
                     }
                     Text("Directional mix of scanned ideas — not a market-wide trend prediction.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                        if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Refresh, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (loading) "Scanning markets…" else "Refresh market scan")
-                    }
                     HorizontalDivider()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -503,6 +506,7 @@ fun DailyTradeIdeasScreen() {
                             } else enableTradeAlerts()
                         })
                     }
+                    }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             }
@@ -512,7 +516,7 @@ fun DailyTradeIdeasScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(readyCount.toString() + " ready · " + blockedCount + " blocked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Ready", "Monitor", "Waiting", "Tracking", "Do not enter", "Scalp", "Swing", "Long", "Short").forEach { option ->
@@ -520,10 +524,10 @@ fun DailyTradeIdeasScreen() {
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Card density", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("View", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         listOf("Compact", "Standard", "Expanded").forEach { option ->
-                            FilterChip(selected = density == option, onClick = { density = option }, label = { Text(option) })
+                            FilterChip(selected = density == option, onClick = { density = option }, label = { Text(option, maxLines = 1, softWrap = false) })
                         }
                     }
                 }
@@ -656,6 +660,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
     var livePrice by remember(idea.symbol) { mutableStateOf(idea.last) }
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
+    var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
     LaunchedEffect(idea.symbol, trackedEntry) {
         if (trackedEntry != null) {
             while (true) {
@@ -709,6 +714,14 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SummaryLevel("Entry", idea.entry.usd(6), Modifier.weight(1f))
+                    SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
+                    SummaryLevel("Target 1", idea.target1.usd(6), Modifier.weight(1f))
+                    SummaryLevel("Reward", "%.2fR".format(Locale.US, rewardRisk), Modifier.weight(1f))
+                }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text((if (trackedEntry != null) livePrice else idea.last).usd(6), fontWeight = FontWeight.SemiBold)
@@ -726,6 +739,8 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
 
             if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 HorizontalDivider()
+                TextButton(onClick = { levelsExpanded = !levelsExpanded }, modifier = Modifier.align(Alignment.End)) { Text(if (levelsExpanded) "Hide levels" else "Show all levels") }
+                if (levelsExpanded) {
                 Text("Entry & risk plan", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 IdeaLevel("Entry zone low", zoneLow)
                 IdeaLevel("Entry trigger", idea.entry)
@@ -734,6 +749,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 IdeaLevel("Target 1", idea.target1)
                 IdeaLevel("Target 2", idea.target2)
                 ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
+                }
             }
             if (stage == TradeIdeaStage.TRACKING && trackedEntry != null) {
                 HorizontalDivider()
@@ -753,7 +769,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     onTrackingChanged(idea.symbol, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
             } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
-                Text("Risk checks passed: direction, stop-loss and target levels are valid. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
+                Text("Risk checks passed. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
                         val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
@@ -763,7 +779,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                         trackedEntry = entry
                         onTrackingChanged(idea.symbol, true)
                     }
-                }, modifier = Modifier.fillMaxWidth()) { Text("I entered — track this trade") }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
                 Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
@@ -775,8 +791,8 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
-            if (density != "Compact") HistoricalOutcomePanel(idea)
-            if (density != "Compact") TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
+            if (density == "Expanded") HistoricalOutcomePanel(idea) else Text(historyOneLine(idea), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
@@ -797,6 +813,22 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
         }
     }
 }
+
+@Composable
+private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** One-line history summary for the compact card. */
+private fun historyOneLine(idea: TradeIdea): String =
+    if (idea.backtest.hasUsableEstimate) "Historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% over " + idea.backtest.trades + " samples"
+    else "No history yet (" + idea.backtest.trades + " of 30 samples)"
 
 @Composable
 private fun IdeaLevel(label: String, value: Double) {
@@ -884,6 +916,7 @@ private fun TradeSessionTimingCard() {
         val delta = (slot.startMinute - minuteOfDay + 1440) % 1440
         slot to delta
     }.filter { it.second > 0 }.minByOrNull { it.second } ?: (sessions.first() to (1440 - minuteOfDay + sessions.first().startMinute))
+    var timingExpanded by remember { mutableStateOf(false) }
     fun clock(minutes: Int): String = "%02d:%02d".format(Locale.US, minutes / 60, minutes % 60)
     val remaining = if (active != null) {
         val end = active.endMinute
@@ -897,6 +930,8 @@ private fun TradeSessionTimingCard() {
                 else "Next window: " + next.first.name + " · starts in " + (remaining / 60) + "h " + (remaining % 60) + "m",
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium
             )
+            TextButton(onClick = { timingExpanded = !timingExpanded }, modifier = Modifier.align(Alignment.End)) { Text(if (timingExpanded) "Hide windows" else "Show windows") }
+            if (timingExpanded) {
             sessions.forEach { slot ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -909,6 +944,7 @@ private fun TradeSessionTimingCard() {
             HorizontalDivider()
             Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
             Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
