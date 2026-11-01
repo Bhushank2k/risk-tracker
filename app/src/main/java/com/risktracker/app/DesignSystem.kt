@@ -1,0 +1,112 @@
+package com.risktracker.app
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CardElevation
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.dp
+import androidx.compose.animation.animateContentSize
+
+/**
+ * Shared visual language for Risk Tracker.
+ *
+ * Keep screen-specific content and business logic in their screens; use these tokens
+ * and primitives so surfaces, spacing and motion stay consistent everywhere.
+ */
+object RiskTrackerDesign {
+    val pagePadding = 16.dp
+    val sectionGap = 16.dp
+    val cardGap = 12.dp
+    val cardPadding = 16.dp
+    val compactCardPadding = 12.dp
+
+    val success = androidx.compose.ui.graphics.Color(0xFF20A879)
+    val warning = androidx.compose.ui.graphics.Color(0xFFE6A23C)
+    val danger = androidx.compose.ui.graphics.Color(0xFFE05B62)
+    val info = androidx.compose.ui.graphics.Color(0xFF62A9E8)
+}
+
+val RiskTrackerShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
+val RiskTrackerTypography = Typography()
+
+private val RiskTrackerCardBorder: BorderStroke
+    @Composable get() = BorderStroke(
+        1.dp,
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)
+    )
+
+/**
+ * Standard card surface. The subtle outline and low elevation provide a consistent
+ * hierarchy without turning every panel into a heavy floating tile.
+ */
+@Composable
+fun RiskCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = MaterialTheme.shapes.large,
+    colors: CardColors = CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.surface
+    ),
+    elevation: CardElevation = CardDefaults.cardElevation(
+        defaultElevation = 1.dp,
+        pressedElevation = 3.dp
+    ),
+    border: BorderStroke? = RiskTrackerCardBorder,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = modifier.animateContentSize(),
+        shape = shape,
+        colors = colors,
+        elevation = elevation,
+        border = border,
+        content = content
+    )
+}
+
+/** Clickable variant with the same surface, outline and motion as RiskCard. */
+@Composable
+fun RiskCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = MaterialTheme.shapes.large,
+    colors: CardColors = CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.surface
+    ),
+    elevation: CardElevation = CardDefaults.cardElevation(
+        defaultElevation = 1.dp,
+        pressedElevation = 3.dp
+    ),
+    border: BorderStroke? = RiskTrackerCardBorder,
+    interactionSource: MutableInteractionSource? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.animateContentSize(),
+        enabled = enabled,
+        shape = shape,
+        colors = colors,
+        elevation = elevation,
+        border = border,
+        interactionSource = interactionSource,
+        content = content
+    )
+}
