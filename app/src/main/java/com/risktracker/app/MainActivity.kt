@@ -458,7 +458,6 @@ fun LiveTradesScreen() {
     val scope = rememberCoroutineScope()
     var liveTrades by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
-    var lastUpdated by remember { mutableStateOf<Long?>(null) }
     var status by remember { mutableStateOf("Connect Binance with read-only API credentials, then refresh to load open positions and orders.") }
 
     fun refresh() {
@@ -475,7 +474,6 @@ fun LiveTradesScreen() {
                     BinanceApi(credentials.first, credentials.second).liveTrades()
                 }
                 liveTrades = rows
-                lastUpdated = System.currentTimeMillis()
                 status = if (rows.isEmpty()) "No open Futures positions or Spot orders found." else "Loaded " + rows.size + " open positions/orders."
             } catch (e: Exception) {
                 status = e.message ?: "Could not load live trades. Check API permissions and connection."
