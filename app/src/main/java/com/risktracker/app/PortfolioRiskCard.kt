@@ -20,7 +20,6 @@ private fun portfolioUsd(value: Double): String = String.format(Locale.US, "$%,.
 fun PortfolioRiskCard(
     positions: List<BinanceLiveTrade>,
     futuresBalance: BinanceFuturesAccountBalance?,
-    snapshotAge: String?,
     hasCredentials: Boolean,
     positionsRefreshFailed: Boolean
 ) {
@@ -69,8 +68,7 @@ fun PortfolioRiskCard(
                 }
                 HorizontalDivider()
                 Text("Liquidation buffer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                if (nearestLiquidation == null) {
-                } else {
+                if (nearestLiquidation != null) {
                     val (position, distance) = nearestLiquidation
                     Text(position.symbol + " · " + String.format(Locale.US, "%.2f%%", distance) + " from mark to liquidation",
                         style = MaterialTheme.typography.bodyMedium,
