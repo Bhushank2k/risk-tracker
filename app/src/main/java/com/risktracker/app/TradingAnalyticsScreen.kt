@@ -115,7 +115,7 @@ fun TradingAnalyticsScreen(
                 Text("Automatically calculated from saved Binance executions. No manual entries are used.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Card(Modifier.fillMaxWidth()) {
+                RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
@@ -155,7 +155,7 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("TOTAL EXECUTED VOLUME", style = MaterialTheme.typography.labelMedium,
@@ -190,7 +190,7 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Win / loss ratio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -233,7 +233,7 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Realized P&L by pair", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (pairStats.isEmpty()) {
@@ -260,7 +260,7 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trading fees", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (feeTotals.isEmpty()) {
@@ -294,7 +294,7 @@ private fun AnalyticsMetric(
     valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     supporting: String? = null
 ) {
-    Card(modifier) {
+    RiskCard(modifier) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
