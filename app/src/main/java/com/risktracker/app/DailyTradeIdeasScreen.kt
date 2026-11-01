@@ -408,7 +408,7 @@ fun DailyTradeIdeasScreen() {
                 Text("Daily trade ideas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Full liquid-market scan · all active USDT perpetuals above $5M 24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Live market scan", fontWeight = FontWeight.SemiBold)
@@ -448,7 +448,7 @@ fun DailyTradeIdeasScreen() {
             val sizing = sizingIdea?.let {
                 TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop)
             }
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
@@ -470,7 +470,7 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Paper-trade validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (paperStats.isNotEmpty()) {
@@ -501,7 +501,7 @@ fun DailyTradeIdeasScreen() {
 
 @Composable
 private fun ScannerStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    RiskCard(modifier) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } }
@@ -512,7 +512,7 @@ private fun TradeIdeaCard(idea: TradeIdea) {
     var expanded by remember { mutableStateOf(false) }
     val qualified = idea.side != "WAIT" && idea.score >= 70
     val tint = if (!qualified) MaterialTheme.colorScheme.onSurfaceVariant else if (idea.side == "LONG") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
@@ -585,7 +585,7 @@ private fun ScannerMetric(label: String, value: String) {
 private fun HistoricalOutcomePanel(idea: TradeIdea) {
     val stats = idea.backtest
     val sideLabel = if (idea.side == "WAIT") "Combined LONG + SHORT replay" else idea.side + " historical replay"
-    Card(
+    RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
     ) {

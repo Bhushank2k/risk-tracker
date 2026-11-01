@@ -164,13 +164,13 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("More analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Card(onClick = { onNavigate(14) }, modifier = Modifier.fillMaxWidth()) {
+                RiskCard(onClick = { onNavigate(14) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Trade reviews", fontWeight = FontWeight.SemiBold)
                         Text("Compare trade plans with closed-trade outcomes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Card(onClick = { onNavigate(13) }, modifier = Modifier.fillMaxWidth()) {
+                RiskCard(onClick = { onNavigate(13) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Advanced risk scenarios", fontWeight = FontWeight.SemiBold)
                         Text("Explore loss streaks and historical risk scenarios.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -199,7 +199,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
             }
         }
         item {
-            Card(
+            RiskCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
@@ -234,7 +234,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Best and worst results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     InsightRow("Best recorded day", snapshot.bestDay?.usd() ?: "—")
@@ -245,7 +245,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         }
         item {
             if (filteredEntries.size >= 2) BalanceChart(filteredEntries)
-            else Card(Modifier.fillMaxWidth()) {
+            else RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Balance trend", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("The balance trend uses manually recorded balance entries. Add at least two daily records to see it; Binance and journal-only P&L remain included in the reconciled totals above.",
@@ -265,7 +265,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
 
 @Composable
 private fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
+    RiskCard(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

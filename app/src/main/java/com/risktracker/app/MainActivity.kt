@@ -9,6 +9,11 @@ import androidx.activity.compose.setContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
                     error = Color(0xFFB3261E)
                 )
             }
-            MaterialTheme(colorScheme = scheme) {
+            MaterialTheme(colorScheme = scheme, shapes = RiskTrackerShapes, typography = RiskTrackerTypography) {
                 Surface(Modifier.fillMaxSize()) { App(store, themeMode, onThemeModeChange = { themeMode = it; store.themeMode = it }) }
             }
         }
@@ -262,7 +267,12 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) {
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(140)) },
+                label = "screen-transition"
+            ) { destination ->
+                when (destination) {
                 0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it }) {
                     entries = it
                     store.saveEntries(it)
@@ -319,6 +329,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
+                }
             }
         }
     }
@@ -368,7 +379,7 @@ fun BinanceSyncHealthScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sync health", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,7 +407,7 @@ fun BinanceSyncHealthScreen() {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Latest attempt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -464,7 +475,7 @@ fun LiveTradesScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
@@ -489,7 +500,7 @@ fun LiveTradesScreen() {
                 val spotOrders = liveTrades.filter { it.market == "Spot order" }
                 val unrealizedTotal = futuresPositions.sumOf { it.unrealizedPnl }
                 val futuresNotional = futuresPositions.sumOf { it.quantity * it.markPrice }
-                Card(Modifier.fillMaxWidth()) {
+                RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("LIVE ACCOUNT SUMMARY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -516,7 +527,7 @@ fun LiveTradesScreen() {
             }
         }
         items(liveTrades, key = { it.id }) { trade ->
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -610,7 +621,7 @@ fun BalanceChart(entries: List<PnlEntry>) {
     val lo = points.minOrNull() ?: 0.0
     val hi = points.maxOrNull() ?: 0.0
     val line = MaterialTheme.colorScheme.primary
-    Card(Modifier.fillMaxWidth()) {
+    RiskCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -698,7 +709,7 @@ fun EquityDrawdownCard(entries: List<PnlEntry>) {
     val currentPeak = ordered.lastOrNull()?.let { last -> ordered.takeWhile { it.date != last.date }.fold(0.0) { p, e -> maxOf(p, e.closing) }.let { maxOf(it, last.closing) } } ?: 0.0
     val current = ordered.last().closing
     val drawdown = (currentPeak - current).coerceAtLeast(0.0)
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Equity & drawdown", style = MaterialTheme.typography.titleMedium)
         Text("Current balance: " + current.usd() + " · Peak-to-current drawdown: " + drawdown.usd(), color = if (drawdown > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
         Text("Maximum historical drawdown: " + maxDd.usd(), style = MaterialTheme.typography.bodySmall)
@@ -724,7 +735,7 @@ fun PnlCalendar(entries: List<PnlEntry>) {
     val startOffset = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     val byDay = parsed.associate { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(it.first) to it.second }
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("P&L calendar · " + monthTitle, style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth()) { listOf("M", "T", "W", "T", "F", "S", "S").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall) } }
         val cells = List(startOffset) { 0 } + (1..days).toList()
@@ -760,7 +771,7 @@ fun DailyInsights(entries: List<PnlEntry>) {
     val weekdayTotals = ordered.mapNotNull { e -> reportDate(e.date)?.let { Calendar.getInstance().apply { time = it }.get(Calendar.DAY_OF_WEEK) to e.pnl } }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
     val bestWeekday = weekdayTotals.maxByOrNull { it.value }
     val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Streaks & weekday insights", style = MaterialTheme.typography.titleMedium)
         Text("Current streak: " + if (streakSign == 0) "No active win/loss streak" else "$currentStreak consecutive ${if (streakSign > 0) "winning" else "losing"} days")
         Text("Longest winning streak: $bestWinStreak days · Longest losing streak: $bestLossStreak days")
@@ -862,7 +873,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             Text("Workspace", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Your trading tools, exchange data and reports in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Card(
+        RiskCard(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
             shape = RoundedCornerShape(22.dp)
@@ -954,7 +965,7 @@ private fun MoreMenuSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+    RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -976,7 +987,7 @@ private fun MoreMenuSection(
 
 @Composable
 private fun MoreQuickTile(title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Card(
+    RiskCard(
         onClick = onClick,
         modifier = modifier,
         shape = RoundedCornerShape(15.dp),
@@ -991,7 +1002,7 @@ private fun MoreQuickTile(title: String, subtitle: String, modifier: Modifier = 
 
 @Composable
 private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
-    Card(
+    RiskCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(13.dp),
@@ -1019,7 +1030,7 @@ fun AboutScreen() {
         Text("Risk Tracker", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("Crypto futures trading tracker: daily PNL, position sizing and leverage risk in one place.",
             style = MaterialTheme.typography.bodyMedium)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AboutRow("Developer", "Bhushank2k")
                 AboutRow("Version", version)
@@ -1064,7 +1075,7 @@ fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: 
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Account & risk settings", style = MaterialTheme.typography.titleMedium)
         if (accountEquity != null && accountEquity.isFinite() && accountEquity > 0.0) {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Row(
                     Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1088,7 +1099,7 @@ fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: 
 
         Spacer(Modifier.height(8.dp))
         Text("Position metrics", style = MaterialTheme.typography.titleMedium)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 ResultRow("", "Long", "Short", header = true)
                 ResultRow("Max risk", long.riskAmount.usd(), short.riskAmount.usd())
@@ -1117,7 +1128,7 @@ fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: 
             else ->
                 "Your current inputs estimate " + parsed.balance.usd() + " balance with " + parsed.riskPercent.pct(1) + " risk per trade. Recheck fees, slippage, funding and exchange margin rules before using this estimate."
         }
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Suggestion from current inputs", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -1178,7 +1189,7 @@ fun LeverageScreen(input: CalcInput) {
         Text("Based on the entry price from the Calculator tab: ${input.entry.usd()}",
             style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text("Lev", Modifier.weight(0.6f), fontWeight = FontWeight.Bold)

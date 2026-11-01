@@ -137,7 +137,7 @@ fun CryptoTaxReportScreen() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Crypto tax reports · India", style = MaterialTheme.typography.headlineSmall)
         Text("Historical Binance trade ledger from 2019 onward, grouped by Indian financial year (1 April–31 March). Imported realized P&L is not automatically the taxable VDA income under Indian law. Reports are review aids, not tax-filing advice; verify records, date-specific INR values and tax treatment with a qualified Indian tax professional.", style = MaterialTheme.typography.bodyMedium)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Import historical trades", style = MaterialTheme.typography.titleMedium)
                 Text("Choose a Binance CSV export or ZIP containing CSV files. Importing merges records and skips duplicate IDs; it does not overwrite existing Daily P&L or manual trade journal data.", style = MaterialTheme.typography.bodySmall)
@@ -157,7 +157,7 @@ fun CryptoTaxReportScreen() {
                 }
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Year-wise summary", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(selectedYear, { selectedYear = it.filter(Char::isDigit).take(4) }, label = { Text("Financial year start year (e.g. 2025 = FY 2025-26)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -175,7 +175,7 @@ fun CryptoTaxReportScreen() {
 
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cost-basis & reconciliation review", style = MaterialTheme.typography.titleMedium)
                 Text("Indicative FIFO matching by exact symbol, using the same manual conversion rate above. This is not a tax calculation.", style = MaterialTheme.typography.bodySmall)
@@ -194,7 +194,7 @@ fun CryptoTaxReportScreen() {
             }
         }
         if (summaries.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Available financial years", style = MaterialTheme.typography.titleMedium)
                     summaries.forEach { s ->
@@ -209,7 +209,7 @@ fun CryptoTaxReportScreen() {
         if (yearTrades.isNotEmpty()) {
             Text("Trade history for FY $selectedYear-${((selectedYear.toIntOrNull() ?: 0) + 1).toString().takeLast(2)}", style = MaterialTheme.typography.titleMedium)
             yearTrades.takeLast(100).asReversed().forEach { t ->
-                Card(Modifier.fillMaxWidth()) {
+                RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("${t.symbol} · ${t.side}", style = MaterialTheme.typography.titleSmall)
                         Text(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(t.timestamp)))

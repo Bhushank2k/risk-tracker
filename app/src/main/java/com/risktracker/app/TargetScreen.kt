@@ -73,7 +73,7 @@ fun TargetScreen() {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Your goal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 TargetNumberField("Starting balance (USD)", startingBalance, { startingBalance = it })
@@ -85,7 +85,7 @@ fun TargetScreen() {
         }
 
         if (validBalances) {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Additional net profit needed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(money(profitNeeded!!), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -95,7 +95,7 @@ fun TargetScreen() {
                 }
             }
 
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Required pace", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (requiredDaily != null) {
@@ -113,7 +113,7 @@ fun TargetScreen() {
                 }
             }
         } else {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Enter your balances", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Enter a starting balance of zero or more and a target balance greater than your starting balance to see the plan.", style = MaterialTheme.typography.bodyMedium)
@@ -121,7 +121,7 @@ fun TargetScreen() {
             }
         }
 
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Risk reminder", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text("These figures are planning estimates, not guaranteed returns. Actual results can be negative and market conditions change. Keep a maximum daily-loss limit; never raise leverage or risk to force a deadline.", style = MaterialTheme.typography.bodySmall)

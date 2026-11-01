@@ -35,7 +35,7 @@ fun PortfolioRiskCard(
     val bySymbol = positions.groupBy { it.symbol }.mapValues { (_, rows) ->
         rows.sumOf { kotlin.math.abs(it.quantity * it.markPrice) }
     }.entries.sortedByDescending { it.value }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("PORTFOLIO RISK", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
