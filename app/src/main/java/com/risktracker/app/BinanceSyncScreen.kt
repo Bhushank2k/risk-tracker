@@ -200,12 +200,10 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                 }
             }
         }
-        if (lastSync > 0L) Text("Last account P&L sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastSync)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("2 · TRADE HISTORY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Trade journal sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Executed fills are saved as exchange execution records with their exchange trade IDs, timestamps and fees. Futures fills include Binance-reported realized P&L. Spot fills remain fill-level records; they are not falsely presented as closed-position P&L.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(historySymbols, { historySymbols = it; historyPreview = null }, label = { Text("Symbols (comma-separated, e.g. BTCUSDT, ETHUSDT)") }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = historyMarket == "Spot", onClick = { historyMarket = "Spot"; historyPreview = null }, label = { Text("Spot") })
@@ -265,7 +263,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                                     style = MaterialTheme.typography.bodySmall)
                             }
                             if (preview.size > 30) Text("Showing 30 of ${preview.size} fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Confirming adds only unseen exchange trade IDs; repeat imports won't duplicate fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = { historyPreview = null; status = "Historical import cancelled. No fills were added." }, modifier = Modifier.weight(1f)) { Text("Cancel") }
                                 Button(onClick = {
@@ -284,7 +281,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Binance trade CSV import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Import Spot or USDⓈ-M Futures execution fills. CSV rows are tagged as Binance CSV, sorted by timestamp and deduplicated against repeated CSV imports. This adds execution records to the trade journal; use the yearly Futures income CSV below for historical daily P&L totals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = fillCsvMarket == "Spot", onClick = { fillCsvMarket = "Spot"; fillCsvPreview = null }, label = { Text("Spot") })
                     FilterChip(selected = fillCsvMarket == "USDⓈ-M Futures", onClick = { fillCsvMarket = "USDⓈ-M Futures"; fillCsvPreview = null }, label = { Text("USDⓈ-M Futures") })
@@ -648,7 +644,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                 }
             }
         }
-        if (status.isNotBlank()) Text(status, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+        if (status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true) || status.startsWith("Imported")) {
+            Text(status, color = if (status.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
         Spacer(Modifier.height(12.dp))
     }
 }
