@@ -180,13 +180,14 @@ fun PremiumOverviewScreen(
                 }
             }
         }
-        item {
-            PortfolioRiskCard(
-                positions = livePositions,
-                futuresBalance = snapshot?.futures,
-                hasCredentials = hasBinanceCredentials,
-                positionsRefreshFailed = positionsStatus.startsWith("Refresh failed")
-            )
+        if (hasBinanceCredentials) {
+            item {
+                PortfolioRiskCard(
+                    positions = livePositions,
+                    futuresBalance = snapshot?.futures,
+                    positionsRefreshFailed = positionsStatus.startsWith("Refresh failed")
+                )
+            }
         }
         item {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
