@@ -41,25 +41,6 @@ fun PortfolioRiskCard(
                         Text("Open notional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(exposure.let { portfolioUsd(it) }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text("Open positions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(positions.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    }
-                }
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Futures equity", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(futuresBalance?.totalEquity?.let { portfolioUsd(it) } ?: "Unavailable", fontWeight = FontWeight.SemiBold)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Available balance", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(futuresBalance?.availableBalance?.let { portfolioUsd(it) } ?: "Unavailable", fontWeight = FontWeight.SemiBold)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Unrealized P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val pnl = positions.sumOf { it.unrealizedPnl }
-                    Text((if (pnl > 0.0) "+" else "") + pnl.let { portfolioUsd(it) }, fontWeight = FontWeight.SemiBold,
-                        color = if (pnl >= 0.0) profitColor() else lossColor())
                 }
                 HorizontalDivider()
                 Text("Liquidation buffer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -76,7 +57,7 @@ fun PortfolioRiskCard(
                             color = MaterialTheme.colorScheme.error)
                     }
                 }
-                if (bySymbol.isNotEmpty()) {
+                if (bySymbol.size > 1) {
                     HorizontalDivider()
                     Text("Exposure by symbol", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     bySymbol.take(5).forEach { row ->
