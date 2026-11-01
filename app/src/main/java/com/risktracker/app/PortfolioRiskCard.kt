@@ -41,10 +41,7 @@ fun PortfolioRiskCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("PORTFOLIO RISK", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            if (!hasCredentials) {
-                Text("Connect read-only Binance credentials to calculate live exposure and account availability.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
+            if (hasCredentials) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Open notional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -73,8 +70,6 @@ fun PortfolioRiskCard(
                 HorizontalDivider()
                 Text("Liquidation buffer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 if (nearestLiquidation == null) {
-                    Text(if (positions.isEmpty()) "No open positions." else "Liquidation price is not available for these positions.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     val (position, distance) = nearestLiquidation
                     Text(position.symbol + " · " + String.format(Locale.US, "%.2f%%", distance) + " from mark to liquidation",
@@ -101,11 +96,8 @@ fun PortfolioRiskCard(
                         }
                     }
                 }
-                Text("Open notional is quantity × mark price (gross exposure, not margin or maximum loss). Liquidation distance is an estimate from Binance's reported liquidation price. Account balance uses the saved snapshot" +
-                    (snapshotAge?.let { " · $it" } ?: "") + ".",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (positionsRefreshFailed) {
-                    Text("Position refresh failed; exposure may be stale.", style = MaterialTheme.typography.labelSmall,
+                    Text("Position data may be stale", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error)
                 }
             }
