@@ -555,6 +555,7 @@ private fun TradeIdeaCard(idea: TradeIdea) {
         mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 })
     }
     var livePrice by remember(idea.symbol) { mutableStateOf(idea.last) }
+    val trackingScope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(idea.symbol, trackedEntry) {
         if (trackedEntry != null) {
@@ -652,9 +653,13 @@ private fun TradeIdeaCard(idea: TradeIdea) {
             } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
                 Text("Risk checks passed: direction, stop-loss and target levels are valid. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
-                    val entry = livePrice.takeIf { it > 0.0 } ?: idea.last
-                    trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
-                    trackedEntry = entry
+                    trackingScope.launch {
+                        val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+                            ?: livePrice.takeIf { it > 0.0 } ?: idea.last
+                        trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
+                        livePrice = entry
+                        trackedEntry = entry
+                    }
                 }, modifier = Modifier.fillMaxWidth()) { Text("I entered — track this trade") }
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
