@@ -12,8 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.animateContentSize
 
@@ -34,7 +37,28 @@ object RiskTrackerDesign {
     val warning = androidx.compose.ui.graphics.Color(0xFFE6A23C)
     val danger = androidx.compose.ui.graphics.Color(0xFFE05B62)
     val info = androidx.compose.ui.graphics.Color(0xFF62A9E8)
+
+    // Profit and loss: one palette for every screen, chosen by theme for contrast on its surfaces.
+    val profitOnLight = Color(0xFF16865D)
+    val lossOnLight = Color(0xFFD34B55)
+    val profitOnDark = Color(0xFF7DE2B8)
+    val lossOnDark = Color(0xFFFF7B78)
 }
+
+/** Whether the active theme is dark, judged from its background. */
+@Composable
+@ReadOnlyComposable
+private fun isDarkTheme(): Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+/** Color for profit (positive P&L, long side). Theme-aware. */
+@Composable
+@ReadOnlyComposable
+fun profitColor(): Color = if (isDarkTheme()) RiskTrackerDesign.profitOnDark else RiskTrackerDesign.profitOnLight
+
+/** Color for loss (negative P&L, short side). Theme-aware. */
+@Composable
+@ReadOnlyComposable
+fun lossColor(): Color = if (isDarkTheme()) RiskTrackerDesign.lossOnDark else RiskTrackerDesign.lossOnLight
 
 val RiskTrackerShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),

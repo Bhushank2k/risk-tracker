@@ -11,9 +11,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
-private val PortfolioRiskGreen = Color(0xFF16865D)
-private val PortfolioRiskRed = Color(0xFFD34B55)
-
 private fun portfolioUsd(value: Double): String = String.format(Locale.US, "$%,.2f", value)
 
 @Composable
@@ -62,7 +59,7 @@ fun PortfolioRiskCard(
                     Text("Unrealized P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val pnl = positions.sumOf { it.unrealizedPnl }
                     Text((if (pnl > 0.0) "+" else "") + pnl.let { portfolioUsd(it) }, fontWeight = FontWeight.SemiBold,
-                        color = if (pnl >= 0.0) PortfolioRiskGreen else PortfolioRiskRed)
+                        color = if (pnl >= 0.0) profitColor() else lossColor())
                 }
                 HorizontalDivider()
                 Text("Liquidation buffer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)

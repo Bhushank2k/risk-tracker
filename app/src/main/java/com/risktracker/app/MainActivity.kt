@@ -55,13 +55,14 @@ import java.util.Date
 import java.util.Calendar
 import java.util.Locale
 
-private val Green = Color(0xFF1B9E4B)
-private val Red = Color(0xFFD33A3A)
-
 fun Double.usd(d: Int = 2) = "$" + "%,.${d}f".format(this)
 fun Double.pct(d: Int = 2) = "%.${d}f%%".format(this)
 fun Double.num(d: Int = 2) = "%,.${d}f".format(this)
-fun pnlColor(v: Double) = if (v > 0) Green else if (v < 0) Red else Color.Gray
+
+/** Theme-aware color for a P&L value; neutral gray when it is zero. */
+@Composable
+@ReadOnlyComposable
+fun pnlColor(v: Double): Color = if (v > 0) profitColor() else if (v < 0) lossColor() else Color.Gray
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -546,7 +547,7 @@ fun LiveTradesScreen() {
                             Text(trade.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(trade.market, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(trade.side, color = if (trade.side == "LONG" || trade.side == "BUY") Green else Red, fontWeight = FontWeight.Bold)
+                        Text(trade.side, color = if (trade.side == "LONG" || trade.side == "BUY") profitColor() else lossColor(), fontWeight = FontWeight.Bold)
                     }
                     HorizontalDivider()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -770,10 +771,10 @@ fun PnlCalendar(entries: List<PnlEntry>) {
             (week + List(7 - week.size) { 0 }).forEach { day ->
                 val key = if (day > 0) keyFormat.format(Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, day) }.time) else ""
                 val e = byDay[key]
-                val bg = when { day == 0 -> MaterialTheme.colorScheme.surface; e == null -> MaterialTheme.colorScheme.surfaceVariant; e.pnl > 0 -> Color(0xFFDDF3E4); e.pnl < 0 -> Color(0xFFF8DEDE); else -> MaterialTheme.colorScheme.surfaceVariant }
+                val bg = when { day == 0 -> MaterialTheme.colorScheme.surface; e == null -> MaterialTheme.colorScheme.surfaceVariant; e.pnl > 0 -> profitColor().copy(alpha = 0.18f); e.pnl < 0 -> lossColor().copy(alpha = 0.18f); else -> MaterialTheme.colorScheme.surfaceVariant }
                 Column(Modifier.weight(1f).padding(vertical = 2.dp).background(bg, MaterialTheme.shapes.small).padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (day == 0) " " else day.toString(), style = MaterialTheme.typography.labelSmall, color = Color.Black)
-                    if (e != null) Text(if (e.pnl > 0) "+" + e.pnl.num(0) else e.pnl.num(0), style = MaterialTheme.typography.labelSmall, color = Color.Black, maxLines = 1)
+                    Text(if (day == 0) " " else day.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    if (e != null) Text(if (e.pnl > 0) "+" + e.pnl.num(0) else e.pnl.num(0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                 }
             }
         } }
@@ -1117,8 +1118,8 @@ fun ResultRow(label: String, a: String, b: String, header: Boolean = false) {
     val w = if (header) FontWeight.Bold else FontWeight.Normal
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text(label, Modifier.weight(1.3f), fontWeight = FontWeight.Medium)
-        Text(a, Modifier.weight(1f), fontWeight = w, color = if (header) Green else Color.Unspecified)
-        Text(b, Modifier.weight(1f), fontWeight = w, color = if (header) Red else Color.Unspecified)
+        Text(a, Modifier.weight(1f), fontWeight = w, color = if (header) profitColor() else Color.Unspecified)
+        Text(b, Modifier.weight(1f), fontWeight = w, color = if (header) lossColor() else Color.Unspecified)
     }
 }
 
@@ -1158,8 +1159,8 @@ fun LeverageScreen(input: CalcInput) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text("Lev", Modifier.weight(0.6f), fontWeight = FontWeight.Bold)
                     Text("Max move", Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                    Text("Long liq", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Green)
-                    Text("Short liq", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Red)
+                    Text("Long liq", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = profitColor())
+                    Text("Short liq", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = lossColor())
                 }
                 rows.forEach { r ->
                     val current = r.lev.toDouble() == input.leverage
