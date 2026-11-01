@@ -170,10 +170,17 @@ fun PremiumOverviewScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("YOUR TRADING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                Text("Overview", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("YOUR TRADING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Text("Overview", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                // One refresh for the whole screen: account balance and open positions.
+                TextButton(
+                    onClick = { refreshAccountBalance(); refreshLivePositions() },
+                    enabled = !balanceRefreshing && hasBinanceCredentials
+                ) { Text(if (balanceRefreshing) "Updating…" else "Refresh") }
             }
         }
 
@@ -190,13 +197,10 @@ fun PremiumOverviewScreen(
                             Text("TOTAL ACCOUNT EQUITY", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                             Text(accountEquity?.usd() ?: "Not connected", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                             Text(
-                                if (snapshot != null) "Spot + Futures · USDT equivalent" else "Connect read-only Binance credentials to load live equity",
+                                snapshot?.let { "Spot " + it.spot.valueUsdt.usd() + " · Futures " + it.futures.totalEquity.usd() } ?: "Connect read-only Binance credentials to load live equity",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
                             )
-                        }
-                        TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing && hasBinanceCredentials) {
-                            Text(if (balanceRefreshing) "Updating…" else "Refresh")
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f))
@@ -231,30 +235,39 @@ fun PremiumOverviewScreen(
             }
         }
 
-        // Fast portfolio KPIs: ledger, realized performance and closed-trade hit rate.
+        // The daily loss budget is the most actionable number, so it sits right under the equity card.
+        item {
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Daily loss budget", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        if (riskRemaining != null) Text(riskRemaining.usd() + " left", fontWeight = FontWeight.Bold, color = if (riskUsed != null && riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.onSurface)
+                    }
+                    if (riskRemaining != null && riskUsed != null) {
+                        LinearProgressIndicator(progress = { riskUsed }, modifier = Modifier.fillMaxWidth(), color = if (riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.primary)
+                        Text((riskUsed * 100).toInt().toString() + "% of your daily loss limit used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (riskUsed >= 1f) Text("Daily loss limit reached. Pause and review risk before taking another trade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                    } else {
+                        Text("Set a daily loss limit to see your remaining budget here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        // Fast portfolio KPIs: realized performance, open positions, and optional ledger and hit rate when recorded.
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "—", "Latest saved closing balance", Modifier.weight(1f))
+                if (latestBalance != null) SimpleMetricCard("Last recorded balance", latestBalance.usd(), "Saved closing balance", Modifier.weight(1f))
                 SimpleMetricCard("Net recorded P&L", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) profitColor() else lossColor())
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
+                if (winRate != null) SimpleMetricCard("Win rate", winRate.pct(1), closedTrades.toString() + " closed trades", Modifier.weight(1f))
                 SimpleMetricCard("Open positions", livePositions.size.toString(), if (positionsStatus.contains("failed") || positionsStatus.contains("418")) "Cached snapshot · WebSocket prices" else "Binance Futures · WebSocket", Modifier.weight(1f))
-            }
-            snapshot?.let { current ->
-                Text(
-                    "Spot " + current.spot.valueUsdt.usd() + "  ·  Futures " + current.futures.totalEquity.usd(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
             }
         }
 
         item {
-            SectionHeading("Active positions", "Live exposure and unrealized results") {
-                refreshLivePositions()
-            }
+            SectionHeading("Active positions", "Live exposure and unrealized results")
         }
         item {
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
@@ -262,7 +275,8 @@ fun PremiumOverviewScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(livePositions.size.toString() + " open Futures position" + if (livePositions.size == 1) "" else "s", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = if (positionsStatus.contains("418") || positionsStatus.contains("failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Routine sync timing stays out of view; only a failed sync is shown.
+                            if (positionsStatus.contains("418") || positionsStatus.contains("failed")) Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                             Text(markPriceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         if (positionsLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -304,6 +318,10 @@ fun PremiumOverviewScreen(
                                     Text(position.quantity.num(6), style = MaterialTheme.typography.labelSmall)
                                     Text("Liq. price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(if (position.liquidationPrice > 0.0) position.liquidationPrice.usd(4) else "—", style = MaterialTheme.typography.labelSmall, color = if (position.liquidationPrice > 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                                }
+                                if (position.markPrice > 0.0 && position.liquidationPrice > 0.0) {
+                                    val distancePct = kotlin.math.abs(position.liquidationPrice - position.markPrice) / position.markPrice * 100.0
+                                    Text("Liquidation about " + "%.0f".format(Locale.US, distancePct) + "% away from the mark price.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             if (index < livePositions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -350,36 +368,12 @@ fun PremiumOverviewScreen(
             }
         }
 
-        item {
-            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Risk control", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Daily loss budget based on your saved limit and today's recorded result", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (riskRemaining != null && riskUsed != null) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Loss budget remaining", style = MaterialTheme.typography.bodyMedium)
-                            Text(riskRemaining.usd(), fontWeight = FontWeight.Bold, color = if (riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.onSurface)
-                        }
-                        LinearProgressIndicator(progress = { riskUsed }, modifier = Modifier.fillMaxWidth(), color = if (riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.primary)
-                        Text((riskUsed * 100).toInt().toString() + "% of your daily loss limit used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (riskUsed >= 1f) Text("Daily loss limit reached. Pause and review risk before taking another trade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                    } else {
-                        Text("Risk usage will appear when a daily loss limit and today's recorded result are available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+        if (recentTrades.isNotEmpty()) {
+            item {
+                SectionHeading("Recent trades", "Latest closed trades") {
+                    onNavigate(1)
                 }
             }
-        }
-
-        item {
-            SectionHeading("Recent trades", "Latest closed trades") {
-                onNavigate(1)
-            }
-        }
-        if (recentTrades.isEmpty()) {
-            item { Text("No fetched trade data available yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else {
             items(recentTrades, key = { it.id }) { trade ->
                 RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
