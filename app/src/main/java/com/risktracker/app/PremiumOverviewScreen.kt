@@ -212,6 +212,15 @@ fun PremiumOverviewScreen(
             }
         }
         item {
+            PortfolioRiskCard(
+                positions = livePositions,
+                futuresBalance = snapshot?.futures,
+                snapshotAge = snapshotAgeLabel,
+                hasCredentials = hasBinanceCredentials,
+                positionsRefreshFailed = positionsStatus.startsWith("Refresh failed")
+            )
+        }
+        item {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("TODAY'S PROFIT / LOSS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
