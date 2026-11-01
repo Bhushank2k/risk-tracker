@@ -70,7 +70,7 @@ fun TradeJournalScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("External Trade Performance", style = MaterialTheme.typography.titleMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -89,7 +89,7 @@ fun TradeJournalScreen(
         item {
             val weekly = summarizeTradeTimeline(filteredTrades)
             val streak = currentTradeStreak(filteredTrades)
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Weekly performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
@@ -116,7 +116,7 @@ fun TradeJournalScreen(
         }
         item {
             val insights = analyzeTradeBehavior(filteredTrades)
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Personalized journal insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (insights.tradeCount < 3) {
@@ -169,7 +169,7 @@ fun TradeJournalScreen(
         }
         if (filteredTrades.isEmpty()) {
             item {
-                Card(Modifier.fillMaxWidth()) {
+                RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("No external trades", style = MaterialTheme.typography.titleMedium)
                         Text("Add a trade from another exchange or a manual record.", style = MaterialTheme.typography.bodyMedium)
@@ -182,7 +182,7 @@ fun TradeJournalScreen(
             item { Text("External Closed Trades", style = MaterialTheme.typography.titleMedium) }
             items(filteredTrades, key = { it.id }) { trade ->
                 val tradePnl = trade.pnl
-                Card(Modifier.fillMaxWidth()) {
+                RiskCard(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
