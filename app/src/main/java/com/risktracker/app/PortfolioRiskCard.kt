@@ -6,8 +6,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private val PortfolioRiskGreen = Color(0xFF16865D)
+private val PortfolioRiskRed = Color(0xFFD34B55)
 
 @Composable
 fun PortfolioRiskCard(
@@ -61,7 +65,7 @@ fun PortfolioRiskCard(
                     Text("Unrealized P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val pnl = positions.sumOf { it.unrealizedPnl }
                     Text((if (pnl > 0.0) "+" else "") + pnl.usd(), fontWeight = FontWeight.SemiBold,
-                        color = if (pnl >= 0.0) DashboardGreen else DashboardRed)
+                        color = if (pnl >= 0.0) PortfolioRiskGreen else PortfolioRiskRed)
                 }
                 HorizontalDivider()
                 Text("Liquidation buffer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
