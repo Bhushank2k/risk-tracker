@@ -1,7 +1,6 @@
 package com.risktracker.app
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class BinanceMarkPriceStreamTest {
@@ -43,7 +42,7 @@ class BinanceMarkPriceStreamTest {
 
     @Test
     fun missingBanExpiryReturnsNull() {
-        assertNotNull(binanceBanExpiry("IP temporarily rate limited"))
+        assertEquals(null, binanceBanExpiry("IP temporarily rate limited"))
         assertEquals(null, binanceBanExpiry("IP temporarily rate limited"))
     }
 }
