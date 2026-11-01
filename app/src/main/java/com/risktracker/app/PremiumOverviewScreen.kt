@@ -195,19 +195,10 @@ fun PremiumOverviewScreen(
                             if (index < livePositions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     } else {
-                        Text(if (!hasBinanceCredentials) "Connect Binance in Binance Sync to load actual open positions."
-                            else if (positionsLoading) "Fetching current USDⓈ-M Futures positions…"
-                            else if (positionsStatus.startsWith("Refresh failed")) "Could not confirm whether positions are open. Check the connection and refresh."
-                            else "No open Futures positions were returned by Binance.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (positionsStatus.startsWith("Refresh failed")) {
+                            Text("Position refresh failed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        }
                     }
-                    Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    positionsUpdatedAt?.let {
-                        Text("Last successful refresh " + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(it)) + " · auto-refresh every 10 sec while Dashboard is open",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("Read-only Binance data. P&L is unrealized and may change; this section never places or modifies orders.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -247,17 +238,16 @@ fun PremiumOverviewScreen(
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(balanceHeadline, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         snapshot?.let { currentSnapshot ->
                             Text("Spot ${currentSnapshot.spot.valueUsdt.usd()} · Futures ${currentSnapshot.futures.totalEquity.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Snapshot saved " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(currentSnapshot.savedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (balanceStatus.startsWith("Refresh failed")) {
+                            Text("Balance refresh failed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
                     TextButton(onClick = { refreshAccountBalance() }, enabled = !balanceRefreshing && hasBinanceCredentials) { Text(if (balanceRefreshing) "Refreshing…" else "Refresh") }
                 }
-                snapshot?.takeIf { it.spot.unpricedAssets > 0 }?.let { currentSnapshot ->
-                    Text("${currentSnapshot.spot.unpricedAssets} Spot assets could not be priced and are excluded from the displayed total.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimpleMetricCard("Total profit / loss", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
                     SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
@@ -339,7 +329,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Text("Account balance combines estimated Spot value in USDT with USDⓈ-M Futures equity. Unpriced Spot assets are excluded; Ledger balance is separate.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         }
     }
 
