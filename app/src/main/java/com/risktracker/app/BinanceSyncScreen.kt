@@ -148,8 +148,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("DATA & IMPORTS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text("Binance data", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Sync recent account activity or safely import historical Futures results by year.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.weight(1f)) { Text("Tax reports") }
@@ -173,7 +171,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                         status = "Credentials saved encrypted on this device. Binance trade history will sync automatically about every 6 hours and when you open Trading Analytics."
                     } catch (e: Exception) { status = e.message ?: "Could not save credentials." }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Save & enable automatic sync") }
-                Text("Create an API key with read-only account access only. Do not enable Spot/Futures trading or withdrawals. API keys are encrypted using Android Keystore and are excluded from backups.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Use a read-only API key. Keep trading and withdrawals disabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
                         credentials.clear()
