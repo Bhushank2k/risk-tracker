@@ -494,8 +494,6 @@ fun LiveTradesScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Binance snapshot · open Futures positions and pending Spot orders.",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                         if (loading) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -506,10 +504,8 @@ fun LiveTradesScreen() {
                         }
                         Text(if (loading) "Refreshing…" else "Refresh live trades")
                     }
-                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    lastUpdated?.let {
-                        Text("Updated " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it)),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
+                        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -542,18 +538,6 @@ fun LiveTradesScreen() {
                             Text("Approx. open Futures notional", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(futuresNotional.usd(), fontWeight = FontWeight.SemiBold)
                         }
-                        Text("Notional is estimated as absolute position quantity × mark price; it is exposure, not account equity or margin used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        if (liveTrades.isEmpty() && !loading) {
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Nothing open yet", fontWeight = FontWeight.SemiBold)
-                        Text("No open Futures positions or unfilled Spot orders.",
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
