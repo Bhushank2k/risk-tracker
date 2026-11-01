@@ -21,8 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val DashboardGreen = Color(0xFF16865D)
-private val DashboardRed = Color(0xFFD34B55)
 
 @Composable
 fun PremiumOverviewScreen(
@@ -211,8 +209,8 @@ fun PremiumOverviewScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = when {
                                     todayPnl == null -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    todayPnl > 0.0 -> DashboardGreen
-                                    todayPnl < 0.0 -> DashboardRed
+                                    todayPnl > 0.0 -> profitColor()
+                                    todayPnl < 0.0 -> lossColor()
                                     else -> MaterialTheme.colorScheme.onPrimaryContainer
                                 }
                             )
@@ -223,7 +221,7 @@ fun PremiumOverviewScreen(
                                 (if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = if (totalPositionPnl >= 0.0) DashboardGreen else DashboardRed
+                                color = if (totalPositionPnl >= 0.0) profitColor() else lossColor()
                             )
                         }
                     }
@@ -237,7 +235,7 @@ fun PremiumOverviewScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SimpleMetricCard("Ledger balance", latestBalance?.usd() ?: "—", "Latest saved closing balance", Modifier.weight(1f))
-                SimpleMetricCard("Net recorded P&L", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) DashboardGreen else DashboardRed)
+                SimpleMetricCard("Net recorded P&L", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) profitColor() else lossColor())
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
@@ -283,7 +281,7 @@ fun PremiumOverviewScreen(
                     } else {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Combined unrealized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text((if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(), fontWeight = FontWeight.Bold, color = if (totalPositionPnl >= 0.0) DashboardGreen else DashboardRed)
+                            Text((if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(), fontWeight = FontWeight.Bold, color = if (totalPositionPnl >= 0.0) profitColor() else lossColor())
                         }
                         HorizontalDivider()
                         livePositions.forEachIndexed { index, position ->
@@ -293,7 +291,7 @@ fun PremiumOverviewScreen(
                                         Text(position.symbol, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                         Text(position.side + " · " + position.leverage + "×", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Text((if (position.unrealizedPnl > 0.0) "+" else "") + position.unrealizedPnl.usd(), fontWeight = FontWeight.Bold, color = if (position.unrealizedPnl >= 0.0) DashboardGreen else DashboardRed)
+                                    Text((if (position.unrealizedPnl > 0.0) "+" else "") + position.unrealizedPnl.usd(), fontWeight = FontWeight.Bold, color = if (position.unrealizedPnl >= 0.0) profitColor() else lossColor())
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -362,9 +360,9 @@ fun PremiumOverviewScreen(
                     if (riskRemaining != null && riskUsed != null) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Loss budget remaining", style = MaterialTheme.typography.bodyMedium)
-                            Text(riskRemaining.usd(), fontWeight = FontWeight.Bold, color = if (riskUsed >= 1f) DashboardRed else MaterialTheme.colorScheme.onSurface)
+                            Text(riskRemaining.usd(), fontWeight = FontWeight.Bold, color = if (riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.onSurface)
                         }
-                        LinearProgressIndicator(progress = { riskUsed }, modifier = Modifier.fillMaxWidth(), color = if (riskUsed >= 1f) DashboardRed else MaterialTheme.colorScheme.primary)
+                        LinearProgressIndicator(progress = { riskUsed }, modifier = Modifier.fillMaxWidth(), color = if (riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.primary)
                         Text((riskUsed * 100).toInt().toString() + "% of your daily loss limit used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (riskUsed >= 1f) Text("Daily loss limit reached. Pause and review risk before taking another trade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     } else {
@@ -389,7 +387,7 @@ fun PremiumOverviewScreen(
                             Text(trade.symbol.ifBlank { "Trade" }, fontWeight = FontWeight.SemiBold)
                             Text(trade.side.uppercase(Locale.ROOT) + " · " + trade.date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text((if (trade.pnl > 0.0) "+" else "") + trade.pnl.usd(), fontWeight = FontWeight.Bold, color = if (trade.pnl >= 0.0) DashboardGreen else DashboardRed)
+                        Text((if (trade.pnl > 0.0) "+" else "") + trade.pnl.usd(), fontWeight = FontWeight.Bold, color = if (trade.pnl >= 0.0) profitColor() else lossColor())
                     }
                 }
             }
@@ -434,8 +432,8 @@ private fun SimpleMetricCard(label: String, value: String, detail: String, modif
 
 @Composable
 private fun SimplePnlChart(values: List<Double>, modifier: Modifier = Modifier) {
-    val positiveColor = DashboardGreen
-    val negativeColor = DashboardRed
+    val positiveColor = profitColor()
+    val negativeColor = lossColor()
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     Canvas(modifier) {
         val minValue = minOf(0.0, values.minOrNull() ?: 0.0)
