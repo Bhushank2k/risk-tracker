@@ -41,6 +41,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
