@@ -177,14 +177,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val currentTitle = when (tab) {
-        0 -> "Overview"; 1 -> "Trade journal"; 2 -> "Position calculator"
-        5 -> "About"; 6 -> "Binance sync"; 7 -> "Settings"; 8 -> "Insights"
-        9 -> "Tax report"; 11 -> "Trade risk gate"; 13 -> "Risk scenario lab"
-        14 -> "Trade reviews"; 15 -> "Ledger audit"; 16 -> "Live positions"
-        17 -> "Account activity"; 18 -> "Sync health"; 19 -> "Risk alerts"
-        20 -> "Trading analytics"; 21 -> "Daily trade ideas"; else -> "More tools"
-    }
     val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> 4 }
     Scaffold(
         topBar = {
@@ -201,33 +193,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(currentTitle, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("RISK TRACKER  •  TRADING WORKSPACE", style = MaterialTheme.typography.labelSmall,
+                            Text("Risk Tracker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("TRADING WORKSPACE", style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Open all tools",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false },
-                        shape = RoundedCornerShape(24.dp), containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                        tonalElevation = 8.dp, shadowElevation = 16.dp,
-                        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                            RoundedCornerShape(24.dp))) {
-                        menuGroups.forEachIndexed { groupIndex, (group, items) ->
-                            if (groupIndex > 0) HorizontalDivider(Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                            Text(group, modifier = Modifier.padding(start = 18.dp, top = 10.dp, bottom = 5.dp),
-                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary)
-                            items.forEach { (label, destination) ->
-                                DropdownMenuItem(text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
-                                    onClick = { menuExpanded = false; tab = destination },
-                                    modifier = Modifier.padding(horizontal = 6.dp))
-                            }
                         }
                     }
                 }
@@ -246,7 +214,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 20; 3 -> 21; else -> 7 } },
+                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21; else -> menuExpanded = true } },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
@@ -326,6 +294,51 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
+                }
+            }
+        }
+    }
+    if (menuExpanded) {
+        ModalBottomSheet(
+            onDismissRequest = { menuExpanded = false },
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
+                    .padding(bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Explore Risk Tracker", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold)
+                Text("All tools and destinations", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    menuGroups.forEachIndexed { groupIndex, (group, destinations) ->
+                        item(key = "group-$groupIndex") {
+                            if (groupIndex > 0) HorizontalDivider(
+                                Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                            )
+                            Text(group, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        items(destinations, key = { it.second }) { (label, destination) ->
+                            NavigationDrawerItem(
+                                label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                                selected = tab == destination,
+                                onClick = { tab = destination; menuExpanded = false },
+                                icon = { Icon(Icons.Default.Menu, contentDescription = null) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
