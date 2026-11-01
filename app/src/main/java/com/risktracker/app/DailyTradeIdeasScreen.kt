@@ -442,12 +442,12 @@ fun DailyTradeIdeasScreen() {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ScannerStat("Pairs scanned", ideas.size.toString(), Modifier.weight(1f))
-                ScannerStat("Qualified", ideas.count { it.side != "WAIT" && it.score >= 70 }.toString(), Modifier.weight(1f))
-                ScannerStat("Watch only", ideas.count { it.side == "WAIT" || it.score < 70 }.toString(), Modifier.weight(1f))
+                ScannerStat("Qualified", ideas.count { tradeIdeaRiskValid(it) && it.entryTriggered && it.side != "WAIT" }.toString(), Modifier.weight(1f))
+                ScannerStat("Watch only", ideas.count { it.side == "WAIT" || !tradeIdeaRiskValid(it) || !it.entryTriggered }.toString(), Modifier.weight(1f))
             }
         }
         item {
-            val sizingIdea = ideas.firstOrNull { it.side != "WAIT" && it.score >= 70 }
+            val sizingIdea = ideas.firstOrNull { it.side != "WAIT" && tradeIdeaRiskValid(it) && it.entryTriggered }
             val sizing = sizingIdea?.let {
                 TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop)
             }
@@ -510,26 +510,109 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
     } }
 }
 
+private enum class TradeIdeaStage(val title: String, val detail: String) {
+    MONITOR("Monitor setup", "Price is approaching the planned entry zone."),
+    WAIT_CONFIRMATION("Wait for confirmation", "The entry trigger has not been confirmed yet."),
+    ENTRY_CONFIRMED("Entry conditions confirmed", "The trigger is confirmed and the risk plan passed validation."),
+    TRACKING("Trade being tracked", "Live market price and progress are being monitored."),
+    DO_NOT_ENTER("Do not enter", "The setup is invalid or its risk plan failed validation.")
+}
+
+private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
+    if (idea.side !in listOf("LONG", "SHORT")) return false
+    if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.target1.isFinite() || !idea.target2.isFinite()) return false
+    if (idea.entry <= 0.0 || idea.stop <= 0.0 || idea.target1 <= 0.0 || idea.target2 <= 0.0) return false
+    val geometryValid = if (idea.side == "LONG") {
+        idea.stop < idea.entry && idea.target1 > idea.entry && idea.target2 > idea.target1
+    } else {
+        idea.stop > idea.entry && idea.target1 < idea.entry && idea.target2 < idea.target1
+    }
+    val warning = idea.warning.lowercase(Locale.US)
+    val warningBlocksEntry = listOf("overbought", "oversold", "elevated", "falling sharply", "weak").any { it in warning }
+    return geometryValid && !warningBlocksEntry
+}
+
+private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
+    if (tracked) return TradeIdeaStage.TRACKING
+    if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea)) return TradeIdeaStage.DO_NOT_ENTER
+    if (idea.entryTriggered) return TradeIdeaStage.ENTRY_CONFIRMED
+    val riskDistance = abs(idea.entry - idea.stop)
+    val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
+    val approaching = if (idea.side == "LONG") {
+        idea.last < idea.entry && idea.entry - idea.last <= approachBand
+    } else {
+        idea.last > idea.entry && idea.last - idea.entry <= approachBand
+    }
+    return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
+}
+
 @Composable
 private fun TradeIdeaCard(idea: TradeIdea) {
+    val context = LocalContext.current
+    val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
+    val trackedEntryKey = "entry_" + idea.symbol
+    var trackedEntry by remember(idea.symbol) {
+        mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 })
+    }
+    var livePrice by remember(idea.symbol) { mutableStateOf(idea.last) }
+    val trackingScope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
-    val qualified = idea.side != "WAIT" && idea.score >= 70
-    val tint = if (!qualified) MaterialTheme.colorScheme.onSurfaceVariant else if (idea.side == "LONG") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    LaunchedEffect(idea.symbol, trackedEntry) {
+        if (trackedEntry != null) {
+            while (true) {
+                val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+                if (quote != null) livePrice = quote
+                delay(15_000)
+            }
+        } else {
+            livePrice = idea.last
+        }
+    }
+    val stage = tradeIdeaStage(idea, trackedEntry != null)
+    val tint = when (stage) {
+        TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
+        TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val riskDistance = abs(idea.entry - idea.stop)
+    val rewardDistance = abs(idea.target1 - idea.entry)
+    val rewardRisk = if (riskDistance > 0.0) rewardDistance / riskDistance else 0.0
+    val zoneHalfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
+    val zoneLow = idea.entry - zoneHalfWidth
+    val zoneHigh = idea.entry + zoneHalfWidth
+    val pnlPercent = trackedEntry?.let {
+        (if (idea.side == "LONG") 1.0 else -1.0) * (livePrice - it) / it * 100.0
+    }
+    val targetProgress = trackedEntry?.let {
+        val total = abs(idea.target1 - it)
+        if (total > 0.0) ((if (idea.side == "LONG") livePrice - it else it - livePrice) / total).coerceIn(0.0, 1.0) else 0.0
+    } ?: 0.0
+    val stopProgress = trackedEntry?.let {
+        val total = abs(it - idea.stop)
+        if (total > 0.0) ((if (idea.side == "LONG") it - livePrice else livePrice - it) / total).coerceIn(0.0, 1.0) else 0.0
+    } ?: 0.0
+
     RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(idea.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(idea.horizon + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(if (qualified) idea.side else "WAIT", color = tint, fontWeight = FontWeight.Bold)
-                    Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = tint)
+                    Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text(if (idea.side == "WAIT") "No direction" else idea.side, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(stage.title.uppercase(Locale.US), color = tint, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                    Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(idea.last.usd(6), fontWeight = FontWeight.SemiBold)
+                Text((if (trackedEntry != null) livePrice else idea.last).usd(6), fontWeight = FontWeight.SemiBold)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("24h change", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -539,13 +622,57 @@ private fun TradeIdeaCard(idea: TradeIdea) {
                 Text("24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("$" + "%,.0f".format(Locale.US, idea.volume), style = MaterialTheme.typography.bodySmall)
             }
-            HistoricalOutcomePanel(idea)
-            if (qualified) {
+
+            if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 HorizontalDivider()
-                Text(if (idea.entryTriggered) "15M breakout confirmed · check live price before entry" else "Conditional plan · wait for a 15M close through trigger", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                IdeaLevel("Entry trigger", idea.entry); IdeaLevel("Stop-loss reference", idea.stop)
-                IdeaLevel("Target 1 · 1.5R", idea.target1); IdeaLevel("Target 2 · 2.5R", idea.target2)
+                Text("Entry & risk plan", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+                IdeaLevel("Entry zone low", zoneLow)
+                IdeaLevel("Entry trigger", idea.entry)
+                IdeaLevel("Entry zone high", zoneHigh)
+                IdeaLevel("Stop-loss", idea.stop)
+                IdeaLevel("Target 1", idea.target1)
+                IdeaLevel("Target 2", idea.target2)
+                ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
             }
+            if (stage == TradeIdeaStage.TRACKING && trackedEntry != null) {
+                HorizontalDivider()
+                Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+                ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
+                ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
+                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
+                Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
+                LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
+                Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)
+                LinearProgressIndicator(progress = { stopProgress.toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.error)
+                Text("P&L is price-only and excludes fees, funding, slippage and position size. Tracking is not connected to an exchange order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = {
+                    trackingPrefs.edit().remove(trackedEntryKey).apply()
+                    trackedEntry = null
+                    livePrice = idea.last
+                }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
+            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
+                Text("Risk checks passed: direction, stop-loss and target levels are valid. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    trackingScope.launch {
+                        val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+                            ?: livePrice.takeIf { it > 0.0 } ?: idea.last
+                        trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
+                        livePrice = entry
+                        trackedEntry = entry
+                    }
+                }, modifier = Modifier.fillMaxWidth()) { Text("I entered — track this trade") }
+            } else if (stage == TradeIdeaStage.MONITOR) {
+                Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
+                Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
+            } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
+                Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text(if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
+                    else "The risk plan failed validation or has a blocking warning: " + idea.warning,
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+
+            HistoricalOutcomePanel(idea)
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
