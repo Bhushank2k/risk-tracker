@@ -31,6 +31,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.TimeZone
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
@@ -436,6 +438,7 @@ fun DailyTradeIdeasScreen() {
                 }
             }
         }
+        item { TradeSessionTimingCard() }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ScannerStat("Pairs scanned", ideas.size.toString(), Modifier.weight(1f))
@@ -614,6 +617,68 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
                     style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+private data class TradeSessionSlot(
+    val name: String,
+    val startMinute: Int,
+    val endMinute: Int,
+    val focus: String
+)
+
+@Composable
+private fun TradeSessionTimingCard() {
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    val sessions = remember {
+        listOf(
+            TradeSessionSlot("Asia activity", 9 * 60, 11 * 60, "Range development · 5M / 15M scalp watch"),
+            TradeSessionSlot("London open", 13 * 60 + 30, 16 * 60 + 30, "Breakout follow-through · 15M / 1H intraday"),
+            TradeSessionSlot("US open & overlap", 20 * 60, 23 * 60, "Higher liquidity · intraday and 4H swing review")
+        )
+    }
+    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).apply { timeInMillis = nowMillis }
+    val minuteOfDay = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
+    val active = sessions.firstOrNull { slot ->
+        if (slot.endMinute > slot.startMinute) minuteOfDay in slot.startMinute until slot.endMinute
+        else minuteOfDay >= slot.startMinute || minuteOfDay < slot.endMinute
+    }
+    val next = sessions.map { slot ->
+        val delta = (slot.startMinute - minuteOfDay + 1440) % 1440
+        slot to delta
+    }.filter { it.second > 0 }.minByOrNull { it.second } ?: (sessions.first() to (1440 - minuteOfDay + sessions.first().startMinute))
+    fun clock(minutes: Int): String = "%02d:%02d".format(Locale.US, minutes / 60, minutes % 60)
+    val remaining = if (active != null) {
+        val end = active.endMinute
+        if (end > minuteOfDay) end - minuteOfDay else 1440 - minuteOfDay + end
+    } else next.second
+    RiskCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Trade timing · India (IST)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                if (active != null) "Window active: " + active.name + " · ends in " + (remaining / 60) + "h " + (remaining % 60) + "m"
+                else "Next window: " + next.first.name + " · starts in " + (remaining / 60) + "h " + (remaining % 60) + "m",
+                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium
+            )
+            sessions.forEach { slot ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(slot.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(slot.focus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(clock(slot.startMinute) + "–" + clock(slot.endMinute), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
+                }
+            }
+            HorizontalDivider()
+            Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
+            Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
