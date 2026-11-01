@@ -553,7 +553,6 @@ private fun TradeIdeaCard(idea: TradeIdea) {
                 Text(if (idea.entryTriggered) "15M breakout confirmed · check live price before entry" else "Conditional plan · wait for a 15M close through trigger", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 IdeaLevel("Entry trigger", idea.entry); IdeaLevel("Stop-loss reference", idea.stop)
                 IdeaLevel("Target 1 · 1.5R", idea.target1); IdeaLevel("Target 2 · 2.5R", idea.target2)
-            } else Text("No trade: trend alignment is incomplete or score is below qualification threshold.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
@@ -567,7 +566,7 @@ private fun TradeIdeaCard(idea: TradeIdea) {
                 Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
                 Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
                     else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R. This is historical performance, not a forecast.",
+                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
                     style = MaterialTheme.typography.bodySmall)
                 idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
