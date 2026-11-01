@@ -41,11 +41,8 @@ fun BinancePositionJournalSection(
                 Text("Realized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(realized.usd(), color = pnlColor(realized), fontWeight = FontWeight.Bold)
             }
-            Text("One-way Futures reconstruction; hedge-mode positions are not separated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            if (cycles.isEmpty()) {
-                Text("No positions found. Sync Binance to load executions.", style = MaterialTheme.typography.bodyMedium)
-            } else {
+            if (cycles.isNotEmpty()) {
                 Text("Futures Positions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 cycles.take(100).forEach { cycle ->
                     val isExpanded = cycle.key in expanded
@@ -103,7 +100,6 @@ fun BinancePositionJournalSection(
             if (spotGroups.isNotEmpty()) {
                 HorizontalDivider()
                 Text("Spot Activity", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text("Activity only; cost basis and realized P&L need complete inventory history.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 spotGroups.take(20).forEach { group ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -115,7 +111,6 @@ fun BinancePositionJournalSection(
                     if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Partial history may not reflect live positions. Fees stay in original assets; funding is excluded from position P&L.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
