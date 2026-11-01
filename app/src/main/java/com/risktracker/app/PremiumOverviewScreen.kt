@@ -271,7 +271,12 @@ fun PremiumOverviewScreen(
                     }
                     if (livePositions.isEmpty()) {
                         Text(
-                            if (hasBinanceCredentials) "No open positions were returned by Binance. Your portfolio is currently flat on USDⓈ-M Futures." else "Add read-only API credentials in Binance Sync to see open positions here.",
+                            when {
+                                !hasBinanceCredentials -> "Add read-only API credentials in Binance Sync to see open positions here."
+                                positionsStatus.contains("418") -> "Position snapshot unavailable while Binance REST is rate-limited. Cached positions will continue receiving WebSocket prices when available."
+                                positionsStatus.startsWith("No open") -> "No open USDⓈ-M Futures positions in the latest saved snapshot."
+                                else -> "No saved position snapshot yet. Use Sync once after the Binance rate limit clears."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
