@@ -161,23 +161,7 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("More analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                RiskCard(onClick = { onNavigate(14) }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Trade reviews", fontWeight = FontWeight.SemiBold)
-                        Text("Compare trade plans with closed-trade outcomes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                RiskCard(onClick = { onNavigate(13) }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Advanced risk scenarios", fontWeight = FontWeight.SemiBold)
-                        Text("Explore loss streaks and historical risk scenarios.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
+        // "More analysis" cards removed: Trade reviews and Risk Scenario Lab are listed under More.
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Daily P&L period", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)

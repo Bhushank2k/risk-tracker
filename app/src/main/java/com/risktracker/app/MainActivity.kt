@@ -838,45 +838,27 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             Text("Workspace", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Your trading tools, exchange data and reports in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        RiskCard(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-            shape = RoundedCornerShape(22.dp)
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("QUICK ACCESS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MoreQuickTile("Trading\nAnalytics", "P&L and stats", Modifier.weight(1f)) { onNavigate(20) }
-                    MoreQuickTile("Trade\nJournal", "External trades & Binance positions", Modifier.weight(1f)) { onNavigate(1) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MoreQuickTile("Position\nCalculator", "Size and leverage", Modifier.weight(1f)) { onNavigate(2) }
-                    MoreQuickTile("Binance\nSync", "Exchange connection", Modifier.weight(1f)) { onNavigate(6) }
-                }
-            }
+        // One grouping for every destination: Tools, Reports, Exchange, then Settings.
+        // The quick-access tiles were removed because each one repeated a destination listed below.
+        MoreMenuSection("Tools", "Calculators, risk checks and simulations", riskExpanded, { riskExpanded = !riskExpanded }) {
+            MoreDestinationCard("Position & leverage calculator", "Size, stop-loss risk and liquidation estimates") { onNavigate(2) }
+            MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
+            MoreDestinationCard("Risk alerts", "Daily loss limits and risk warnings") { onNavigate(19) }
+            MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
         }
-        MoreMenuSection("Analytics", "Execution results and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
+        MoreMenuSection("Reports", "Results, reviews, audits and tax summaries", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
             MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
             MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
             MoreDestinationCard("Ledger audit", "Check imported history, duplicates and daily totals") { onNavigate(15) }
+            MoreDestinationCard("Crypto tax report", "Imported history by Indian financial year") { onNavigate(9) }
         }
-        MoreMenuSection("Risk workspace", "Plan position size and control trading risk", riskExpanded, { riskExpanded = !riskExpanded }) {
-            MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
-            MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
-            MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
-            MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
+        MoreMenuSection("Exchange", "Binance connection, imports and sync status", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
+            MoreDestinationCard("Binance data & imports", "Connect read-only API access and import history") { onNavigate(6) }
+            MoreDestinationCard("Sync health", "Automatic sync status and coverage") { onNavigate(18) }
+            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and orders") { onNavigate(16) }
+            MoreDestinationCard("Account activity", "Deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
         }
-        MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
-            MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
-            MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
-            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
-            MoreDestinationCard("Account activity", "Recent deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
-        }
-        MoreMenuSection("Reports & app", "Tax summaries, app information and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
-            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+        MoreMenuSection("Settings", "App information and risk limits", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
             MoreDestinationCard("About Risk Tracker", "App version, developer and important disclosures") { onNavigate(5) }
         }
         HorizontalDivider()
