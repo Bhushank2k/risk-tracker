@@ -154,12 +154,11 @@ fun InsightsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, importedPn
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("PERFORMANCE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text("Your trading results", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("Review recorded P&L, consistency and drawdown in one place.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            ScreenHeader(
+                eyebrow = "PERFORMANCE",
+                title = "Your trading results",
+                subtitle = "Review recorded P&L, consistency and drawdown in one place."
+            )
         }
         // "More analysis" cards removed: Trade reviews and Risk Scenario Lab are listed under More.
         item {
