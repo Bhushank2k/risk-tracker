@@ -407,8 +407,6 @@ fun DailyTradeIdeasScreen() {
                 Text("MARKET OPPORTUNITIES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Text("Daily trade ideas", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Full liquid-market scan · all active USDT perpetuals above $5M 24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Binance USDⓈ-M USDT perpetuals · historical estimates shown when sample size allows.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -420,11 +418,9 @@ fun DailyTradeIdeasScreen() {
                         Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(8.dp))
                         Text(if (loading) "Scanning markets…" else if (updatedAt == null) "Scan markets now" else "Refresh scan")
                     }
-                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold)
-                            Text("Best-effort checks ~15 min; Android may delay", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
                             if (!enabled) {
@@ -436,7 +432,6 @@ fun DailyTradeIdeasScreen() {
                             } else enableTradeAlerts()
                         })
                     }
-                    updatedAt?.let { Text((if (showingCached) "Cached scan · refresh pending · " else "Updated ") + SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(it)), style = MaterialTheme.typography.labelSmall, color = if (showingCached) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant) }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             }
@@ -456,14 +451,12 @@ fun DailyTradeIdeasScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Enter your futures account equity in USDT. Uses 0.5% planned risk and caps notional exposure at 3× equity.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(
                         value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
                     if (sizingIdea == null) {
-                        Text("No qualified setup to size yet. Refresh the scan first.", style = MaterialTheme.typography.bodySmall)
                     } else if (sizing == null) {
                         Text("Enter valid equity to calculate quantity for " + sizingIdea.symbol + ".", style = MaterialTheme.typography.bodySmall)
                     } else {
@@ -481,9 +474,7 @@ fun DailyTradeIdeasScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Paper-trade validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Tracks confirmed alert setups only. Build at least 50 completed examples per setup before considering real-money use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (paperStats.isEmpty()) {
-                        Text("No completed paper trades yet. Enable entry & exit notifications to begin collecting confirmed examples.", style = MaterialTheme.typography.bodySmall)
                     } else {
                         paperStats.forEach { stat ->
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
