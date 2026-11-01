@@ -805,69 +805,6 @@ fun DailyInsights(entries: List<PnlEntry>) {
     } }
 }
 
-// ---------------- Sync ----------------
-
-@Composable
-fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced: (List<PnlEntry>) -> Unit) {
-    var url by remember { mutableStateOf(store.webUrl) }
-    var token by remember { mutableStateOf(store.token) }
-    var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    val pending = if (syncedCount < 0) emptyList() else entries.drop(syncedCount)
-
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Google Sheet sync", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(url, { url = it }, label = { Text("Web app URL") },
-            modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(token, { token = it }, label = { Text("Token") },
-            modifier = Modifier.fillMaxWidth(), singleLine = true,
-            visualTransformation = PasswordVisualTransformation())
-        Text(
-            if (syncedCount < 0) "First sync replaces the data on this phone with the sheet's data."
-            else "${pending.size} new day(s) waiting to upload.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Button(
-            enabled = !busy && url.isNotBlank() && token.isNotBlank(),
-            onClick = {
-                store.webUrl = url.trim()
-                store.token = token.trim()
-                busy = true
-                status = null
-                scope.launch {
-                    try {
-                        val r = withContext(Dispatchers.IO) { SyncClient.sync(url.trim(), token.trim(), pending) }
-                        store.saveEntries(r.entries)
-                        store.syncedCount = r.entries.size
-                        store.inr = r.inr
-                        inrRate = r.inr
-                        onSynced(r.entries)
-                        status = "Synced. ${r.entries.size} days now match the sheet."
-                    } catch (e: Exception) {
-                        status = "Sync failed: ${e.message}"
-                    }
-                    busy = false
-                }
-            }
-        ) { Text(if (busy) "Syncing…" else "Sync now") }
-        if (busy) {
-            CircularProgressIndicator()
-        }
-        status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("One-time setup", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "1. In your sheet: Extensions → Apps Script, paste sheet-sync/Code.gs and set TOKEN.\n" +
-                "2. Deploy → New deployment → Web app, Execute as Me, access Anyone.\n" +
-                "3. Paste the Web app URL and the same token above.",
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-
 @Composable
 fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onNavigate: (Int) -> Unit) {
     val context = LocalContext.current
