@@ -550,7 +550,7 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
 private fun TradeIdeaCard(idea: TradeIdea) {
     val context = LocalContext.current
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
-    val trackedEntryKey = "entry_\${idea.symbol}"
+    val trackedEntryKey = "entry_" + idea.symbol
     var trackedEntry by remember(idea.symbol) {
         mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 })
     }
