@@ -168,7 +168,7 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
         RiskGateField("Stop-loss price", stop) { stop = it }
         RiskGateField("Take-profit price (optional)", target) { target = it }
         RiskGateField("Estimated total fees", fees) { fees = it }
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Pre-trade assessment", style = MaterialTheme.typography.titleMedium)
                 evaluation.errors.forEach { Text("• " + it, color = MaterialTheme.colorScheme.error) }
@@ -198,7 +198,7 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
         Text("Saved plans", style = MaterialTheme.typography.titleMedium)
         if (plans.isEmpty()) Text("No saved plans yet.", style = MaterialTheme.typography.bodySmall)
         plans.forEach { p ->
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(p.symbol + " · " + p.side, fontWeight = FontWeight.Bold)
                     Text(p.createdAt + " · Risk " + "%.2f".format(Locale.US, p.plannedRisk) + " · Qty " + "%.6f".format(Locale.US, p.plannedQuantity))
