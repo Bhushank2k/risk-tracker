@@ -456,10 +456,9 @@ fun DailyTradeIdeasScreen() {
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
-                    if (sizingIdea == null) {
-                    } else if (sizing == null) {
+                    if (sizingIdea != null && sizing == null) {
                         Text("Enter valid equity to calculate quantity for " + sizingIdea.symbol + ".", style = MaterialTheme.typography.bodySmall)
-                    } else {
+                    } else if (sizingIdea != null && sizing != null) {
                         Text(sizingIdea.symbol + " · " + sizingIdea.side + " · 0.5% risk", fontWeight = FontWeight.SemiBold)
                         ScannerMetric("Suggested quantity", "%.6f".format(Locale.US, sizing.quantity))
                         ScannerMetric("Notional value", "$" + "%,.2f".format(Locale.US, sizing.notional))
@@ -474,8 +473,7 @@ fun DailyTradeIdeasScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Paper-trade validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (paperStats.isEmpty()) {
-                    } else {
+                    if (paperStats.isNotEmpty()) {
                         paperStats.forEach { stat ->
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(stat.setup, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
