@@ -54,7 +54,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
         OutlinedButton(onClick = onBack) { Text("Back to Binance sync") }
         Text("Account activity", style = MaterialTheme.typography.headlineSmall)
         Text("Read-only Binance history for deposits, withdrawals, distributions, transfers and Futures income. Records are deduplicated and kept separate from your journal and Daily P&L.", style = MaterialTheme.typography.bodyMedium)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Recent history only", style = MaterialTheme.typography.titleMedium)
                 Text("This screen fetches a recent 7-day window for supported categories. Binance API history limits vary by statement type, so this is not a lifetime archive and does not include every Spot trade, order, fiat, Earn, or tax document.")
@@ -85,7 +85,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
             }
         }
         val reconciliation = BinanceCapitalReconciliationEngine.reconcile(rows)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Capital reconciliation", style = MaterialTheme.typography.titleMedium)
                 Text("Net external cash flow by asset. Deposits minus withdrawals; internal transfers and trading income are kept separate.", style = MaterialTheme.typography.bodySmall)
@@ -123,7 +123,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                     .mapValues { (_, assetRows) -> assetRows.sumOf { it.amount } }
             }
         if (futuresIncomeByType.isNotEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Futures income by type", style = MaterialTheme.typography.titleMedium)
                     Text("Signed amounts by asset. This is only the saved recent window, not lifetime P&L.", style = MaterialTheme.typography.bodySmall)
@@ -150,7 +150,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
         }
         val visibleRows = rows.filter { selectedCategory == "All" || it.category == selectedCategory }
         visibleRows.take(100).forEach { row ->
-            Card(Modifier.fillMaxWidth()) {
+            RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(row.category, style = MaterialTheme.typography.titleSmall)
                     Text("${row.asset} ${row.amount} · ${row.status}")
