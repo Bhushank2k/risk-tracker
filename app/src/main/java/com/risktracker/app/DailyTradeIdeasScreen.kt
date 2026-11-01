@@ -506,23 +506,7 @@ fun DailyTradeIdeasScreen() {
                 }
             }
         }
-        if (ideas.isEmpty() && !loading) item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("No scan results yet", fontWeight = FontWeight.SemiBold)
-                    Text("Run a scan to load current market conditions. Public Binance data is used; account credentials are not needed.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
         items(visible, key = { it.symbol }) { TradeIdeaCard(it) }
-        item {
-            Text(
-                "Research only. Historical results are not predictions; scanner entries are references, not orders. Verify price, spread, fees and contract rules before trading.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
 
@@ -637,15 +621,10 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 val upper = stats.winRateUpper95 ?: 100.0
                 Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (stats.trades < 50) {
-                    Text("Preliminary: collect at least 50 completed samples before relying on this history.", style = MaterialTheme.typography.labelSmall)
-                }
             } else {
                 Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
                     style = MaterialTheme.typography.bodySmall)
             }
-            Text("Historical results only; not a guarantee or a prediction of the next trade.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
