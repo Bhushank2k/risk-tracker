@@ -199,7 +199,8 @@ internal object BinanceMarketScanner {
                     if (old <= 0.0) null else (latest / old - 1.0) * 100.0
                 }
             }.getOrNull()
-        }        val bookData = bookTask.await()
+        }
+        val bookData = bookTask.await()
         val bids = bookData?.optJSONArray("bids") ?: JSONArray()
         val asks = bookData?.optJSONArray("asks") ?: JSONArray()
         val bid = bids.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
@@ -398,7 +399,8 @@ fun DailyTradeIdeasScreen() {
             "Long" -> it.side == "LONG"
             "Short" -> it.side == "SHORT"
             "Watch" -> it.side == "WAIT" || it.score < 70
-            else -> true        }
+            else -> true
+        }
     }.sortedWith(compareByDescending<TradeIdea> { it.side != "WAIT" && it.score >= 70 }.thenByDescending { it.score })
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -598,7 +600,8 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
             Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (stats.hasUsableEstimate) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {                        Text("Historical wins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f)) {
+                        Text("Historical wins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("%.1f%%".format(Locale.US, stats.winRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f)) {
