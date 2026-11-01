@@ -122,7 +122,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -190,7 +190,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("TODAY'S PROFIT / LOSS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                     Text(todayPnl?.let { (if (it > 0.0) "+" else "") + it.usd() } ?: "—", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
@@ -231,7 +231,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
@@ -254,7 +254,7 @@ fun PremiumOverviewScreen(
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
@@ -288,7 +288,7 @@ fun PremiumOverviewScreen(
             item { Text("No fetched trade data available yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
             items(recentTrades, key = { it.id }) { trade ->
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+                RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(trade.symbol.ifBlank { "Trade" }, fontWeight = FontWeight.SemiBold)
@@ -321,7 +321,7 @@ private fun SimpleHeroStat(label: String, value: String) {
 
 @Composable
 private fun SimpleMetricCard(label: String, value: String, detail: String, modifier: Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
-    Card(modifier, shape = RoundedCornerShape(16.dp)) {
+    RiskCard(modifier, shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
