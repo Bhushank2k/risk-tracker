@@ -371,11 +371,6 @@ fun BinanceSyncHealthScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sync health", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Automatic Binance execution-history sync status.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(
                             if (status.state.startsWith("Up to date")) Icons.Default.Refresh else Icons.Default.Warning,
@@ -384,7 +379,6 @@ fun BinanceSyncHealthScreen() {
                         )
                         Text(status.state, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     }
-                    Text(status.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { syncNow() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                         if (loading) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -406,14 +400,6 @@ fun BinanceSyncHealthScreen() {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Latest attempt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Last attempt", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(timeLabel(status.lastAttempt), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Last fully successful sync", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(timeLabel(status.lastSuccess), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Saved executions", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(fillCount.toString(), fontWeight = FontWeight.SemiBold)
                     }
@@ -433,17 +419,6 @@ fun BinanceSyncHealthScreen() {
                         Text("Symbol requests failed", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(status.symbolsFailed.toString(), color = if (status.symbolsFailed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     }
-                }
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Coverage limits", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("The automatic collector checks a rolling seven-day window and a limited set of discovered or previously known symbols. A successful sync does not mean your entire account history is complete.", style = MaterialTheme.typography.bodyMedium)
-                    Text("Window start: ${timeLabel(status.windowStart)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Window end: ${timeLabel(status.windowEnd)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("For older records or closed symbols that were never discovered, use Binance historical exports or CSV import and reconcile totals before relying on long-term analytics.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -808,8 +783,6 @@ fun SyncScreen(store: Store, entries: List<PnlEntry>, syncedCount: Int, onSynced
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Google Sheet sync", style = MaterialTheme.typography.titleMedium)
-        Text("Syncs the Daily_PNL tab. New days you add here are uploaded; days in the sheet are downloaded.",
-            style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(url, { url = it }, label = { Text("Web app URL") },
             modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(token, { token = it }, label = { Text("Token") },
@@ -936,7 +909,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         Text("Daily profit target is fixed at 2% of the applicable opening balance and is calculated in the Daily P&L dashboard.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved. The daily profit target remains fixed at 2%." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
-        Text("Limits trigger warnings; they do not block exchange activity or execute trades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
         Text("Exports daily P&L, journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
@@ -971,7 +943,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         HorizontalDivider()
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
-        Text("Daily P&L is one net result per day and remains separate from individual trades. Weekly and monthly reports use Daily P&L records. Trade journal statistics and filters use closed trades only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1150,13 +1121,10 @@ fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: 
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Suggestion from current inputs", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                Text("Updates with your inputs. Advisory only; liquidation and position-size values are estimates.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
             }
         }
         long.message?.let { Warn("Long: $it") }
         short.message?.let { Warn("Short: $it") }
-        Text("Warnings mean that side's numbers don't describe a valid trade for your entry, stop and target.",
-            style = MaterialTheme.typography.bodySmall)
     }
 }
 
