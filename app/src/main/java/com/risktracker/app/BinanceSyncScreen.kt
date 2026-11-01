@@ -154,7 +154,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
             OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.weight(1f)) { Text("Account activity") }
         }
         Text("CONNECTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Read-only API credentials", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(apiKey, { apiKey = it }, label = { Text("Binance API key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -201,7 +201,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
             }
         }
         Text("2 · TRADE HISTORY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Trade journal sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(historySymbols, { historySymbols = it; historyPreview = null }, label = { Text("Symbols (comma-separated, e.g. BTCUSDT, ETHUSDT)") }, modifier = Modifier.fillMaxWidth())
@@ -250,7 +250,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                 historyPreview?.let { preview ->
                     val fees = preview.sumOf { if (it.feeAsset in setOf("USDT", "USDC")) it.fee else 0.0 }
                     val realized = preview.mapNotNull { it.realizedPnl }.sum()
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("Import preview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                             Text("${preview.size} fills · ${preview.map { it.symbol }.distinct().size} symbols")
@@ -278,7 +278,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
             }
         }
         Text("CSV IMPORT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Binance trade CSV import", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -312,7 +312,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
         }
 
         Text("3 · HISTORICAL FUTURES P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-        Card(Modifier.fillMaxWidth()) {
+        RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -349,7 +349,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                     val previousDaily = yearRows.filter { kotlin.math.abs(it.futuresPnl) > 0.005 }.associate { it.date to it.futuresPnl }
                     val comparison = BinanceImportDiff.compare(previousDaily, preview.daily)
 
-                    Card(Modifier.fillMaxWidth()) {
+                    RiskCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Import preview — $selectedYear", style = MaterialTheme.typography.titleSmall)
                             Text("Will replace Futures totals for $selectedYear only.")
@@ -478,7 +478,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
                     )
                 }
                 importReport?.let { report ->
-                    Card(Modifier.fillMaxWidth()) {
+                    RiskCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Last import audit", style = MaterialTheme.typography.titleSmall)
                             Text("Activity dates: ${report.firstActivityDate} to ${report.lastActivityDate}")
