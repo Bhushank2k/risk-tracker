@@ -9,6 +9,11 @@ import androidx.activity.compose.setContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -262,7 +267,12 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) {
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(140)) },
+                label = "screen-transition"
+            ) { destination ->
+                when (destination) {
                 0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it }) {
                     entries = it
                     store.saveEntries(it)
@@ -319,6 +329,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
+                }
             }
         }
     }
