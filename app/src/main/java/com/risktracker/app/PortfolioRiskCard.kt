@@ -14,6 +14,8 @@ import java.util.Locale
 private val PortfolioRiskGreen = Color(0xFF16865D)
 private val PortfolioRiskRed = Color(0xFFD34B55)
 
+private fun portfolioUsd(value: Double): String = String.format(Locale.US, "$%,.2f", value)
+
 @Composable
 fun PortfolioRiskCard(
     positions: List<BinanceLiveTrade>,
@@ -46,7 +48,7 @@ fun PortfolioRiskCard(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Open notional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(exposure.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(exposure.let { portfolioUsd(it) }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f)) {
                         Text("Open positions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -56,16 +58,16 @@ fun PortfolioRiskCard(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Futures equity", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(futuresBalance?.totalEquity?.usd() ?: "Unavailable", fontWeight = FontWeight.SemiBold)
+                    Text(futuresBalance?.totalEquity?.let { portfolioUsd(it) } ?: "Unavailable", fontWeight = FontWeight.SemiBold)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Available balance", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(futuresBalance?.availableBalance?.usd() ?: "Unavailable", fontWeight = FontWeight.SemiBold)
+                    Text(futuresBalance?.availableBalance?.let { portfolioUsd(it) } ?: "Unavailable", fontWeight = FontWeight.SemiBold)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Unrealized P&L", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val pnl = positions.sumOf { it.unrealizedPnl }
-                    Text((if (pnl > 0.0) "+" else "") + pnl.usd(), fontWeight = FontWeight.SemiBold,
+                    Text((if (pnl > 0.0) "+" else "") + pnl.let { portfolioUsd(it) }, fontWeight = FontWeight.SemiBold,
                         color = if (pnl >= 0.0) PortfolioRiskGreen else PortfolioRiskRed)
                 }
                 HorizontalDivider()
@@ -94,7 +96,7 @@ fun PortfolioRiskCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(row.key, style = MaterialTheme.typography.bodySmall)
-                            Text(row.value.usd() + " · " + String.format(Locale.US, "%.1f%%", share), style = MaterialTheme.typography.bodySmall,
+                            Text(row.value.let { portfolioUsd(it) } + " · " + String.format(Locale.US, "%.1f%%", share), style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium)
                         }
                     }
