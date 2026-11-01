@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 private val PortfolioRiskGreen = Color(0xFF16865D)
 private val PortfolioRiskRed = Color(0xFFD34B55)
@@ -74,7 +75,7 @@ fun PortfolioRiskCard(
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     val (position, distance) = nearestLiquidation
-                    Text(position.symbol + " · " + distance.pct(2) + " from mark to liquidation",
+                    Text(position.symbol + " · " + String.format(Locale.US, "%.2f%%", distance) + " from mark to liquidation",
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (distance < 5.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     if (distance < 5.0) {
@@ -93,7 +94,7 @@ fun PortfolioRiskCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(row.key, style = MaterialTheme.typography.bodySmall)
-                            Text(row.value.usd() + " · " + share.pct(1), style = MaterialTheme.typography.bodySmall,
+                            Text(row.value.usd() + " · " + String.format(Locale.US, "%.1f%%", share), style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium)
                         }
                     }
