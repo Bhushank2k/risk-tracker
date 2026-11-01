@@ -471,16 +471,9 @@ fun DailyTradeIdeasScreen() {
         item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Market scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Full liquid-market scan · Binance Futures public data", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Button(onClick = { refresh() }, enabled = !loading) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (loading) "Scanning" else "Refresh")
-                        }
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Market scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Full liquid-market scan · Binance Futures public data", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
@@ -488,6 +481,12 @@ fun DailyTradeIdeasScreen() {
                         ScannerStat("WAIT", waitCount.toString(), Modifier.weight(1f))
                     }
                     Text("Directional mix of scanned ideas — not a market-wide trend prediction.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                        if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (loading) "Scanning markets…" else "Refresh market scan")
+                    }
                     HorizontalDivider()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
