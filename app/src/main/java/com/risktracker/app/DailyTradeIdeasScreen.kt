@@ -435,6 +435,7 @@ fun DailyTradeIdeasScreen() {
     val readyCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
     val blockedCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
+    val trackedCount = ideas.count { it.symbol in trackedSymbols }
     val longCount = ideas.count { it.side == "LONG" }
     val shortCount = ideas.count { it.side == "SHORT" }
     val waitCount = ideas.count { it.side == "WAIT" }
@@ -464,7 +465,7 @@ fun DailyTradeIdeasScreen() {
                 ScannerStat("Ideas", ideas.size.toString(), Modifier.weight(1f))
                 ScannerStat("Ready", readyCount.toString(), Modifier.weight(1f))
                 ScannerStat("Monitor", monitorCount.toString(), Modifier.weight(1f))
-                ScannerStat("Tracking", trackedSymbols.size.toString(), Modifier.weight(1f))
+                ScannerStat("Tracking", trackedCount.toString(), Modifier.weight(1f))
             }
         }
         item {
