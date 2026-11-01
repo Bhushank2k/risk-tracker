@@ -20,7 +20,6 @@ private fun portfolioUsd(value: Double): String = String.format(Locale.US, "$%,.
 fun PortfolioRiskCard(
     positions: List<BinanceLiveTrade>,
     futuresBalance: BinanceFuturesAccountBalance?,
-    hasCredentials: Boolean,
     positionsRefreshFailed: Boolean
 ) {
     val exposure = positions.sumOf { kotlin.math.abs(it.quantity * it.markPrice) }
@@ -40,7 +39,6 @@ fun PortfolioRiskCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("PORTFOLIO RISK", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            if (hasCredentials) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Open notional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -94,10 +92,9 @@ fun PortfolioRiskCard(
                         }
                     }
                 }
-                if (positionsRefreshFailed) {
-                    Text("Position data may be stale", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error)
-                }
+            if (positionsRefreshFailed) {
+                Text("Position data may be stale", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error)
             }
         }
     }
