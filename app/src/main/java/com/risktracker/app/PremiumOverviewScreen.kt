@@ -43,7 +43,6 @@ fun PremiumOverviewScreen(
     var livePositions by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
     var positionsLoading by remember { mutableStateOf(false) }
     var positionsStatus by remember { mutableStateOf(if (hasBinanceCredentials) "Connecting to Binance Futures…" else "Connect read-only Binance credentials to show your open positions.") }
-    var positionsUpdatedAt by remember { mutableStateOf<Long?>(null) }
     val positionsScope = rememberCoroutineScope()
     fun refreshLivePositions() {
         if (positionsLoading) return
@@ -59,7 +58,6 @@ fun PremiumOverviewScreen(
                     BinanceApi(credentials.first, credentials.second).futuresPositions()
                 }
                 livePositions = rows
-                positionsUpdatedAt = System.currentTimeMillis()
                 positionsStatus = if (rows.isEmpty()) "No open USDⓈ-M Futures positions." else "Live Binance Futures positions"
             } catch (e: Exception) {
                 positionsStatus = "Refresh failed · showing last successful positions" +
@@ -96,26 +94,6 @@ fun PremiumOverviewScreen(
     }
     LaunchedEffect(Unit) { refreshAccountBalance() }
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
-    val snapshotAgeMs = snapshot?.let { (System.currentTimeMillis() - it.savedAt).coerceAtLeast(0L) }
-    val snapshotAgeLabel = snapshotAgeMs?.let { age ->
-        val minutes = age / 60_000L
-        when {
-            minutes < 1L -> "just now"
-            minutes < 60L -> "$minutes min ago"
-            minutes < 24L * 60L -> "${minutes / 60L} hr ago"
-            else -> "${minutes / (24L * 60L)} days ago"
-        }
-    }
-    val balanceHeadline = when {
-        snapshot == null && !hasBinanceCredentials -> "Connect Binance read-only API credentials in Binance Sync."
-        snapshot == null && balanceRefreshing -> "Fetching your first Binance account snapshot…"
-        snapshot == null && balanceStatus.startsWith("Refresh failed") -> "First Binance refresh failed. No account balance is available yet."
-        snapshot == null -> "No account snapshot saved yet. Refresh to fetch your Spot and Futures equity."
-        balanceRefreshing -> "Refreshing · showing your last saved snapshot"
-        balanceStatus.startsWith("Refresh failed") -> "Refresh failed · showing saved data from ${snapshotAgeLabel ?: "an earlier sync"}"
-        snapshotAgeMs != null && snapshotAgeMs >= 24L * 60L * 60L * 1000L -> "Saved account data · ${snapshotAgeLabel}"
-        else -> "Binance account data · updated ${snapshotAgeLabel}"
-    }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val daily = remember(entries, importedPnl, trades) {
         reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
@@ -206,7 +184,6 @@ fun PremiumOverviewScreen(
             PortfolioRiskCard(
                 positions = livePositions,
                 futuresBalance = snapshot?.futures,
-                snapshotAge = snapshotAgeLabel,
                 hasCredentials = hasBinanceCredentials,
                 positionsRefreshFailed = positionsStatus.startsWith("Refresh failed")
             )
@@ -217,8 +194,6 @@ fun PremiumOverviewScreen(
                     Text("TODAY'S PROFIT / LOSS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                     Text(todayPnl?.let { (if (it > 0.0) "+" else "") + it.usd() } ?: "—", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
                         color = when { todayPnl == null -> MaterialTheme.colorScheme.onPrimaryContainer; todayPnl > 0.0 -> DashboardGreen; todayPnl < 0.0 -> DashboardRed; else -> MaterialTheme.colorScheme.onPrimaryContainer })
-                    Text(if (todayRow == null) "No result recorded for today" else "Based on " + todayRow.source.name.lowercase().replaceFirstChar { it.uppercase() } + " data",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
                     HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         SimpleHeroStat("Winning days", daily.count { it.selectedPnl > 0.0 }.toString())
