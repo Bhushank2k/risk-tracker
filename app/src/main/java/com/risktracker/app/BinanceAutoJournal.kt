@@ -188,6 +188,20 @@ internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, 
     return batch to ((start + count) % ordered.size)
 }
 
+/** Minimum gap between syncs started by opening a screen. Each sync makes several signed API calls. */
+const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 5L * 60 * 1000
+
+/**
+ * Whether opening a screen should start a sync, given when the last attempt ran.
+ * Runs when there is no earlier attempt or the last one is old enough. A clock that
+ * moved backwards also counts as due, so a wrong clock cannot block syncing for hours.
+ */
+fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
+    if (lastAttemptMillis <= 0L) return true
+    val elapsed = nowMillis - lastAttemptMillis
+    return elapsed < 0L || elapsed >= BINANCE_OPEN_SYNC_MIN_INTERVAL_MS
+}
+
 object BinanceAutoJournalRunner {
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
         val attemptedAt = System.currentTimeMillis()
