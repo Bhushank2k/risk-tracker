@@ -18,7 +18,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,24 +34,39 @@ fun PremiumOverviewScreen(
     onChange: (List<PnlEntry>) -> Unit
 ) {
     val context = LocalContext.current
+    val positionsStore = remember { BinanceLivePositionsStore(context) }
     var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var balanceRefreshing by remember { mutableStateOf(false) }
-    var balanceStatus by remember { mutableStateOf("") }
+    var balanceStatus by remember { mutableStateOf("Using last saved account snapshot; refresh manually when needed.") }
     val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
-    var livePositions by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
+    var livePositions by remember { mutableStateOf(positionsStore.load()) }
     var positionsLoading by remember { mutableStateOf(false) }
     var positionsStatus by remember {
-        mutableStateOf(if (hasBinanceCredentials) "Connecting to Binance Futures…" else "Connect read-only Binance credentials in Binance Sync to see live account data.")
+        mutableStateOf(if (hasBinanceCredentials) "Showing saved positions; live prices connect over WebSocket." else "Connect read-only Binance credentials in Binance Sync to see account data.")
     }
+    var markPriceStatus by remember { mutableStateOf("Starting mark-price stream…") }
+    var lastPositionRestAttempt by remember { mutableLongStateOf(0L) }
     val positionsScope = rememberCoroutineScope()
 
     fun refreshLivePositions() {
         if (positionsLoading) return
+        val now = System.currentTimeMillis()
+        val blockedUntil = positionsStore.restBlockedUntil()
+        if (blockedUntil > now) {
+            positionsStatus = "Binance REST rate limit active until " +
+                SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(blockedUntil))
+            return
+        }
+        if (now - lastPositionRestAttempt < 60_000L) {
+            positionsStatus = "Position REST sync is limited to once per minute; live prices continue over WebSocket."
+            return
+        }
         val credentials = BinanceCredentialStore(context).read()
         if (credentials == null) {
             positionsStatus = "Connect read-only Binance credentials in Binance Sync."
             return
         }
+        lastPositionRestAttempt = now
         positionsLoading = true
         positionsScope.launch {
             try {
@@ -60,10 +74,20 @@ fun PremiumOverviewScreen(
                     BinanceApi(credentials.first, credentials.second).futuresPositions()
                 }
                 livePositions = rows
-                positionsStatus = if (rows.isEmpty()) "No open USDⓈ-M Futures positions." else "Live Binance Futures positions"
+                positionsStore.save(rows)
+                positionsStatus = if (rows.isEmpty()) "No open USDⓈ-M Futures positions." else "Position snapshot updated; mark prices stream live."
             } catch (e: Exception) {
-                positionsStatus = "Refresh failed · showing last successful positions" +
-                    (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                val message = e.message.orEmpty()
+                val expiry = binanceBanExpiry(message)
+                if (expiry != null) {
+                    positionsStore.blockRestUntil(expiry)
+                    positionsStatus = "Binance HTTP 418: REST paused until " +
+                        SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(expiry)) +
+                        ". WebSocket mark prices remain active for cached positions."
+                } else {
+                    positionsStatus = "Position sync failed · showing saved positions" +
+                        (message.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                }
             } finally {
                 positionsLoading = false
             }
@@ -71,16 +95,36 @@ fun PremiumOverviewScreen(
     }
 
     LaunchedEffect(hasBinanceCredentials) {
-        refreshLivePositions()
-        while (hasBinanceCredentials) {
-            delay(10_000L)
-            refreshLivePositions()
-        }
+        if (hasBinanceCredentials && livePositions.isEmpty()) refreshLivePositions()
+    }
+
+    val streamSymbols = livePositions.map { it.symbol }.distinct().sorted().joinToString(",")
+    DisposableEffect(streamSymbols) {
+        val symbols = streamSymbols.split(",").filter { it.isNotBlank() }
+        val stream = BinanceMarkPriceStream(
+            symbols = symbols,
+            onMarkPrice = { symbol, price ->
+                val updated = livePositions.map { position ->
+                    if (position.symbol.equals(symbol, ignoreCase = true)) position.withMarkPrice(price) else position
+                }
+                livePositions = updated
+                positionsStore.save(updated)
+            },
+            onStatus = { markPriceStatus = it }
+        )
+        stream.start()
+        onDispose { stream.close() }
     }
 
     val balanceScope = rememberCoroutineScope()
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
+        val blockedUntil = positionsStore.restBlockedUntil()
+        if (blockedUntil > System.currentTimeMillis()) {
+            balanceStatus = "Binance REST is paused until " +
+                SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(blockedUntil))
+            return
+        }
         if (!hasBinanceCredentials) {
             balanceStatus = "Connect Binance read-only API credentials in Binance Sync."
             return
@@ -91,14 +135,20 @@ fun PremiumOverviewScreen(
             try {
                 snapshot = withContext(Dispatchers.IO) { BinanceAccountSnapshotRunner.refresh(context) }
                 balanceStatus = "Updated from Binance"
-            } catch (_: Exception) {
-                balanceStatus = "Refresh failed · showing last saved balance"
+            } catch (e: Exception) {
+                val expiry = binanceBanExpiry(e.message.orEmpty())
+                if (expiry != null) {
+                    positionsStore.blockRestUntil(expiry)
+                    balanceStatus = "Binance HTTP 418 · REST paused until " +
+                        SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(expiry))
+                } else {
+                    balanceStatus = "Refresh failed · showing last saved balance"
+                }
             } finally {
                 balanceRefreshing = false
             }
         }
     }
-    LaunchedEffect(Unit) { refreshAccountBalance() }
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
@@ -177,7 +227,7 @@ fun PremiumOverviewScreen(
                             )
                         }
                     }
-                    val status = balanceStatus.ifBlank { if (hasBinanceCredentials) "Account snapshot cached until refresh completes" else "Live account connection not configured" }
+                    val status = balanceStatus.ifBlank { if (hasBinanceCredentials) "Saved account snapshot" else "Live account connection not configured" }
                     Text(status, style = MaterialTheme.typography.labelSmall, color = if (status.startsWith("Refresh failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
                 }
             }
@@ -191,7 +241,7 @@ fun PremiumOverviewScreen(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SimpleMetricCard("Win rate", winRate?.pct(1) ?: "—", closedTrades.toString() + " closed trades", Modifier.weight(1f))
-                SimpleMetricCard("Open positions", livePositions.size.toString(), if (positionsStatus.startsWith("Refresh failed")) "Last successful snapshot" else "Binance Futures", Modifier.weight(1f))
+                SimpleMetricCard("Open positions", livePositions.size.toString(), if (positionsStatus.contains("failed") || positionsStatus.contains("418")) "Cached snapshot · WebSocket prices" else "Binance Futures · WebSocket", Modifier.weight(1f))
             }
             snapshot?.let { current ->
                 Text(
@@ -214,13 +264,19 @@ fun PremiumOverviewScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(livePositions.size.toString() + " open Futures position" + if (livePositions.size == 1) "" else "s", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = if (positionsStatus.startsWith("Refresh failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(positionsStatus, style = MaterialTheme.typography.labelSmall, color = if (positionsStatus.contains("418") || positionsStatus.contains("failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(markPriceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         if (positionsLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     }
                     if (livePositions.isEmpty()) {
                         Text(
-                            if (hasBinanceCredentials) "No open positions were returned by Binance. Your portfolio is currently flat on USDⓈ-M Futures." else "Add read-only API credentials in Binance Sync to see open positions here.",
+                            when {
+                                !hasBinanceCredentials -> "Add read-only API credentials in Binance Sync to see open positions here."
+                                positionsStatus.contains("418") -> "Position snapshot unavailable while Binance REST is rate-limited. Cached positions will continue receiving WebSocket prices when available."
+                                positionsStatus.startsWith("No open") -> "No open USDⓈ-M Futures positions in the latest saved snapshot."
+                                else -> "No saved position snapshot yet. Use Sync once after the Binance rate limit clears."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -264,7 +320,7 @@ fun PremiumOverviewScreen(
                 PortfolioRiskCard(
                     positions = livePositions,
                     futuresBalance = snapshot?.futures,
-                    positionsRefreshFailed = positionsStatus.startsWith("Refresh failed")
+                    positionsRefreshFailed = positionsStatus.startsWith("Refresh failed") || positionsStatus.contains("418")
                 )
             }
         }
