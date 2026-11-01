@@ -177,87 +177,84 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
+    val currentTitle = when (tab) {
+        0 -> "Overview"; 1 -> "Trade journal"; 2 -> "Position calculator"
+        5 -> "About"; 6 -> "Binance sync"; 7 -> "Settings"; 8 -> "Insights"
+        9 -> "Tax report"; 11 -> "Trade risk gate"; 13 -> "Risk scenario lab"
+        14 -> "Trade reviews"; 15 -> "Ledger audit"; 16 -> "Live positions"
+        17 -> "Account activity"; 18 -> "Sync health"; 19 -> "Risk alerts"
+        20 -> "Trading analytics"; 21 -> "Daily trade ideas"; else -> "More tools"
+    }
+    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> 4 }
     Scaffold(
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("Risk Tracker", fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                            Text("RT", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(currentTitle, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text("RISK TRACKER  •  TRADING WORKSPACE", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 },
                 actions = {
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                        Icon(Icons.Default.Menu, contentDescription = "Open all tools",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                        shape = RoundedCornerShape(24.dp),
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                        tonalElevation = 8.dp,
-                        shadowElevation = 16.dp,
-                        modifier = Modifier.border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                            RoundedCornerShape(24.dp)
-                        )
-                    ) {
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false },
+                        shape = RoundedCornerShape(24.dp), containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                        tonalElevation = 8.dp, shadowElevation = 16.dp,
+                        modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            RoundedCornerShape(24.dp))) {
                         menuGroups.forEachIndexed { groupIndex, (group, items) ->
-                            if (groupIndex > 0) {
-                                HorizontalDivider(
-                                    Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                                )
-                            }
-                            Text(
-                                group,
-                                modifier = Modifier.padding(start = 18.dp, top = 10.dp, bottom = 5.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            if (groupIndex > 0) HorizontalDivider(Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                            Text(group, modifier = Modifier.padding(start = 18.dp, top = 10.dp, bottom = 5.dp),
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary)
                             items.forEach { (label, destination) ->
-                                DropdownMenuItem(
-                                    text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                                DropdownMenuItem(text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
                                     onClick = { menuExpanded = false; tab = destination },
-                                    modifier = Modifier.padding(horizontal = 6.dp)
-                                )
+                                    modifier = Modifier.padding(horizontal = 6.dp))
                             }
                         }
                     }
-                },
-
+                }
             )
         },
         bottomBar = {
-            val navShape = RoundedCornerShape(26.dp)
+            val navShape = RoundedCornerShape(24.dp)
             NavigationBar(
-                modifier = Modifier
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                    .clip(navShape)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
-                        navShape
-                    ),
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-                tonalElevation = 0.dp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp).clip(navShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f), navShape),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 3.dp,
+                windowInsets = WindowInsets.navigationBars
             ) {
                 titles.forEachIndexed { i, title ->
-                    NavigationBarItem(
-                        selected = when (i) { 0 -> tab == 0; 1 -> tab == 1; 2 -> tab == 20; 3 -> tab == 21; else -> tab !in setOf(0, 1, 20, 21) },
+                    val selected = activeNavIndex == i
+                    NavigationBarItem(selected = selected,
                         onClick = { tab = when (i) { 0 -> 0; 1 -> 1; 2 -> 20; 3 -> 21; else -> 7 } },
-                        icon = { Icon(icons[i], contentDescription = null) },
-                        label = { Text(title) },
+                        icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
+                        label = { Text(title, style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
+                        alwaysShowLabel = true,
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f),
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
