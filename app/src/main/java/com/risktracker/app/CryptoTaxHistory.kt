@@ -2,8 +2,6 @@ const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
 
 package com.risktracker.app
 
-const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
-
 import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
@@ -13,6 +11,8 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.Locale
 import java.util.zip.ZipInputStream
+
+const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
 
 /**
  * Imported exchange records are kept separately from manual journal entries.
