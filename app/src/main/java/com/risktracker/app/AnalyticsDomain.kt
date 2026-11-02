@@ -70,7 +70,7 @@ private val ANALYTICS_DATE_FORMATS = listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-d
 private fun parseAnalyticsDate(value: String): Date? {
     val trimmed = value.trim()
     if (trimmed.isEmpty()) return null
-    for (pattern in INSIGHTS_DATE_FORMATS) {
+    for (pattern in ANALYTICS_DATE_FORMATS) {
         val format = SimpleDateFormat(pattern, Locale.US).apply { isLenient = false }
         val position = ParsePosition(0)
         val parsed = format.parse(trimmed, position)
@@ -94,7 +94,7 @@ fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Lo
     val start = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -(days - 1)) }
     val endExclusive = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
     return entries.filter { entry ->
-        val time = parseInsightsDate(entry.date)?.time
+        val time = parseAnalyticsDate(entry.date)?.time
         time != null && time >= start.timeInMillis && time < endExclusive.timeInMillis
     }
 }
