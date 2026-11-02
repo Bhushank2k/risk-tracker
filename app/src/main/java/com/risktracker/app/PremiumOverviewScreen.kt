@@ -416,7 +416,7 @@ fun PremiumOverviewScreen(
 
 @Composable
 private fun CompactOverviewMeta(label: String, value: String) {
-    Column(Modifier.weight(1f).padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+    Column(Modifier.fillMaxWidth(0.5f).padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
     }
