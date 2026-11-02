@@ -166,7 +166,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
-            "Risk Scenario Lab" to 13
+            "Risk Scenario Lab" to 13,
+            "Target Planner" to 22
         ),
         "BINANCE & DATA" to listOf(
             "Binance Sync" to 6,
@@ -273,7 +274,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     }
                 )
                 5 -> AboutScreen()
-                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
+                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
                     maxTradeRisk = store.maxTradeRisk,
@@ -300,6 +301,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 21 -> DailyTradeIdeasScreen()
+                22 -> TargetScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -912,6 +914,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
             MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
             MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
+            MoreDestinationCard("Target Planner", "Plan a balance goal and required daily net-profit pace") { onNavigate(22) }
         }
         MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
             MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }

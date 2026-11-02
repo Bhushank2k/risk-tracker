@@ -45,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) {
+fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, onNavigate: (Int) -> Unit = {}) {
     val context = LocalContext.current
     val credentials = remember { BinanceCredentialStore(context) }
     val saved = remember { credentials.read() }
@@ -65,8 +65,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
     var fillCsvBusy by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
-    var showTaxReports by remember { mutableStateOf(false) }
-    var showStatements by remember { mutableStateOf(false) }
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
@@ -131,27 +129,14 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
     }
     
 
-    if (showStatements) {
-        BinanceStatementsScreen(onBack = { showStatements = false })
-        return
-    }
-
-    if (showTaxReports) {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showTaxReports = false }) { Text("Back to Binance sync") }
-            CryptoTaxReportScreen()
-        }
-        return
-    }
-
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("DATA & IMPORTS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text("Binance data", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { showTaxReports = true }, modifier = Modifier.weight(1f)) { Text("Tax reports") }
-            OutlinedButton(onClick = { showStatements = true }, modifier = Modifier.weight(1f)) { Text("Account activity") }
+            OutlinedButton(onClick = { onNavigate(9) }, modifier = Modifier.weight(1f)) { Text("Tax reports") }
+            OutlinedButton(onClick = { onNavigate(17) }, modifier = Modifier.weight(1f)) { Text("Account activity") }
         }
         Text("CONNECTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         RiskCard(Modifier.fillMaxWidth()) {
