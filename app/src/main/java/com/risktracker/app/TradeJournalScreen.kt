@@ -45,171 +45,158 @@ fun TradeJournalScreen(
     var resultFilter by remember { mutableStateOf("All") }
     var fromDate by remember { mutableStateOf("") }
     var toDate by remember { mutableStateOf("") }
+    var filtersExpanded by remember { mutableStateOf(false) }
+    var weeklyExpanded by remember { mutableStateOf(false) }
+    var insightsExpanded by remember { mutableStateOf(false) }
+    val expandedTrades = remember { mutableStateListOf<String>() }
+
     val filteredTrades = trades.filter { t ->
         (search.isBlank() || t.symbol.contains(search, true) || t.strategy.contains(search, true) || t.mistake.contains(search, true)) &&
-        (sideFilter == "All" || t.side.equals(sideFilter, true)) &&
-        (resultFilter == "All" || (resultFilter == "Wins" && t.pnl > 0) || (resultFilter == "Losses" && t.pnl < 0)) &&
-        (fromDate.isBlank() || t.date >= fromDate) && (toDate.isBlank() || t.date <= toDate)
-    }
+            (sideFilter == "All" || t.side.equals(sideFilter, true)) &&
+            (resultFilter == "All" || (resultFilter == "Wins" && t.pnl > 0) || (resultFilter == "Losses" && t.pnl < 0)) &&
+            (fromDate.isBlank() || t.date >= fromDate) && (toDate.isBlank() || t.date <= toDate)
+    }.sortedByDescending { it.date }
     val stats = computeTradeStats(filteredTrades)
+    val validR = filteredTrades.filter { it.riskUsd.isFinite() && it.riskUsd > 0.0 && it.pnl.isFinite() }
+    val averageR = if (validR.isEmpty()) null else validR.map { it.pnl / it.riskUsd }.average()
+    val weekly = summarizeTradeTimeline(filteredTrades)
+    val streak = currentTradeStreak(filteredTrades)
+    val insights = analyzeTradeBehavior(filteredTrades)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, top = 10.dp, end = 14.dp, bottom = 104.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("External trades", style = MaterialTheme.typography.bodySmall)
+                    Text("External trades · " + filteredTrades.size + " shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
-                    Text("Add external")
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add trade")
                 }
             }
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("External Trade Performance", style = MaterialTheme.typography.titleMedium)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        JournalMetric("Net P&L", stats.netPnl.usd(), pnlColor(stats.netPnl))
-                        JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.primary)
-                        JournalMetric("Trades", stats.count.toString(), MaterialTheme.colorScheme.onSurface)
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Net P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stats.netPnl.usd(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = pnlColor(stats.netPnl))
+                        }
+                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
+                            Text(stats.count.toString() + " trades", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+                        }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        JournalMetric("Wins / losses", "${stats.wins} / ${stats.losses}", MaterialTheme.colorScheme.onSurface)
+                        JournalMetric("Win rate", stats.winRate.pct(1), MaterialTheme.colorScheme.primary)
                         JournalMetric("Profit factor", if (stats.profitFactor.isInfinite()) "∞" else "%.2f".format(stats.profitFactor), MaterialTheme.colorScheme.onSurface)
                         JournalMetric("Max drawdown", stats.maxDrawdown.usd(), MaterialTheme.colorScheme.error)
+                        JournalMetric("Avg. R", averageR?.let { "%.2fR".format(it) } ?: "—", averageR?.let { pnlColor(it) } ?: MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text("Manual journal estimate after fees · Binance fills are separate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         item {
-            val weekly = summarizeTradeTimeline(filteredTrades)
-            val streak = currentTradeStreak(filteredTrades)
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Weekly performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        if (streak.count == 0) "Current streak: no wins or losses recorded yet"
-                        else "Current streak: ${streak.count} ${streak.kind.lowercase(Locale.getDefault())}${if (streak.count == 1) "" else "s"}",
-                        style = MaterialTheme.typography.bodyMedium
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Trade history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(stats.wins.toString() + " wins · " + stats.losses + " losses", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { filtersExpanded = !filtersExpanded }) { Text(if (filtersExpanded) "Hide filters" else "Filter") }
+                    }
+                    OutlinedTextField(
+                        value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, placeholder = { Text("Search symbol, strategy or mistake") }
                     )
-                    if (weekly.isEmpty()) {
-                        Text("Add trades with a recognized date to see weekly results.", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        weekly.forEach { week ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Week of ${week.weekLabel}", fontWeight = FontWeight.Medium)
-                                    Text("${week.tradeCount} closed trade${if (week.tradeCount == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(week.netPnl.usd(), color = pnlColor(week.netPnl), fontWeight = FontWeight.SemiBold)
+                    if (filtersExpanded) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("All", "Long", "Short").forEach { value ->
+                                FilterChip(selected = sideFilter == value, onClick = { sideFilter = value }, label = { Text(value) })
                             }
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("All", "Wins", "Losses").forEach { value ->
+                                FilterChip(selected = resultFilter == value, onClick = { resultFilter = value }, label = { Text(value) })
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(fromDate, { fromDate = it }, label = { Text("From YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
+                            OutlinedTextField(toDate, { toDate = it }, label = { Text("To YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
+                        }
+                        TextButton(onClick = { search = ""; sideFilter = "All"; resultFilter = "All"; fromDate = ""; toDate = "" }) { Text("Clear filters") }
                     }
-                    Text("Manual trades only; Binance fills are shown in Binance Positions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-        }
-        item {
-            val insights = analyzeTradeBehavior(filteredTrades)
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Personalized journal insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    if (insights.tradeCount < 3) {
-                        Text("Record at least 3 trades to start comparing patterns. Current sample: ${insights.tradeCount}.", style = MaterialTheme.typography.bodyMedium)
-                    } else {
-                        val strongest = insights.strategies.firstOrNull { it.sampleSize >= 3 }
-                        if (strongest != null) {
-                            Text("Top net strategy: ${strongest.strategy}", fontWeight = FontWeight.SemiBold)
-                            Text("${strongest.sampleSize} trades · Net ${strongest.netPnl.usd()} · Win rate ${strongest.winRate.pct(1)}")
-                        } else {
-                            Text("Add the same strategy tag to at least 3 trades to compare strategy results.")
-                        }
-                        val commonMistake = insights.mistakeCounts.entries.firstOrNull()
-                        if (commonMistake != null) {
-                            Text("Most-recorded mistake: ${commonMistake.key} (${commonMistake.value} ${if (commonMistake.value == 1) "trade" else "trades"}).")
-                        } else {
-                            Text("No mistake tags recorded yet. Tagging mistakes can reveal recurring patterns.")
-                        }
-                        insights.largestLoss?.let { loss ->
-                            Text("Largest recorded loss: ${loss.symbol} on ${loss.date} (${loss.pnl.usd()}).", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    Text("Descriptive patterns from the trades currently shown by your filters; small samples are not reliable predictions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        item { BinancePositionJournalSection(exchangeFills, onSyncExchange) }
-        item {
-            OutlinedButton(
-                onClick = {
-                    val csv = tradesToCsv(trades)
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/csv"
-                        putExtra(Intent.EXTRA_SUBJECT, "Risk Tracker trade journal")
-                        putExtra(Intent.EXTRA_TEXT, csv)
-                    }
-                    context.startActivity(Intent.createChooser(send, "Export trade journal CSV"))
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Export journal CSV") }
-        }
-        item {
-            OutlinedTextField(search, { search = it }, label = { Text("Search symbol, strategy or mistake") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("All", "Long", "Short").forEach { v -> FilterChip(selected = sideFilter == v, onClick = { sideFilter = v }, label = { Text(v) }) } }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("All", "Wins", "Losses").forEach { v -> FilterChip(selected = resultFilter == v, onClick = { resultFilter = v }, label = { Text(v) }) } }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("From date") }, modifier = Modifier.weight(1f), singleLine = true)
-                OutlinedTextField(toDate, { toDate = it }, label = { Text("To date") }, modifier = Modifier.weight(1f), singleLine = true)
             }
         }
         if (filteredTrades.isEmpty()) {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No external trades", style = MaterialTheme.typography.titleMedium)
-                        Text("Add a trade from another exchange or a manual record.", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = { showAdd = true }) { Text("Add external trade") }
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("No matching trades", style = MaterialTheme.typography.titleMedium)
+                        Text("Clear filters or add a closed trade to start your journal.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Button(onClick = { showAdd = true }) { Text("Add a trade") }
                     }
                 }
             }
         } else {
-            item { Text("External Closed Trades", style = MaterialTheme.typography.titleMedium) }
             items(filteredTrades, key = { it.id }) { trade ->
+                val isExpanded = expandedTrades.contains(trade.id)
                 val tradePnl = trade.pnl
                 RiskCard(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("${trade.symbol.uppercase(Locale.ROOT)} · ${trade.side}", fontWeight = FontWeight.Bold)
-                            Text("${trade.date} · Entry ${trade.entry.num()} → Exit ${trade.exit.num()}", style = MaterialTheme.typography.bodySmall)
-                            Text("Qty ${trade.quantity.num(4)} · Fees ${trade.fees.usd()}", style = MaterialTheme.typography.bodySmall)
-                            if (trade.strategy.isNotBlank()) Text("Strategy: " + trade.strategy, style = MaterialTheme.typography.bodySmall)
-                            if (trade.mistake.isNotBlank()) Text("Mistake: " + trade.mistake, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                            if (trade.riskUsd > 0) Text("Planned risk: " + trade.riskUsd.usd(), style = MaterialTheme.typography.bodySmall)
-                            if (trade.screenshotUri.isNotBlank()) TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(trade.screenshotUri))) } }) { Text("View chart screenshot") }
-                            if (trade.notes.isNotBlank()) Text(trade.notes, style = MaterialTheme.typography.bodySmall)
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = if (trade.side.equals("Long", true)) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = MaterialTheme.shapes.small
+                            ) {
+                                Text(trade.side.uppercase(Locale.ROOT), modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(trade.symbol.uppercase(Locale.ROOT), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(trade.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(if (tradePnl.isFinite()) tradePnl.usd() else "Unavailable", color = if (tradePnl.isFinite()) pnlColor(tradePnl) else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                if (trade.riskUsd > 0 && tradePnl.isFinite()) Text("%.2fR".format(tradePnl / trade.riskUsd), color = pnlColor(tradePnl), style = MaterialTheme.typography.labelSmall)
+                            }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                if (tradePnl.isFinite()) tradePnl.usd() else "P&L unavailable (invalid side)",
-                                color = if (tradePnl.isFinite()) pnlColor(tradePnl) else MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row {
-                                IconButton(onClick = { editingTrade = trade }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit trade")
-                                }
-                                IconButton(onClick = { onDelete(trade) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete trade")
-                                }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Entry " + trade.entry.num() + "  →  Exit " + trade.exit.num(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = { if (isExpanded) expandedTrades.remove(trade.id) else expandedTrades.add(trade.id) }) { Text(if (isExpanded) "Less" else "Details") }
+                        }
+                        if (isExpanded) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                JournalMetric("Quantity", trade.quantity.num(4), MaterialTheme.colorScheme.onSurface)
+                                JournalMetric("Fees", trade.fees.usd(), MaterialTheme.colorScheme.onSurface)
+                                JournalMetric("Planned risk", if (trade.riskUsd > 0) trade.riskUsd.usd() else "—", MaterialTheme.colorScheme.onSurface)
+                            }
+                            if (trade.strategy.isNotBlank()) Text("Strategy · " + trade.strategy, style = MaterialTheme.typography.bodySmall)
+                            if (trade.mistake.isNotBlank()) Text("Mistake · " + trade.mistake, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                            if (trade.notes.isNotBlank()) Text(trade.notes, style = MaterialTheme.typography.bodySmall)
+                            if (trade.screenshotUri.isNotBlank()) {
+                                TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(trade.screenshotUri))) } }) { Text("View chart screenshot") }
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { editingTrade = trade }) {
+                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp)); Text("Edit")
+                            }
+                            TextButton(onClick = { onDelete(trade) }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp)); Text("Delete")
                             }
                         }
                     }
@@ -217,22 +204,81 @@ fun TradeJournalScreen(
             }
         }
         item {
-            Text(
-                "External trades are stored locally and kept separate from Binance imports.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Weekly performance", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text(if (streak.count == 0) "No current win/loss streak" else "Current streak · " + streak.count + " " + streak.kind.lowercase(Locale.getDefault()) + if (streak.count == 1) "" else "s", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { weeklyExpanded = !weeklyExpanded }) { Text(if (weeklyExpanded) "Hide" else "View") }
+                    }
+                    if (weeklyExpanded) {
+                        if (weekly.isEmpty()) Text("Add trades with a recognized date to see weekly results.", style = MaterialTheme.typography.bodySmall)
+                        weekly.forEach { week ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Week of " + week.weekLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(week.tradeCount.toString() + " closed trades", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text(week.netPnl.usd(), color = pnlColor(week.netPnl), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Journal insights", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Patterns in the trades currently shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { insightsExpanded = !insightsExpanded }) { Text(if (insightsExpanded) "Hide" else "View") }
+                    }
+                    if (insightsExpanded) {
+                        if (insights.tradeCount < 3) {
+                            Text("Record at least 3 trades to compare patterns. Current sample: " + insights.tradeCount + ".", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            val strongest = insights.strategies.firstOrNull { it.sampleSize >= 3 }
+                            if (strongest != null) {
+                                Text("Top net strategy · " + strongest.strategy, fontWeight = FontWeight.SemiBold)
+                                Text(strongest.sampleSize.toString() + " trades · " + strongest.netPnl.usd() + " · Win rate " + strongest.winRate.pct(1), style = MaterialTheme.typography.bodySmall)
+                            } else Text("Use the same strategy tag on at least 3 trades to compare results.", style = MaterialTheme.typography.bodySmall)
+                            insights.mistakeCounts.entries.firstOrNull()?.let { Text("Most-recorded mistake · " + it.key + " (" + it.value + ")", style = MaterialTheme.typography.bodySmall) }
+                            insights.largestLoss?.let { Text("Largest recorded loss · " + it.symbol + " · " + it.pnl.usd(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        }
+                        Text("Descriptive patterns only; small samples are not predictions.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item { BinancePositionJournalSection(exchangeFills, onSyncExchange) }
+        item {
+            OutlinedButton(onClick = {
+                val csv = tradesToCsv(trades)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_SUBJECT, "Risk Tracker trade journal")
+                    putExtra(Intent.EXTRA_TEXT, csv)
+                }
+                context.startActivity(Intent.createChooser(send, "Export trade journal CSV"))
+            }, modifier = Modifier.fillMaxWidth()) { Text("Export journal CSV") }
+        }
+        item {
+            Text("External trades are stored locally and kept separate from Binance imports. P&L is a journal estimate, not exchange-reported performance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+
     if (editingTrade != null) {
         AddTradeDialog(maxTradeRisk, initialTrade = editingTrade, onDismiss = { editingTrade = null }) { trade ->
-            onUpdate(trade)
-            editingTrade = null
+            onUpdate(trade); editingTrade = null
         }
     } else if (showAdd) {
         AddTradeDialog(maxTradeRisk, onDismiss = { showAdd = false }) { trade ->
-            onAdd(trade)
-            showAdd = false
+            onAdd(trade); showAdd = false
         }
     }
 }
