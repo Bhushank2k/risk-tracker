@@ -532,16 +532,6 @@ fun LiveTradesScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                        if (loading) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Text(if (loading) "Refreshing…" else "Refresh live trades")
-                    }
                     if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
                         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
