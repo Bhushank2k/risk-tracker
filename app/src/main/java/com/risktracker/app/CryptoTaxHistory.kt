@@ -2,6 +2,8 @@ const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
 
 package com.risktracker.app
 
+const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
+
 import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
