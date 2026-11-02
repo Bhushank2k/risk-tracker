@@ -25,7 +25,10 @@ private data class PairAnalytics(
 @Composable
 fun TradingAnalyticsScreen(
     fills: List<BinanceJournalFill>,
-    syncStatus: BinanceJournalSyncStatus
+    syncStatus: BinanceJournalSyncStatus,
+    dailyEntries: List<PnlEntry> = emptyList(),
+    manualTrades: List<TradeEntry> = emptyList(),
+    importedDailyPnl: List<BinanceDailyResult> = emptyList()
 ) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
     val now = System.currentTimeMillis()
@@ -100,6 +103,23 @@ fun TradingAnalyticsScreen(
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" } }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
         .toList().sortedByDescending { it.second }
+    val reconciledDaily = remember(dailyEntries, manualTrades, importedDailyPnl, periodDays, now) {
+        val all = reconcileDailyPnl(dailyEntries, importedDailyPnl, manualTrades)
+        val window = filterPnlEntriesForPeriod(
+            all.map { PnlEntry(it.date, 0.0, it.selectedPnl) }, periodDays, now
+        ).map { it.date }.toSet()
+        all.filter { it.date in window }
+    }
+    val dailySnapshot = remember(reconciledDaily, dailyEntries, periodDays, now) {
+        val visibleDates = filterPnlEntriesForPeriod(dailyEntries, periodDays, now).mapNotNull {
+            canonicalPnlDate(it.date)
+        }.toSet()
+        buildPerformanceSnapshot(
+            pnlValues = reconciledDaily.map { it.selectedPnl },
+            closingBalances = dailyEntries.filter { canonicalPnlDate(it.date) in visibleDates }.map { it.balance },
+            tradeCount = manualTrades.size
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -187,6 +207,26 @@ fun TradingAnalyticsScreen(
                 }
                 Text("P&L includes only exchange fills with reported realized P&L. Partial fills from the same exchange order are combined before classifying a win or loss; open or non-realizing orders are excluded.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Daily net P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
+                        if (dailySnapshot.netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    AnalyticsMetric("Average daily P&L", dailySnapshot.averagePnl.usd(), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Best day", dailySnapshot.bestDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+                    AnalyticsMetric("Worst day", dailySnapshot.worstDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                }
+                AnalyticsMetric("Peak-to-trough drawdown", dailySnapshot.maxDrawdownPercent.pct(2), Modifier.fillMaxWidth(),
+                    MaterialTheme.colorScheme.error, "Based on the separate manual balance ledger")
+                Text("${reconciledDaily.size} reconciled days · ${reconciledDaily.count { it.source == DailyPnlSource.BINANCE }} Binance · ${reconciledDaily.count { it.source == DailyPnlSource.MANUAL }} manual · ${reconciledDaily.count { it.source == DailyPnlSource.JOURNAL }} journal estimates",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
