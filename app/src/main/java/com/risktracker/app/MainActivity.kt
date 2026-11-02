@@ -468,7 +468,7 @@ fun LiveTradesScreen() {
     val scope = rememberCoroutineScope()
     var liveTrades by remember { mutableStateOf<List<BinanceLiveTrade>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Connect Binance with read-only API credentials, then refresh to load open positions and orders.") }
+    var status by remember { mutableStateOf("") }
 
     fun refresh() {
         if (loading) return
@@ -478,14 +478,14 @@ fun LiveTradesScreen() {
             return
         }
         loading = true
-        status = "Loading open positions and orders…"
+        status = ""
         scope.launch {
             try {
                 val rows = withContext(Dispatchers.IO) {
                     BinanceApi(credentials.first, credentials.second).liveTrades()
                 }
                 liveTrades = rows
-                status = if (rows.isEmpty()) "No open Futures positions or Spot orders found." else "Loaded " + rows.size + " open positions/orders."
+                status = ""
             } catch (e: Exception) {
                 status = e.message ?: "Could not load live trades. Check API permissions and connection."
             } finally {
@@ -494,7 +494,7 @@ fun LiveTradesScreen() {
         }
     }
 
-    var markPriceStatus by remember { mutableStateOf("Waiting for open positions…") }
+    
     val streamSymbols = liveTrades
         .filter { it.market == "USDⓈ-M Futures" }
         .map { it.symbol }
@@ -517,7 +517,7 @@ fun LiveTradesScreen() {
                     } else trade
                 }
             },
-            onStatus = { markPriceStatus = it }
+            onStatus = {}
         )
         stream.start()
         onDispose { stream.close() }
@@ -544,12 +544,7 @@ fun LiveTradesScreen() {
                     }
                     if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
                         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    } else {
-                        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(markPriceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    Text("Prices stream live; positions and open orders reconcile every 60 seconds while this page is open.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
