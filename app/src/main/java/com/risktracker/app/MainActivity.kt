@@ -279,7 +279,15 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     dailyPnlKnown = todayReconciledPnl != null
                 ))
                 13 -> RiskScenarioLabScreen()
-                14 -> TradeReviewScreen(trades)
+                14 -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
+                    if (BinanceCredentialStore(context).read() != null) {
+                        appScope.launch {
+                            runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
+                            exchangeFills = BinanceAutoJournalStore.load(context)
+                            exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+                        }
+                    }
+                })
                 15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
