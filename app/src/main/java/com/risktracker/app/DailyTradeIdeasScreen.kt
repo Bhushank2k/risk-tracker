@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -678,6 +679,11 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.tertiary
     }
+    val sideTint = when (idea.side) {
+        "LONG" -> Color(0xFF16A34A)
+        "SHORT" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val riskDistance = abs(idea.entry - idea.stop)
     val rewardDistance = abs(idea.target1 - idea.entry)
     val rewardRisk = if (riskDistance > 0.0) rewardDistance / riskDistance else 0.0
@@ -705,7 +711,19 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                    Text(if (idea.side == "WAIT") "No direction" else idea.side, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (idea.side == "LONG" || idea.side == "SHORT") {
+                        Surface(color = sideTint.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+                            Text(
+                                idea.side,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = sideTint,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Text("No direction", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(12.dp)) {
