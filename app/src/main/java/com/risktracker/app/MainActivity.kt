@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -468,6 +469,7 @@ fun LiveTradesScreen() {
     var status by remember { mutableStateOf("Connect Binance with read-only API credentials, then refresh to load open positions and orders.") }
 
     fun refresh() {
+        if (loading) return
         val credentials = BinanceCredentialStore(context).read()
         if (credentials == null) {
             status = "Binance is not connected. Open Binance trade history and save read-only API credentials first."
@@ -488,6 +490,35 @@ fun LiveTradesScreen() {
                 loading = false
             }
         }
+    }
+
+    var markPriceStatus by remember { mutableStateOf("Waiting for open positions…") }
+    val streamSymbols = liveTrades
+        .filter { it.market == "USDⓈ-M Futures" }
+        .map { it.symbol }
+        .distinct()
+        .sorted()
+    LaunchedEffect(Unit) {
+        refresh()
+        while (true) {
+            delay(60_000L)
+            refresh()
+        }
+    }
+    DisposableEffect(streamSymbols) {
+        val stream = BinanceMarkPriceStream(
+            symbols = streamSymbols,
+            onMarkPrice = { symbol, price ->
+                liveTrades = liveTrades.map { trade ->
+                    if (trade.market == "USDⓈ-M Futures" && trade.symbol.equals(symbol, ignoreCase = true)) {
+                        trade.withMarkPrice(price)
+                    } else trade
+                }
+            },
+            onStatus = { markPriceStatus = it }
+        )
+        stream.start()
+        onDispose { stream.close() }
     }
 
     LazyColumn(
@@ -511,7 +542,12 @@ fun LiveTradesScreen() {
                     }
                     if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
                         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text(markPriceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("Prices stream live; positions and open orders reconcile every 60 seconds while this page is open.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
