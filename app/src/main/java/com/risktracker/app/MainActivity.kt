@@ -469,6 +469,7 @@ fun LiveTradesScreen() {
     var status by remember { mutableStateOf("Connect Binance with read-only API credentials, then refresh to load open positions and orders.") }
 
     fun refresh() {
+        if (loading) return
         val credentials = BinanceCredentialStore(context).read()
         if (credentials == null) {
             status = "Binance is not connected. Open Binance trade history and save read-only API credentials first."
