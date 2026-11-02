@@ -19,7 +19,7 @@ class AnalyticsDomainTest {
         assertEquals(5.0, result.grossLoss, 0.0001)
         assertEquals(0.25, result.knownStableFees, 0.0001)
         assertEquals(4.75, result.netAfterKnownStableFees, 0.0001)
-        assertEquals(0.1, result.feesInOtherAssets["BNB"], 0.0001)
+        assertEquals(0.1, result.feesInOtherAssets["BNB"]!!, 0.0001)
         assertEquals(50.0, result.winRatePercent!!, 0.0001)
         assertEquals(2.0, result.profitFactor!!, 0.0001)
     }
