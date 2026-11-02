@@ -195,11 +195,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                             Text("RT", color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text("Risk Tracker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("TRADING WORKSPACE", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text("Risk Tracker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             )
