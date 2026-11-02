@@ -63,29 +63,17 @@ fun TradingAnalyticsScreen(
         1 -> volumeByQuoteAsset.first().second.num() + " " + volumeByQuoteAsset.first().first
         else -> "${volumeByQuoteAsset.size} quote assets"
     }
-    // Aggregate partial fills from the same exchange order before classifying a win or loss.
-    val realizedOrders = validFills
-        .filter { it.realizedPnl?.isFinite() == true }
-        .groupBy { fill ->
-            "${fill.exchange}|${fill.market}|${fill.symbol}|" +
-                (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
-        }
-        .values
-        .map { rows -> rows.sumOf { it.realizedPnl ?: 0.0 } }
-        .filter { it.isFinite() }
+    val orderAnalytics = remember(validFills) { summarizeExchangeOrders(validFills) }
+    val realizedOrders = orderAnalytics.realizedOrders
     val winning = realizedOrders.filter { it > 0.0 }
     val losing = realizedOrders.filter { it < 0.0 }
-    val grossProfit = winning.sum()
-    val grossLoss = -losing.sum()
+    val grossProfit = orderAnalytics.grossProfit
+    val grossLoss = orderAnalytics.grossLoss
     val netPnl = grossProfit - grossLoss
     val decisiveCount = winning.size + losing.size
-    val winRate = if (decisiveCount > 0) winning.size * 100.0 / decisiveCount else null
+    val winRate = orderAnalytics.winRatePercent
     val lossRate = if (decisiveCount > 0) losing.size * 100.0 / decisiveCount else null
-    val profitFactor = when {
-        grossLoss > 0.0 -> grossProfit / grossLoss
-        grossProfit > 0.0 -> Double.POSITIVE_INFINITY
-        else -> null
-    }
+    val profitFactor = orderAnalytics.profitFactor
     val pairStats = validFills
         .filter { it.realizedPnl?.isFinite() == true }
         .groupBy { it.symbol.ifBlank { "Unknown pair" } }
@@ -200,12 +188,19 @@ fun TradingAnalyticsScreen(
                     AnalyticsMetric("Gross loss", grossLoss.usd(), Modifier.weight(1f), MaterialTheme.colorScheme.error)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AnalyticsMetric("Net realized P&L", (if (netPnl > 0) "+" else "") + netPnl.usd(),
-                        Modifier.weight(1f), if (netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    AnalyticsMetric("Net after USDT/USDC fees", (if (orderAnalytics.netAfterKnownStableFees > 0) "+" else "") + orderAnalytics.netAfterKnownStableFees.usd(),
+                        Modifier.weight(1f), if (orderAnalytics.netAfterKnownStableFees >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        "Only stablecoin fees subtracted")
                     AnalyticsMetric("Profit factor", profitFactor?.let { if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it) } ?: "—",
                         Modifier.weight(1f))
                 }
                 Text("P&L includes only exchange fills with reported realized P&L. Partial fills from the same exchange order are combined before classifying a win or loss; open or non-realizing orders are excluded.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Average win", orderAnalytics.averageWin?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+                    AnalyticsMetric("Average loss", orderAnalytics.averageLoss?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                }
+                Text("Fees in other assets are not converted or subtracted; see Trading fees below. The net figure subtracts only reported USDT/USDC fees from reported realized P&L.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
