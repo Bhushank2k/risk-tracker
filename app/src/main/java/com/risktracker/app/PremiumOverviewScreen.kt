@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -166,21 +168,35 @@ fun PremiumOverviewScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("YOUR TRADING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                    Text("Overview", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Overview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                // One refresh for the whole screen: account balance and open positions.
-                TextButton(
+                // One compact refresh action for account balance and open positions.
+                IconButton(
                     onClick = { refreshAccountBalance(); refreshLivePositions() },
-                    enabled = !balanceRefreshing && hasBinanceCredentials
-                ) { Text(if (balanceRefreshing) "Updating…" else "Refresh") }
+                    enabled = !balanceRefreshing && hasBinanceCredentials,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    if (balanceRefreshing) {
+                        CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh account and positions")
+                    }
+                }
             }
         }
 
@@ -191,7 +207,7 @@ fun PremiumOverviewScreen(
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
             ) {
-                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("TOTAL ACCOUNT EQUITY", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -238,7 +254,7 @@ fun PremiumOverviewScreen(
         // The daily loss budget is the most actionable number, so it sits right under the equity card.
         item {
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Daily loss budget", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         if (riskRemaining != null) Text(riskRemaining.usd() + " left", fontWeight = FontWeight.Bold, color = if (riskUsed != null && riskUsed >= 1f) lossColor() else MaterialTheme.colorScheme.onSurface)
