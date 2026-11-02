@@ -270,15 +270,28 @@ fun PremiumOverviewScreen(
             }
         }
 
-        // Fast portfolio KPIs: realized performance, open positions, and optional ledger and hit rate when recorded.
+        // Compact KPI strip: keep the two most actionable portfolio metrics together.
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (latestBalance != null) SimpleMetricCard("Last recorded balance", latestBalance.usd(), "Saved closing balance", Modifier.weight(1f))
-                SimpleMetricCard("Net recorded P&L", (if (netPnl > 0.0) "+" else "") + netPnl.usd(), daily.size.toString() + " recorded days", Modifier.weight(1f), if (netPnl >= 0.0) profitColor() else lossColor())
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SimpleMetricCard(
+                    "Net recorded P&L",
+                    (if (netPnl > 0.0) "+" else "") + netPnl.usd(),
+                    daily.size.toString() + " recorded days",
+                    Modifier.weight(1f),
+                    if (netPnl >= 0.0) profitColor() else lossColor()
+                )
+                SimpleMetricCard(
+                    "Open positions",
+                    livePositions.size.toString(),
+                    if (positionsStatus.contains("failed") || positionsStatus.contains("418")) "Cached · live prices" else "Futures · live prices",
+                    Modifier.weight(1f)
+                )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (winRate != null) SimpleMetricCard("Win rate", winRate.pct(1), closedTrades.toString() + " closed trades", Modifier.weight(1f))
-                SimpleMetricCard("Open positions", livePositions.size.toString(), if (positionsStatus.contains("failed") || positionsStatus.contains("418")) "Cached snapshot · WebSocket prices" else "Binance Futures · WebSocket", Modifier.weight(1f))
+            if (winRate != null || latestBalance != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (winRate != null) CompactOverviewMeta("Win rate", winRate.pct(1) + " · " + closedTrades + " closed")
+                    if (latestBalance != null) CompactOverviewMeta("Last recorded balance", latestBalance.usd())
+                }
             }
         }
 
@@ -315,29 +328,20 @@ fun PremiumOverviewScreen(
                         }
                         HorizontalDivider()
                         livePositions.forEachIndexed { index, position ->
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(position.symbol, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                        Text(position.side + " · " + position.leverage + "×", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                    Text(position.symbol + " · " + position.side + " · " + position.leverage + "×", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                     Text((if (position.unrealizedPnl > 0.0) "+" else "") + position.unrealizedPnl.usd(), fontWeight = FontWeight.Bold, color = if (position.unrealizedPnl >= 0.0) profitColor() else lossColor())
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(position.entryPrice.usd(4), style = MaterialTheme.typography.labelSmall)
-                                    Text("Mark", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(position.markPrice.usd(4), style = MaterialTheme.typography.labelSmall)
+                                    Text("Entry " + position.entryPrice.usd(4), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Mark " + position.markPrice.usd(4), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Qty " + position.quantity.num(4), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Quantity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(position.quantity.num(6), style = MaterialTheme.typography.labelSmall)
-                                    Text("Liq. price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(if (position.liquidationPrice > 0.0) position.liquidationPrice.usd(4) else "—", style = MaterialTheme.typography.labelSmall, color = if (position.liquidationPrice > 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                                }
-                                if (position.markPrice > 0.0 && position.liquidationPrice > 0.0) {
-                                    val distancePct = kotlin.math.abs(position.liquidationPrice - position.markPrice) / position.markPrice * 100.0
-                                    Text("Liquidation about " + "%.0f".format(Locale.US, distancePct) + "% away from the mark price.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (position.liquidationPrice > 0.0) {
+                                    val distancePct = if (position.markPrice > 0.0) kotlin.math.abs(position.liquidationPrice - position.markPrice) / position.markPrice * 100.0 else null
+                                    Text("Liq. " + position.liquidationPrice.usd(4) + (distancePct?.let { " · " + "%.0f".format(Locale.US, it) + "% from mark" } ?: ""),
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                                 }
                             }
                             if (index < livePositions.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -407,6 +411,14 @@ fun PremiumOverviewScreen(
                 Text("View full reports")
             }
         }
+    }
+}
+
+@Composable
+private fun CompactOverviewMeta(label: String, value: String) {
+    Column(Modifier.weight(1f).padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
     }
 }
 
