@@ -222,6 +222,22 @@ fun TradingAnalyticsScreen(
                     MaterialTheme.colorScheme.error, "Based on the separate manual balance ledger")
                 Text("${reconciledDaily.size} reconciled days · ${reconciledDaily.count { it.source == DailyPnlSource.BINANCE }} Binance · ${reconciledDaily.count { it.source == DailyPnlSource.MANUAL }} manual · ${reconciledDaily.count { it.source == DailyPnlSource.JOURNAL }} journal estimates",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                reconciledDaily.takeLast(7).asReversed().forEach { day ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(day.date, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            Text(when (day.source) {
+                                DailyPnlSource.BINANCE -> "Binance-imported"
+                                DailyPnlSource.MANUAL -> "Manual daily P&L"
+                                DailyPnlSource.JOURNAL -> "Manual journal estimate"
+                            }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text((if (day.selectedPnl > 0.0) "+" else "") + day.selectedPnl.usd(),
+                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                            color = pnlColor(day.selectedPnl))
+                    }
+                }
             }
         }
         item {
