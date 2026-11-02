@@ -27,7 +27,7 @@ fun BinancePositionJournalSection(
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Binance Positions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Binance-imported", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("${fills.size} executions · Binance auto-sync", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 OutlinedButton(onClick = onSync) { Text("Sync now") }

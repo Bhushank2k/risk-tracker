@@ -10,6 +10,8 @@ import java.io.InputStreamReader
 import java.util.Locale
 import java.util.zip.ZipInputStream
 
+const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
+
 /**
  * Imported exchange records are kept separately from manual journal entries.
  * This is a transaction summary aid, not a substitute for a tax professional's determination.

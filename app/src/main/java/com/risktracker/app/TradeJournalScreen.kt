@@ -72,7 +72,8 @@ fun TradeJournalScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("External trades · " + filteredTrades.size + " shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Manual — do not re-enter imported trades.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                    Text(filteredTrades.size.toString() + " manual trades shown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalButton(onClick = { showAdd = true }) {
                     Icon(Icons.Default.Add, contentDescription = null)
@@ -170,6 +171,19 @@ fun TradeJournalScreen(
                                 Text(if (tradePnl.isFinite()) tradePnl.usd() else "Unavailable", color = if (tradePnl.isFinite()) pnlColor(tradePnl) else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                 if (trade.riskUsd > 0 && tradePnl.isFinite()) Text("%.2fR".format(tradePnl / trade.riskUsd), color = pnlColor(tradePnl), style = MaterialTheme.typography.labelSmall)
                             }
+                        }
+                        val tradeDate = canonicalPnlDate(trade.date)
+                        val matchingImportedCycle = tradeDate != null && exchangeFills.any { fill ->
+                            val importedDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(fill.time))
+                            val importedSide = if (fill.side.equals("BUY", true)) "Long" else if (fill.side.equals("SELL", true)) "Short" else ""
+                            fill.market.contains("Futures", true) &&
+                                fill.symbol.equals(trade.symbol, true) &&
+                                importedDate == tradeDate &&
+                                importedSide.equals(trade.side, true)
+                        }
+                        if (matchingImportedCycle) {
+                            Text("Possible Binance-imported match: same date, symbol and side. Check the Binance-imported journal before keeping this manual entry.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Entry " + trade.entry.num() + "  →  Exit " + trade.exit.num(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

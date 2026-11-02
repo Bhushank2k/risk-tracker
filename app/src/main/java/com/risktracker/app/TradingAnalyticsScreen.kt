@@ -25,7 +25,10 @@ private data class PairAnalytics(
 @Composable
 fun TradingAnalyticsScreen(
     fills: List<BinanceJournalFill>,
-    syncStatus: BinanceJournalSyncStatus
+    syncStatus: BinanceJournalSyncStatus,
+    dailyEntries: List<PnlEntry> = emptyList(),
+    manualTrades: List<TradeEntry> = emptyList(),
+    importedDailyPnl: List<BinanceDailyResult> = emptyList()
 ) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
     val now = System.currentTimeMillis()
@@ -60,29 +63,17 @@ fun TradingAnalyticsScreen(
         1 -> volumeByQuoteAsset.first().second.num() + " " + volumeByQuoteAsset.first().first
         else -> "${volumeByQuoteAsset.size} quote assets"
     }
-    // Aggregate partial fills from the same exchange order before classifying a win or loss.
-    val realizedOrders = validFills
-        .filter { it.realizedPnl?.isFinite() == true }
-        .groupBy { fill ->
-            "${fill.exchange}|${fill.market}|${fill.symbol}|" +
-                (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
-        }
-        .values
-        .map { rows -> rows.sumOf { it.realizedPnl ?: 0.0 } }
-        .filter { it.isFinite() }
+    val orderAnalytics = remember(validFills) { summarizeExchangeOrders(validFills) }
+    val realizedOrders = orderAnalytics.realizedOrders
     val winning = realizedOrders.filter { it > 0.0 }
     val losing = realizedOrders.filter { it < 0.0 }
-    val grossProfit = winning.sum()
-    val grossLoss = -losing.sum()
+    val grossProfit = orderAnalytics.grossProfit
+    val grossLoss = orderAnalytics.grossLoss
     val netPnl = grossProfit - grossLoss
     val decisiveCount = winning.size + losing.size
-    val winRate = if (decisiveCount > 0) winning.size * 100.0 / decisiveCount else null
+    val winRate = orderAnalytics.winRatePercent
     val lossRate = if (decisiveCount > 0) losing.size * 100.0 / decisiveCount else null
-    val profitFactor = when {
-        grossLoss > 0.0 -> grossProfit / grossLoss
-        grossProfit > 0.0 -> Double.POSITIVE_INFINITY
-        else -> null
-    }
+    val profitFactor = orderAnalytics.profitFactor
     val pairStats = validFills
         .filter { it.realizedPnl?.isFinite() == true }
         .groupBy { it.symbol.ifBlank { "Unknown pair" } }
@@ -100,6 +91,23 @@ fun TradingAnalyticsScreen(
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" } }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
         .toList().sortedByDescending { it.second }
+    val reconciledDaily = remember(dailyEntries, manualTrades, importedDailyPnl, periodDays, now) {
+        val all = reconcileDailyPnl(dailyEntries, importedDailyPnl, manualTrades)
+        val window = filterPnlEntriesForPeriod(
+            all.map { PnlEntry(it.date, 0.0, it.selectedPnl) }, periodDays, now
+        ).map { it.date }.toSet()
+        all.filter { it.date in window }
+    }
+    val dailySnapshot = remember(reconciledDaily, dailyEntries, periodDays, now) {
+        val visibleDates = filterPnlEntriesForPeriod(dailyEntries, periodDays, now).mapNotNull {
+            canonicalPnlDate(it.date)
+        }.toSet()
+        buildPerformanceSnapshot(
+            pnlValues = reconciledDaily.map { it.selectedPnl },
+            closingBalances = dailyEntries.filter { canonicalPnlDate(it.date) in visibleDates }.map { it.balance },
+            tradeCount = manualTrades.size
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -180,13 +188,56 @@ fun TradingAnalyticsScreen(
                     AnalyticsMetric("Gross loss", grossLoss.usd(), Modifier.weight(1f), MaterialTheme.colorScheme.error)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AnalyticsMetric("Net realized P&L", (if (netPnl > 0) "+" else "") + netPnl.usd(),
-                        Modifier.weight(1f), if (netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    AnalyticsMetric("Net after USDT/USDC fees", (if (orderAnalytics.netAfterKnownStableFees > 0) "+" else "") + orderAnalytics.netAfterKnownStableFees.usd(),
+                        Modifier.weight(1f), if (orderAnalytics.netAfterKnownStableFees >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        "Only stablecoin fees subtracted")
                     AnalyticsMetric("Profit factor", profitFactor?.let { if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it) } ?: "—",
                         Modifier.weight(1f))
                 }
                 Text("P&L includes only exchange fills with reported realized P&L. Partial fills from the same exchange order are combined before classifying a win or loss; open or non-realizing orders are excluded.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Average win", orderAnalytics.averageWin?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+                    AnalyticsMetric("Average loss", orderAnalytics.averageLoss?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                }
+                Text("Fees in other assets are not converted or subtracted; see Trading fees below. The net figure subtracts only reported USDT/USDC fees from reported realized P&L.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Daily net P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
+                        if (dailySnapshot.netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    AnalyticsMetric("Average daily P&L", dailySnapshot.averagePnl.usd(), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Best day", dailySnapshot.bestDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+                    AnalyticsMetric("Worst day", dailySnapshot.worstDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                }
+                AnalyticsMetric("Peak-to-trough drawdown", dailySnapshot.maxDrawdownPercent.pct(2), Modifier.fillMaxWidth(),
+                    MaterialTheme.colorScheme.error, "Based on the separate manual balance ledger")
+                Text("${reconciledDaily.size} reconciled days · ${reconciledDaily.count { it.source == DailyPnlSource.BINANCE }} Binance · ${reconciledDaily.count { it.source == DailyPnlSource.MANUAL }} manual · ${reconciledDaily.count { it.source == DailyPnlSource.JOURNAL }} journal estimates",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                reconciledDaily.takeLast(7).asReversed().forEach { day ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(day.date, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            Text(when (day.source) {
+                                DailyPnlSource.BINANCE -> "Binance-imported"
+                                DailyPnlSource.MANUAL -> "Manual daily P&L"
+                                DailyPnlSource.JOURNAL -> "Manual journal estimate"
+                            }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text((if (day.selectedPnl > 0.0) "+" else "") + day.selectedPnl.usd(),
+                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                            color = pnlColor(day.selectedPnl))
+                    }
+                }
             }
         }
         item {

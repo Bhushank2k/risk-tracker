@@ -144,8 +144,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Journal", "Analytics", "Ideas", "More")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Refresh, Icons.Default.Menu)
+    val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Refresh)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
@@ -180,7 +180,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> 4 }
+    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -196,6 +196,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
                         }
                         Text("Risk Tracker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.Menu, contentDescription = "All destinations")
                     }
                 }
             )
@@ -213,7 +218,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21; else -> menuExpanded = true } },
+                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21 } },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
@@ -268,7 +273,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 )
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
-                8 -> InsightsScreen(entries, trades, importedPnl, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
                     maxTradeRisk = store.maxTradeRisk,
@@ -293,7 +297,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus)
+                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
@@ -606,7 +610,7 @@ fun PnlScreen(
     onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {},
     onChange: (List<PnlEntry>) -> Unit
 ) {
-    PremiumOverviewScreen(
+    RiskOverviewScreen(
         entries = entries,
         importedPnl = importedPnl,
         trades = trades,

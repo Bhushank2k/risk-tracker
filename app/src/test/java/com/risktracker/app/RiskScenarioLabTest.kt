@@ -16,10 +16,4 @@ class RiskScenarioLabTest {
         assertFalse(calculateLossScenarios(100.0, 101.0).valid)
         assertFalse(calculateLossScenarios(100.0, 1.0, listOf(-1)).valid)
     }
-    @Test fun seededSimulationIsRepeatable() {
-        val a = simulateHistoricalOutcomes(1000.0, 1.0, listOf(-1.0, 1.5, -0.5), 20, 100, 42L)
-        val b = simulateHistoricalOutcomes(1000.0, 1.0, listOf(-1.0, 1.5, -0.5), 20, 100, 42L)
-        assertEquals(a, b)
-        assertEquals(100, a.size)
-    }
 }

@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 
 
 @Composable
-fun PremiumOverviewScreen(
+fun RiskOverviewScreen(
     entries: List<PnlEntry>,
     importedPnl: List<BinanceDailyResult>,
     trades: List<TradeEntry>,
@@ -383,7 +383,7 @@ fun PremiumOverviewScreen(
                         SimpleHeroStat("Losing days", daily.count { it.selectedPnl < 0.0 }.toString())
                         SimpleHeroStat("Days tracked", daily.size.toString())
                     }
-                    TextButton(onClick = { onNavigate(8) }, modifier = Modifier.align(Alignment.End)) { Text("Open performance report") }
+                    TextButton(onClick = { onNavigate(20) }, modifier = Modifier.align(Alignment.End)) { Text("Open performance report") }
                 }
             }
         }
