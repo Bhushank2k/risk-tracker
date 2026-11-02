@@ -1,3 +1,5 @@
+const val SPOT_ESTIMATE_DEFAULT_ENABLED = false
+
 package com.risktracker.app
 
 import android.content.Context
