@@ -144,7 +144,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}) 
         return
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("DATA & IMPORTS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text("Binance data", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
