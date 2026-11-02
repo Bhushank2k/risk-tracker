@@ -610,7 +610,7 @@ fun PnlScreen(
     onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {},
     onChange: (List<PnlEntry>) -> Unit
 ) {
-    PremiumOverviewScreen(
+    RiskOverviewScreen(
         entries = entries,
         importedPnl = importedPnl,
         trades = trades,
