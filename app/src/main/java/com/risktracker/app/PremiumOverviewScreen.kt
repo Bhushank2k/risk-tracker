@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 
 
 @Composable
-fun PremiumOverviewScreen(
+fun RiskOverviewScreen(
     entries: List<PnlEntry>,
     importedPnl: List<BinanceDailyResult>,
     trades: List<TradeEntry>,
