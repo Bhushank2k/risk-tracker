@@ -99,3 +99,55 @@ fun filterPnlEntriesForPeriod(entries: List<PnlEntry>, days: Int?, nowMillis: Lo
     }
 }
 
+
+data class ExchangeOrderAnalytics(
+    val realizedOrders: List<Double>,
+    val grossProfit: Double,
+    val grossLoss: Double,
+    val winRatePercent: Double?,
+    val profitFactor: Double?,
+    val averageWin: Double?,
+    val averageLoss: Double?,
+    val knownStableFees: Double,
+    val feesInOtherAssets: Map<String, Double>,
+    val netAfterKnownStableFees: Double
+)
+
+/**
+ * Groups partial fills by exchange order before classifying outcomes. Only stable-quote fees
+ * (USDT/USDC) are subtracted from USD-denominated realized P&L; fees in other assets stay
+ * separately itemized because no historical conversion is available.
+ */
+fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnalytics {
+    val orders = fills.filter { it.realizedPnl?.isFinite() == true }
+        .groupBy { fill ->
+            "${fill.exchange}|${fill.market}|${fill.symbol}|" +
+                (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
+        }.values.map { rows -> rows.sumOf { it.realizedPnl ?: 0.0 } }.filter { it.isFinite() }
+    val wins = orders.filter { it > 0.0 }
+    val losses = orders.filter { it < 0.0 }
+    val grossProfit = wins.sum()
+    val grossLoss = -losses.sum()
+    val feeByAsset = fills.filter { it.fee.isFinite() && it.fee > 0.0 }
+        .groupBy { it.feeAsset.ifBlank { "Unknown asset" }.uppercase(Locale.ROOT) }
+        .mapValues { (_, rows) -> rows.sumOf { it.fee } }
+    val stableFees = feeByAsset.filterKeys { it in setOf("USDT", "USDC") }.values.sum()
+    val otherFees = feeByAsset.filterKeys { it !in setOf("USDT", "USDC") }
+    val decisive = wins.size + losses.size
+    return ExchangeOrderAnalytics(
+        realizedOrders = orders,
+        grossProfit = grossProfit,
+        grossLoss = grossLoss,
+        winRatePercent = if (decisive == 0) null else wins.size * 100.0 / decisive,
+        profitFactor = when {
+            grossLoss > 0.0 -> grossProfit / grossLoss
+            grossProfit > 0.0 -> Double.POSITIVE_INFINITY
+            else -> null
+        },
+        averageWin = wins.takeIf { it.isNotEmpty() }?.average(),
+        averageLoss = losses.takeIf { it.isNotEmpty() }?.average(),
+        knownStableFees = stableFees,
+        feesInOtherAssets = otherFees,
+        netAfterKnownStableFees = grossProfit - grossLoss - stableFees
+    )
+}
