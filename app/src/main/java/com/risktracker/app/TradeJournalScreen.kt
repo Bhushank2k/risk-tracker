@@ -101,7 +101,6 @@ fun TradeJournalScreen(
                         JournalMetric("Max drawdown", stats.maxDrawdown.usd(), MaterialTheme.colorScheme.error)
                         JournalMetric("Avg. R", averageR?.let { "%.2fR".format(it) } ?: "—", averageR?.let { pnlColor(it) } ?: MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("Manual journal estimate after fees · Binance fills are separate", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -282,7 +281,6 @@ fun TradeJournalScreen(
             }, modifier = Modifier.fillMaxWidth()) { Text("Export journal CSV") }
         }
         item {
-            Text("External trades are stored locally and kept separate from Binance imports. P&L is a journal estimate, not exchange-reported performance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 

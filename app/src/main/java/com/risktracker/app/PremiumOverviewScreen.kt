@@ -38,7 +38,7 @@ fun RiskOverviewScreen(
     val positionsStore = remember { BinanceLivePositionsStore(context) }
     var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var balanceRefreshing by remember { mutableStateOf(false) }
-    var balanceStatus by remember { mutableStateOf("Using last saved account snapshot; refresh manually when needed.") }
+    var balanceStatus by remember { mutableStateOf("") }
     val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
     var livePositions by remember { mutableStateOf(positionsStore.load()) }
     var positionsLoading by remember { mutableStateOf(false) }
@@ -254,15 +254,12 @@ fun RiskOverviewScreen(
                                 )
                                 Text("↗", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
-                            Text(
-                                "Tap value to view live trades",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
-                            )
+
                         }
                     }
-                    val status = balanceStatus.ifBlank { if (hasBinanceCredentials) "Saved account snapshot" else "Live account connection not configured" }
-                    Text(status, style = MaterialTheme.typography.labelSmall, color = if (status.startsWith("Refresh failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                    if (balanceStatus.startsWith("Refresh failed") || balanceStatus.contains("418")) {
+                        Text(balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
