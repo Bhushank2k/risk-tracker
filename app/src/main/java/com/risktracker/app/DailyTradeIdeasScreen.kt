@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -678,6 +679,11 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.tertiary
     }
+    val sideTint = when (idea.side) {
+        "LONG" -> Color(0xFF16A34A)
+        "SHORT" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val riskDistance = abs(idea.entry - idea.stop)
     val rewardDistance = abs(idea.target1 - idea.entry)
     val rewardRisk = if (riskDistance > 0.0) rewardDistance / riskDistance else 0.0
@@ -705,7 +711,19 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                    Text(if (idea.side == "WAIT") "No direction" else idea.side, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (idea.side == "LONG" || idea.side == "SHORT") {
+                        Surface(color = sideTint.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+                            Text(
+                                idea.side,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = sideTint,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Text("No direction", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(12.dp)) {
@@ -748,203 +766,3 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 IdeaLevel("Stop-loss", idea.stop)
                 IdeaLevel("Target 1", idea.target1)
                 IdeaLevel("Target 2", idea.target2)
-                ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
-                }
-            }
-            if (stage == TradeIdeaStage.TRACKING && trackedEntry != null) {
-                HorizontalDivider()
-                Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
-                ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
-                ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
-                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
-                Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
-                LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
-                Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)
-                LinearProgressIndicator(progress = { stopProgress.toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.error)
-                Text("P&L is price-only and excludes fees, funding, slippage and position size. Tracking is not connected to an exchange order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = {
-                    trackingPrefs.edit().remove(trackedEntryKey).apply()
-                    trackedEntry = null
-                    livePrice = idea.last
-                    onTrackingChanged(idea.symbol, false)
-                }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
-            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
-                Text("Risk checks passed. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
-                Button(onClick = {
-                    trackingScope.launch {
-                        val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
-                            ?: livePrice.takeIf { it > 0.0 } ?: idea.last
-                        trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
-                        livePrice = entry
-                        trackedEntry = entry
-                        onTrackingChanged(idea.symbol, true)
-                    }
-                }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
-            } else if (stage == TradeIdeaStage.MONITOR) {
-                Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
-                Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
-            } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
-                Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                Text(if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
-                    else "The risk plan failed validation or has a blocking warning: " + idea.warning,
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-
-            if (density == "Expanded") HistoricalOutcomePanel(idea) else Text(historyOneLine(idea), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide analysis" else "Why this result?") }
-            if (expanded) {
-                HorizontalDivider()
-                Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
-                ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
-                ScannerMetric("Depth imbalance", idea.bookImbalance?.let { "%+.2f".format(Locale.US, it) } ?: "Unavailable")
-                ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
-                ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
-                HorizontalDivider()
-                Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
-                    else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
-                    style = MaterialTheme.typography.bodySmall)
-                idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
-}
-
-/** One-line history summary for the compact card. */
-private fun historyOneLine(idea: TradeIdea): String =
-    if (idea.backtest.hasUsableEstimate) "Historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% over " + idea.backtest.trades + " samples"
-    else "No history yet (" + idea.backtest.trades + " of 30 samples)"
-
-@Composable
-private fun IdeaLevel(label: String, value: Double) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun ScannerMetric(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun HistoricalOutcomePanel(idea: TradeIdea) {
-    val stats = idea.backtest
-    val sideLabel = if (idea.side == "WAIT") "Combined LONG + SHORT replay" else idea.side + " historical replay"
-    RiskCard(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-    ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Historical win / loss", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (stats.hasUsableEstimate) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Historical wins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("%.1f%%".format(Locale.US, stats.winRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text("Historical losses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("%.1f%%".format(Locale.US, stats.lossRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                    }
-                }
-                val lower = stats.winRateLower95 ?: 0.0
-                val upper = stats.winRateUpper95 ?: 100.0
-                Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
-
-private data class TradeSessionSlot(
-    val name: String,
-    val startMinute: Int,
-    val endMinute: Int,
-    val focus: String
-)
-
-@Composable
-private fun TradeSessionTimingCard() {
-    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000)
-            nowMillis = System.currentTimeMillis()
-        }
-    }
-    val sessions = remember {
-        listOf(
-            TradeSessionSlot("Asia activity", 9 * 60, 11 * 60, "Range development · 5M / 15M scalp watch"),
-            TradeSessionSlot("London open", 13 * 60 + 30, 16 * 60 + 30, "Breakout follow-through · 15M / 1H intraday"),
-            TradeSessionSlot("US open & overlap", 20 * 60, 23 * 60, "Higher liquidity · intraday and 4H swing review")
-        )
-    }
-    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).apply { timeInMillis = nowMillis }
-    val minuteOfDay = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-    val active = sessions.firstOrNull { slot ->
-        if (slot.endMinute > slot.startMinute) minuteOfDay in slot.startMinute until slot.endMinute
-        else minuteOfDay >= slot.startMinute || minuteOfDay < slot.endMinute
-    }
-    val next = sessions.map { slot ->
-        val delta = (slot.startMinute - minuteOfDay + 1440) % 1440
-        slot to delta
-    }.filter { it.second > 0 }.minByOrNull { it.second } ?: (sessions.first() to (1440 - minuteOfDay + sessions.first().startMinute))
-    var timingExpanded by remember { mutableStateOf(false) }
-    fun clock(minutes: Int): String = "%02d:%02d".format(Locale.US, minutes / 60, minutes % 60)
-    val remaining = if (active != null) {
-        val end = active.endMinute
-        if (end > minuteOfDay) end - minuteOfDay else 1440 - minuteOfDay + end
-    } else next.second
-    RiskCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Trade timing · India (IST)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                if (active != null) "Window active: " + active.name + " · ends in " + (remaining / 60) + "h " + (remaining % 60) + "m"
-                else "Next window: " + next.first.name + " · starts in " + (remaining / 60) + "h " + (remaining % 60) + "m",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium
-            )
-            TextButton(onClick = { timingExpanded = !timingExpanded }, modifier = Modifier.align(Alignment.End)) { Text(if (timingExpanded) "Hide windows" else "Show windows") }
-            if (timingExpanded) {
-            sessions.forEach { slot ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(slot.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                        Text(slot.focus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(clock(slot.startMinute) + "–" + clock(slot.endMinute), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
-                }
-            }
-            HorizontalDivider()
-            Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
-            Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
