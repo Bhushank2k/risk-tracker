@@ -1,6 +1,7 @@
 package com.risktracker.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -237,11 +238,26 @@ fun RiskOverviewScreen(
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("Live unrealized P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                            Row(
+                                modifier = Modifier.clickable(
+                                    onClick = { onNavigate(16) },
+                                    role = androidx.compose.ui.semantics.Role.Button
+                                ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    (if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (totalPositionPnl >= 0.0) profitColor() else lossColor()
+                                )
+                                Text("↗", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
                             Text(
-                                (if (totalPositionPnl > 0.0) "+" else "") + totalPositionPnl.usd(),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = if (totalPositionPnl >= 0.0) profitColor() else lossColor()
+                                "Tap value to view live trades",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
                             )
                         }
                     }
