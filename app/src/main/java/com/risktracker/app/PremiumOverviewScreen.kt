@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +20,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -47,6 +47,7 @@ fun RiskOverviewScreen(
     }
     var markPriceStatus by remember { mutableStateOf("Starting mark-price stream…") }
     var lastPositionRestAttempt by remember { mutableLongStateOf(0L) }
+    var lastBalanceRestAttempt by remember { mutableLongStateOf(0L) }
     val positionsScope = rememberCoroutineScope()
 
     fun refreshLivePositions() {
@@ -96,7 +97,15 @@ fun RiskOverviewScreen(
     }
 
     LaunchedEffect(hasBinanceCredentials) {
-        if (hasBinanceCredentials && livePositions.isEmpty()) refreshLivePositions()
+        if (hasBinanceCredentials) {
+            refreshLivePositions()
+            refreshAccountBalance()
+            while (true) {
+                delay(60_000L)
+                refreshLivePositions()
+                refreshAccountBalance()
+            }
+        }
     }
 
     val streamSymbols = livePositions.map { it.symbol }.distinct().sorted().joinToString(",")
@@ -120,6 +129,8 @@ fun RiskOverviewScreen(
     val balanceScope = rememberCoroutineScope()
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
+        val now = System.currentTimeMillis()
+        if (now - lastBalanceRestAttempt < 60_000L) return
         val blockedUntil = positionsStore.restBlockedUntil()
         if (blockedUntil > System.currentTimeMillis()) {
             balanceStatus = "Binance REST is paused until " +
@@ -130,6 +141,7 @@ fun RiskOverviewScreen(
             balanceStatus = "Connect Binance read-only API credentials in Binance Sync."
             return
         }
+        lastBalanceRestAttempt = now
         balanceRefreshing = true
         balanceStatus = "Refreshing account equity…"
         balanceScope.launch {
@@ -186,18 +198,7 @@ fun RiskOverviewScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                // One compact refresh action for account balance and open positions.
-                IconButton(
-                    onClick = { refreshAccountBalance(); refreshLivePositions() },
-                    enabled = !balanceRefreshing && hasBinanceCredentials,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    if (balanceRefreshing) {
-                        CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh account and positions")
-                    }
-                }
+
             }
         }
 
