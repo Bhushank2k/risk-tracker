@@ -238,6 +238,19 @@ class Store(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("risk_tracker", Context.MODE_PRIVATE)
 
+    /**
+     * One-time migration to the exchange-only journal. Removes legacy locally saved manual
+     * trades while leaving Binance fills, account data, plans, reviews and daily P&L untouched.
+     */
+    fun clearManualTradesOnce() {
+        if (!prefs.getBoolean("manual_trade_journal_cleared_v1", false)) {
+            prefs.edit()
+                .remove("trade_journal_v1")
+                .putBoolean("manual_trade_journal_cleared_v1", true)
+                .apply()
+        }
+    }
+
     var webUrl: String
         get() = prefs.getString("sync_url", "") ?: ""
         set(v) = prefs.edit().putString("sync_url", v).apply()
@@ -350,12 +363,12 @@ class Store(context: Context) {
                 }
             }
         } else null
-        saveEntries(daily); saveTrades(journal)
+        saveEntries(daily); saveTrades(emptyList())
         if (importedBinance != null) BinanceSyncData.replaceAll(appContext, importedBinance)
         if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
         if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
-        return daily to journal
+        return daily to emptyList()
     }
     fun loadInput(): CalcInput {
         val d = CalcInput()

@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = Store(applicationContext)
+        store.clearManualTradesOnce()
         inrRate = store.inr
         setContent {
             var themeMode by remember { mutableStateOf(store.themeMode) }
@@ -249,23 +250,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     entries = it
                     store.saveEntries(it)
                 }
-                1 -> TradeJournalScreen(trades, onAdd = { trade ->
-                    trades = (trades + trade).sortedByDescending { it.date }
-                    store.saveTrades(trades)
-                }, onUpdate = { updated ->
-                    trades = trades.map { if (it.id == updated.id) updated else it }.sortedByDescending { it.date }
-                    store.saveTrades(trades)
-                }, onDelete = { trade ->
-                    trades = trades.filterNot { it.id == trade.id }
-                    store.saveTrades(trades)
-                }, maxTradeRisk = store.maxTradeRisk, exchangeFills = exchangeFills, onSyncExchange = {
-                    if (BinanceCredentialStore(context).read() != null) {
-                        appScope.launch {
-                            runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
-                            exchangeFills = BinanceAutoJournalStore.load(context)
-                        }
-                    }
-                })
+                1 -> TradeJournalScreen(exchangeFills)
                 2 -> CombinedTradingCalculatorScreen(
                     input = input,
                     accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
