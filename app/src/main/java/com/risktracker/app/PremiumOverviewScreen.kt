@@ -96,36 +96,6 @@ fun RiskOverviewScreen(
         }
     }
 
-    LaunchedEffect(hasBinanceCredentials) {
-        if (hasBinanceCredentials) {
-            refreshLivePositions()
-            refreshAccountBalance()
-            while (true) {
-                delay(60_000L)
-                refreshLivePositions()
-                refreshAccountBalance()
-            }
-        }
-    }
-
-    val streamSymbols = livePositions.map { it.symbol }.distinct().sorted().joinToString(",")
-    DisposableEffect(streamSymbols) {
-        val symbols = streamSymbols.split(",").filter { it.isNotBlank() }
-        val stream = BinanceMarkPriceStream(
-            symbols = symbols,
-            onMarkPrice = { symbol, price ->
-                val updated = livePositions.map { position ->
-                    if (position.symbol.equals(symbol, ignoreCase = true)) position.withMarkPrice(price) else position
-                }
-                livePositions = updated
-                positionsStore.save(updated)
-            },
-            onStatus = { markPriceStatus = it }
-        )
-        stream.start()
-        onDispose { stream.close() }
-    }
-
     val balanceScope = rememberCoroutineScope()
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
@@ -162,6 +132,38 @@ fun RiskOverviewScreen(
             }
         }
     }
+
+    LaunchedEffect(hasBinanceCredentials) {
+        if (hasBinanceCredentials) {
+            refreshLivePositions()
+            refreshAccountBalance()
+            while (true) {
+                delay(60_000L)
+                refreshLivePositions()
+                refreshAccountBalance()
+            }
+        }
+    }
+
+    val streamSymbols = livePositions.map { it.symbol }.distinct().sorted().joinToString(",")
+    DisposableEffect(streamSymbols) {
+        val symbols = streamSymbols.split(",").filter { it.isNotBlank() }
+        val stream = BinanceMarkPriceStream(
+            symbols = symbols,
+            onMarkPrice = { symbol, price ->
+                val updated = livePositions.map { position ->
+                    if (position.symbol.equals(symbol, ignoreCase = true)) position.withMarkPrice(price) else position
+                }
+                livePositions = updated
+                positionsStore.save(updated)
+            },
+            onStatus = { markPriceStatus = it }
+        )
+        stream.start()
+        onDispose { stream.close() }
+    }
+
+
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
