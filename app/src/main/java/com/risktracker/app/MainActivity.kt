@@ -1032,9 +1032,19 @@ private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> 
 
 @Composable
 fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJournalFill>) {
-    var month by remember { mutableStateOf(java.time.YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
+    var visibleYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
+    var visibleMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
     val dateFormatter = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+    var selectedDate by remember { mutableStateOf(dateFormatter.format(Date())) }
+    val monthKey = String.format(Locale.US, "%04d-%02d", visibleYear, visibleMonth + 1)
+    val monthCalendar = Calendar.getInstance().apply { set(visibleYear, visibleMonth, 1) }
+    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(monthCalendar.time)
+    fun changeMonth(delta: Int) {
+        val next = Calendar.getInstance().apply { set(visibleYear, visibleMonth, 1); add(Calendar.MONTH, delta) }
+        visibleYear = next.get(Calendar.YEAR)
+        visibleMonth = next.get(Calendar.MONTH)
+        selectedDate = dateFormatter.format(next.time)
+    }
     val manualByDate = remember(trades) {
         trades.filter { it.pnl.isFinite() }.mapNotNull { trade ->
             canonicalPnlDate(trade.date)?.let { it to trade }
@@ -1045,14 +1055,15 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
             .mapNotNull { fill -> runCatching { dateFormatter.format(Date(fill.time)) to fill }.getOrNull() }
             .groupBy({ it.first }, { it.second })
     }
-    val manualMonth = manualByDate.filterKeys { it.startsWith(month.toString()) }
-    val futuresMonth = futuresByDate.filterKeys { it.startsWith(month.toString()) }
+    val manualMonth = manualByDate.filterKeys { it.startsWith(monthKey) }
+    val futuresMonth = futuresByDate.filterKeys { it.startsWith(monthKey) }
     val manualTotal = manualMonth.values.flatten().sumOf { it.pnl }
     val futuresTotal = futuresMonth.values.flatten().sumOf { it.realizedPnl ?: 0.0 }
     val manualWinDays = manualMonth.count { (_, rows) -> rows.sumOf { it.pnl } > 0.0 }
     val futuresWinDays = futuresMonth.count { (_, rows) -> rows.sumOf { it.realizedPnl ?: 0.0 } > 0.0 }
-    val offset = month.atDay(1).dayOfWeek.value - 1
-    val calendarCells = List(offset) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+    val offset = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val dayCount = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val calendarCells = List<Int?>(offset) { null } + (1..dayCount).map { it }
     val selectedManual = manualByDate[selectedDate].orEmpty()
     val selectedFutures = futuresByDate[selectedDate].orEmpty()
 
@@ -1083,12 +1094,17 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(month.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")),
+                    Text(monthTitle,
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { month = month.minusMonths(1); selectedDate = month.atDay(1).toString() }) { Text("‹") }
-                        TextButton(onClick = { month = java.time.YearMonth.now(); selectedDate = java.time.LocalDate.now().toString() }) { Text("Today") }
-                        TextButton(onClick = { month = month.plusMonths(1); selectedDate = month.atDay(1).toString() }) { Text("›") }
+                        TextButton(onClick = { changeMonth(-1) }) { Text("‹") }
+                        TextButton(onClick = {
+                            val today = Calendar.getInstance()
+                            visibleYear = today.get(Calendar.YEAR)
+                            visibleMonth = today.get(Calendar.MONTH)
+                            selectedDate = dateFormatter.format(today.time)
+                        }) { Text("Today") }
+                        TextButton(onClick = { changeMonth(1) }) { Text("›") }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -1099,11 +1115,15 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
                 }
                 calendarCells.chunked(7).forEach { week ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        week.forEach { date ->
-                            if (date == null) {
+                        week.forEach { day ->
+                            if (day == null) {
                                 Spacer(Modifier.weight(1f).height(62.dp))
                             } else {
-                                val key = date.toString()
+                                val date = Calendar.getInstance().apply {
+                                    set(visibleYear, visibleMonth, day, 0, 0, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val key = dateFormatter.format(date.time)
                                 val manualPnl = manualByDate[key].orEmpty().sumOf { it.pnl }
                                 val futuresPnl = futuresByDate[key].orEmpty().sumOf { it.realizedPnl ?: 0.0 }
                                 val hasManual = manualByDate[key].orEmpty().isNotEmpty()
@@ -1124,7 +1144,7 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
                                     Column(Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                        Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.labelSmall,
+                                        Text(day.toString(), style = MaterialTheme.typography.labelSmall,
                                             fontWeight = if (selectedDate == key) FontWeight.Bold else FontWeight.Normal)
                                         if (hasData) {
                                             if (hasManual) Text("M " + manualPnl.num(0), style = MaterialTheme.typography.labelSmall,
@@ -1147,7 +1167,7 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
         }
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(runCatching { java.time.LocalDate.parse(selectedDate).format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")) }.getOrDefault(selectedDate),
+                Text(runCatching { SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(dateFormatter.parse(selectedDate) ?: Date()) }.getOrDefault(selectedDate),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (selectedManual.isEmpty() && selectedFutures.isEmpty()) {
                     Text("No closed-trade P&L records for this date.", style = MaterialTheme.typography.bodyMedium,
