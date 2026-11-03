@@ -13,8 +13,7 @@ import java.util.Locale
 
 @Composable
 fun BinancePositionJournalSection(
-    fills: List<BinanceJournalFill>,
-    onSync: () -> Unit
+    fills: List<BinanceJournalFill>
 ) {
     val cycles = remember(fills) { BinancePositionJournal.futuresCycles(fills) }
     val spotGroups = remember(fills) { BinancePositionJournal.spotActivity(fills) }
@@ -30,7 +29,6 @@ fun BinancePositionJournalSection(
                     Text("Binance-imported", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("${fills.size} executions · Binance auto-sync", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                OutlinedButton(onClick = onSync) { Text("Sync now") }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PositionJournalMetric("Position cycles", cycles.size.toString())
