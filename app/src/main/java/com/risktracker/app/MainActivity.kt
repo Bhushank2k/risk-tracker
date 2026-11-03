@@ -159,6 +159,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "ANALYTICS" to listOf(
             "Trading Analytics" to 20,
+            "P&L Calendar" to 23,
             "Post-trade reviews" to 14,
             "Ledger audit" to 15
         ),
@@ -302,6 +303,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
+                23 -> PnlCalendarScreen(trades, exchangeFills)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -901,6 +903,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         }
         MoreMenuSection("Analytics", "Execution results and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
             MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
+            MoreDestinationCard("P&L Calendar", "Daily realized results with manual and Binance Futures sources") { onNavigate(23) }
             MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
             MoreDestinationCard("Ledger audit", "Check imported history, duplicates and daily totals") { onNavigate(15) }
         }
@@ -1024,6 +1027,190 @@ private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> 
         }
     }
 }
+
+// ---------------- P&L calendar ----------------
+
+@Composable
+fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJournalFill>) {
+    var visibleYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
+    var visibleMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
+    val dateFormatter = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+    var selectedDate by remember { mutableStateOf(dateFormatter.format(Date())) }
+    val monthKey = String.format(Locale.US, "%04d-%02d", visibleYear, visibleMonth + 1)
+    val monthCalendar = Calendar.getInstance().apply { set(visibleYear, visibleMonth, 1) }
+    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(monthCalendar.time)
+    fun changeMonth(delta: Int) {
+        val next = Calendar.getInstance().apply { set(visibleYear, visibleMonth, 1); add(Calendar.MONTH, delta) }
+        visibleYear = next.get(Calendar.YEAR)
+        visibleMonth = next.get(Calendar.MONTH)
+        selectedDate = dateFormatter.format(next.time)
+    }
+    val manualByDate = remember(trades) {
+        trades.filter { it.pnl.isFinite() }.mapNotNull { trade ->
+            canonicalPnlDate(trade.date)?.let { it to trade }
+        }.groupBy({ it.first }, { it.second })
+    }
+    val futuresByDate = remember(exchangeFills) {
+        exchangeFills.filter { it.market.contains("Futures", true) && it.realizedPnl?.isFinite() == true && it.time > 0L }
+            .mapNotNull { fill -> runCatching { dateFormatter.format(Date(fill.time)) to fill }.getOrNull() }
+            .groupBy({ it.first }, { it.second })
+    }
+    val manualMonth = manualByDate.filterKeys { it.startsWith(monthKey) }
+    val futuresMonth = futuresByDate.filterKeys { it.startsWith(monthKey) }
+    val manualTotal = manualMonth.values.flatten().sumOf { it.pnl }
+    val futuresTotal = futuresMonth.values.flatten().sumOf { it.realizedPnl ?: 0.0 }
+    val manualWinDays = manualMonth.count { (_, rows) -> rows.sumOf { it.pnl } > 0.0 }
+    val futuresWinDays = futuresMonth.count { (_, rows) -> rows.sumOf { it.realizedPnl ?: 0.0 } > 0.0 }
+    val offset = (monthCalendar.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val dayCount = monthCalendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val calendarCells = List<Int?>(offset) { null } + (1..dayCount).map { it }
+    val selectedManual = manualByDate[selectedDate].orEmpty()
+    val selectedFutures = futuresByDate[selectedDate].orEmpty()
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("P&L Calendar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Closed-trade results by local calendar day", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RiskCard(Modifier.weight(1f)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Manual journal", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(manualTotal.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = pnlColor(manualTotal))
+                    Text("$manualWinDays profitable days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            RiskCard(Modifier.weight(1f)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Binance Futures", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(futuresTotal.usd(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = pnlColor(futuresTotal))
+                    Text("$futuresWinDays profitable days", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        RiskCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(monthTitle,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { changeMonth(-1) }) { Text("‹") }
+                        TextButton(onClick = {
+                            val today = Calendar.getInstance()
+                            visibleYear = today.get(Calendar.YEAR)
+                            visibleMonth = today.get(Calendar.MONTH)
+                            selectedDate = dateFormatter.format(today.time)
+                        }) { Text("Today") }
+                        TextButton(onClick = { changeMonth(1) }) { Text("›") }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    listOf("M", "T", "W", "T", "F", "S", "S").forEach { day ->
+                        Text(day, Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                calendarCells.chunked(7).forEach { week ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        week.forEach { day ->
+                            if (day == null) {
+                                Spacer(Modifier.weight(1f).height(62.dp))
+                            } else {
+                                val date = Calendar.getInstance().apply {
+                                    set(visibleYear, visibleMonth, day, 0, 0, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                val key = dateFormatter.format(date.time)
+                                val manualPnl = manualByDate[key].orEmpty().sumOf { it.pnl }
+                                val futuresPnl = futuresByDate[key].orEmpty().sumOf { it.realizedPnl ?: 0.0 }
+                                val hasManual = manualByDate[key].orEmpty().isNotEmpty()
+                                val hasFutures = futuresByDate[key].orEmpty().isNotEmpty()
+                                val dayPnl = manualPnl + futuresPnl
+                                val hasData = hasManual || hasFutures
+                                val cellColor = when {
+                                    !hasData -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    dayPnl > 0.0 -> profitColor().copy(alpha = 0.14f)
+                                    dayPnl < 0.0 -> lossColor().copy(alpha = 0.14f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                }
+                                Surface(onClick = { selectedDate = key },
+                                    modifier = Modifier.weight(1f).height(62.dp),
+                                    shape = RoundedCornerShape(9.dp),
+                                    color = if (selectedDate == key) MaterialTheme.colorScheme.primaryContainer else cellColor,
+                                    border = if (selectedDate == key) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null) {
+                                    Column(Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(day.toString(), style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (selectedDate == key) FontWeight.Bold else FontWeight.Normal)
+                                        if (hasData) {
+                                            if (hasManual) Text("M " + manualPnl.num(0), style = MaterialTheme.typography.labelSmall,
+                                                color = pnlColor(manualPnl), maxLines = 1)
+                                            if (hasFutures) Text("F " + futuresPnl.num(0), style = MaterialTheme.typography.labelSmall,
+                                                color = pnlColor(futuresPnl), maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        repeat(7 - week.size) { Spacer(Modifier.weight(1f).height(62.dp)) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("M · Manual", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("F · Binance Futures", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        RiskCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(runCatching { SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(dateFormatter.parse(selectedDate) ?: Date()) }.getOrDefault(selectedDate),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (selectedManual.isEmpty() && selectedFutures.isEmpty()) {
+                    Text("No closed-trade P&L records for this date.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (selectedManual.isNotEmpty()) {
+                    Text("Manual journal · \${selectedManual.size} trades", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary)
+                    selectedManual.forEach { trade ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(trade.symbol, fontWeight = FontWeight.SemiBold)
+                                Text(trade.side + " · " + trade.date, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(trade.pnl.usd(), color = pnlColor(trade.pnl), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                if (selectedFutures.isNotEmpty()) {
+                    if (selectedManual.isNotEmpty()) HorizontalDivider()
+                    Text("Binance Futures · \${selectedFutures.size} executions with realized P&L",
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    selectedFutures.sortedBy { it.time }.forEach { fill ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(fill.symbol, fontWeight = FontWeight.SemiBold)
+                                Text(fill.side + " · " + SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fill.time)),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text((fill.realizedPnl ?: 0.0).usd(), color = pnlColor(fill.realizedPnl ?: 0.0), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+        Text("Sources are shown separately to avoid silently double-counting manual entries against Binance fills. Manual values use the saved journal P&L. Binance values include only Futures executions with exchange-reported realized P&L; fee-asset conversion, Spot cost basis and funding are not added here. Empty dates mean no records were found, not zero profit.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 // ---------------- About ----------------
 
 @Composable
