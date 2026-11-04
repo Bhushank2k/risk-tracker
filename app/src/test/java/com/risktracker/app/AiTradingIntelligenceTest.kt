@@ -15,7 +15,7 @@ class AiTradingIntelligenceTest {
             riskUsd = 5.0, screenshotUri = "content://private/screenshot"
         )
         val context = buildAiTradingContext(
-            listOf(trade), emptyMap(), emptyList(), AiReportKind.JOURNAL,
+            listOf(trade), emptyMap(), AiReportKind.JOURNAL,
             nowMillis = 1794000000000L
         )
         val serialized = context.toString()
@@ -29,7 +29,7 @@ class AiTradingIntelligenceTest {
     @Test fun reviewAdherenceIsIncludedWithoutReviewIdentity() {
         val trade = TradeEntry("t1", "2026-11-03", "ETHUSDT", "Short", 10.0, 9.0, 2.0)
         val review = TradeReview("t1", true, "Pullback", "Calm", "Waited for confirmation", "2026-11-03")
-        val context = buildAiTradingContext(listOf(trade), mapOf("t1" to review), emptyList(),
+        val context = buildAiTradingContext(listOf(trade), mapOf("t1" to review),
             AiReportKind.DISCIPLINE, nowMillis = 1794000000000L)
         val row = context.getJSONArray("trades").getJSONObject(0)
         assertEquals(true, row.getBoolean("followed_plan"))
@@ -40,7 +40,7 @@ class AiTradingIntelligenceTest {
     @Test fun weeklyContextUsesOnlyTradesFromCurrentWeek() {
         val monday = TradeEntry("m", "2026-11-02", "BTCUSDT", "Long", 10.0, 11.0, 1.0)
         val prior = TradeEntry("p", "2026-10-30", "ETHUSDT", "Long", 10.0, 11.0, 1.0)
-        val context = buildAiTradingContext(listOf(prior, monday), emptyMap(), emptyList(),
+        val context = buildAiTradingContext(listOf(prior, monday), emptyMap(),
             AiReportKind.WEEKLY, nowMillis = 1794000000000L)
         val rows = context.getJSONArray("trades")
         assertTrue((0 until rows.length()).any { rows.getJSONObject(it).getString("symbol") == "BTCUSDT" })

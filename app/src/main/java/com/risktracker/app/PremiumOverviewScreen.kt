@@ -33,12 +33,10 @@ private const val OVERVIEW_REST_MIN_INTERVAL_MS = 5 * 60_000L
 
 @Composable
 fun RiskOverviewScreen(
-    entries: List<PnlEntry>,
     importedPnl: List<BinanceDailyResult>,
     trades: List<TradeEntry>,
     maxDailyLoss: Double,
-    onNavigate: (Int) -> Unit,
-    onChange: (List<PnlEntry>) -> Unit
+    onNavigate: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val positionsStore = remember { BinanceLivePositionsStore(context) }
@@ -173,15 +171,15 @@ fun RiskOverviewScreen(
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    val daily = remember(entries, importedPnl, trades) {
-        reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
+    // Daily results come only from imported Binance records; manual entries are not used.
+    val daily = remember(importedPnl) {
+        reconcileDailyPnl(emptyList(), importedPnl, emptyList()).sortedBy { it.date }
     }
     val todayPnl = daily.lastOrNull { it.date == today }?.selectedPnl
     val netPnl = daily.sumOf { it.selectedPnl }
     val wins = trades.count { it.pnl > 0.0 }
     val closedTrades = wins + trades.count { it.pnl < 0.0 }
     val winRate = if (closedTrades > 0) wins.toDouble() / closedTrades * 100.0 else null
-    val latestBalance = entries.sortedBy { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.lastOrNull()?.closing
     val recentTrades = trades.sortedByDescending { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.take(5)
     val riskRemaining = if (maxDailyLoss > 0.0 && todayPnl != null) (maxDailyLoss + todayPnl).coerceIn(0.0, maxDailyLoss) else null
     val riskUsed = if (maxDailyLoss > 0.0 && todayPnl != null) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else null
@@ -309,10 +307,9 @@ fun RiskOverviewScreen(
                     Modifier.weight(1f)
                 )
             }
-            if (winRate != null || latestBalance != null) {
+            if (winRate != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (winRate != null) CompactOverviewMeta("Win rate", winRate.pct(1) + " · " + closedTrades + " closed")
-                    if (latestBalance != null) CompactOverviewMeta("Last recorded balance", latestBalance.usd())
+                    CompactOverviewMeta("Win rate", winRate.pct(1) + " · " + closedTrades + " closed")
                 }
             }
         }

@@ -99,23 +99,12 @@ class RiskAlertNotificationWorker(context: Context, params: WorkerParameters) : 
         if (!RiskAlertNotifications.hasNotificationPermission(context)) return Result.success()
 
         val store = Store(context)
-        val entries = store.loadEntries()
         val trades = store.loadTrades()
         val imported = BinanceSyncData.load(context)
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val dailyPnl = reconcileDailyPnl(entries, imported, trades).firstOrNull { it.date == today }?.selectedPnl
+        // Daily P&L comes only from imported Binance records; the manual ledger is not used.
+        val dailyPnl = reconcileDailyPnl(emptyList(), imported, emptyList()).firstOrNull { it.date == today }?.selectedPnl
 
-        val ordered = entries.mapNotNull { entry ->
-            canonicalPnlDate(entry.date)?.let { it to entry.closing }
-        }.sortedBy { it.first }
-        var peak = Double.NaN
-        var maxDrawdown = 0.0
-        ordered.forEach { (_, balance) ->
-            if (balance.isFinite() && balance > 0.0) {
-                peak = if (peak.isNaN()) balance else maxOf(peak, balance)
-                if (peak > 0.0) maxDrawdown = maxOf(maxDrawdown, ((peak - balance) / peak * 100.0).coerceAtLeast(0.0))
-            }
-        }
         val consecutiveLosses = trades.mapNotNull { trade ->
             canonicalPnlDate(trade.date)?.let { it to trade.pnl }
         }.sortedByDescending { it.first }.takeWhile { it.second < 0.0 }.size
@@ -125,8 +114,7 @@ class RiskAlertNotificationWorker(context: Context, params: WorkerParameters) : 
         val staleHours = prefs.getInt("stale_hours", 24).toLong().coerceIn(1L, 720L)
         val alerts = RiskAlertEngine.evaluate(
             dailyPnl, store.maxDailyLoss, prefs.getBoolean("daily_enabled", true),
-            if (ordered.isEmpty()) null else maxDrawdown,
-            prefs.getFloat("drawdown_threshold", 10f).toDouble(), prefs.getBoolean("drawdown_enabled", true),
+            null, 10.0, false,
             hasCredentials, syncStatus.lastSuccess, now, staleHours * 3_600_000L,
             prefs.getBoolean("stale_enabled", true), consecutiveLosses,
             prefs.getInt("streak_limit", 3), prefs.getBoolean("streak_enabled", true)

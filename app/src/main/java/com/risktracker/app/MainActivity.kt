@@ -115,13 +115,12 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
-    var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
-    var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
     val todayPnlDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    val todayReconciledPnl = remember(entries, importedPnl, trades, todayPnlDate) {
-        reconcileDailyPnl(entries, importedPnl, trades).firstOrNull { it.date == todayPnlDate }
+    // Daily P&L comes only from imported Binance records; the manual ledger is not used.
+    val todayReconciledPnl = remember(importedPnl, todayPnlDate) {
+        reconcileDailyPnl(emptyList(), importedPnl, emptyList()).firstOrNull { it.date == todayPnlDate }
     }
     var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
     var exchangeSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
@@ -250,10 +249,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 label = "screen-transition"
             ) { destination ->
                 when (destination) {
-                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it }) {
-                    entries = it
-                    store.saveEntries(it)
-                }
+                0 -> PnlScreen(store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it })
                 1 -> TradeJournalScreen(exchangeFills)
                 2 -> CombinedTradingCalculatorScreen(
                     input = input,
@@ -288,16 +284,15 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
-                19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
+                19 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                24 -> AiTradingIntelligenceScreen(trades, entries, exchangeFills, store.maxTradeRisk, store.maxDailyLoss)
-                else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
-                    onRestore = { pair ->
-                        entries = pair.first
-                        trades = pair.second
+                24 -> AiTradingIntelligenceScreen(trades, exchangeFills, store.maxTradeRisk, store.maxDailyLoss)
+                else -> MoreScreen(store, trades, themeMode, onThemeModeChange,
+                    onRestore = { restoredTrades ->
+                        trades = restoredTrades
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
                 }
@@ -617,223 +612,22 @@ fun LiveTradesScreen() {
 
 @Composable
 fun PnlScreen(
-    entries: List<PnlEntry>,
-    syncedCount: Int,
     maxDailyLoss: Double,
     importedPnl: List<BinanceDailyResult> = emptyList(),
     trades: List<TradeEntry> = emptyList(),
     onNavigate: (Int) -> Unit = {},
-    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {},
-    onChange: (List<PnlEntry>) -> Unit
+    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {}
 ) {
     RiskOverviewScreen(
-        entries = entries,
         importedPnl = importedPnl,
         trades = trades,
         maxDailyLoss = maxDailyLoss,
-        onNavigate = onNavigate,
-        onChange = onChange
+        onNavigate = onNavigate
     )
 }
 
 @Composable
-fun BalanceChart(entries: List<PnlEntry>) {
-    if (entries.size < 2) return
-    var metric by remember { mutableStateOf("Balance") }
-    var range by remember { mutableStateOf("All") }
-    val timed = remember(entries) { entries.withReportTimes().sortedBy { it.second ?: Long.MIN_VALUE } }
-    val datedEntries = timed.map { it.first }
-    var cumulative = 0.0
-    val allPoints = datedEntries.map { entry ->
-        cumulative += entry.pnl
-        entry to if (metric == "Balance") entry.closing else cumulative
-    }
-    val latestTime = timed.mapNotNull { it.second }.maxOrNull()
-    val rangeDays = when (range) { "1W" -> 7; "1M" -> 30; "3M" -> 90; else -> null }
-    val filteredPoints = if (rangeDays == null || latestTime == null) allPoints else {
-        val cutoff = latestTime - rangeDays * 24L * 60L * 60L * 1000L
-        allPoints.filterIndexed { index, _ -> timed[index].second?.let { it >= cutoff } == true }
-            .ifEmpty { allPoints }
-    }
-    val points = filteredPoints.map { it.second }
-    val lo = points.minOrNull() ?: 0.0
-    val hi = points.maxOrNull() ?: 0.0
-    val line = MaterialTheme.colorScheme.primary
-    RiskCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Balance", "Net P&L").forEach { option ->
-                    FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("1W", "1M", "3M", "All").forEach { option ->
-                    FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
-                }
-            }
-            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
-                val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
-                val path = Path()
-                points.forEachIndexed { i, value ->
-                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
-                    val y = (size.height * (1 - (value - lo) / rangeValue)).toFloat()
-                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                drawPath(path, line, style = Stroke(width = 4f))
-                drawLine(Color.LightGray.copy(alpha = 0.5f), Offset(0f, size.height), Offset(size.width, size.height))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(
-                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-
-@Composable
-fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> Unit) {
-    val today = remember { SimpleDateFormat("d/M/yyyy", Locale.getDefault()).format(Date()) }
-    var date by remember { mutableStateOf(today) }
-    var balance by remember { mutableStateOf(last?.closing?.let { "%.2f".format(it) } ?: "") }
-    var pnl by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var discipline by remember { mutableIntStateOf(3) }
-    val b = balance.toDoubleOrNull()
-    val p = pnl.toDoubleOrNull()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add day") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(date, { date = it }, label = { Text("Date") }, singleLine = true)
-                OutlinedTextField(
-                    balance, { balance = it }, label = { Text("Opening balance (USD)") },
-                    supportingText = { Text("Change it if you deposited or withdrew") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = pnl, onValueChange = { pnl = it }, label = { Text("Daily P&L (USD)") },
-                        supportingText = { Text("Enter profit or loss") }, modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    OutlinedButton(onClick = { pnl = when { pnl.startsWith("-") -> pnl.removePrefix("-"); pnl.isNotBlank() -> "-$pnl"; else -> "-" } }) { Text("−", fontSize = 22.sp) }
-                }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Daily notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                Text("Discipline score: $discipline / 5")
-                Slider(value = discipline.toFloat(), onValueChange = { discipline = it.toInt().coerceIn(0, 5) }, valueRange = 0f..5f, steps = 4)
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = b != null && p != null && date.isNotBlank(),
-                onClick = { onAdd(PnlEntry(date.trim(), b!!, p!!, notes.trim(), discipline)) }) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
-@Composable
-fun EquityDrawdownCard(entries: List<PnlEntry>) {
-    if (entries.isEmpty()) return
-    val ordered = remember(entries) { entries.sortedByReportDate() }
-    var peak = ordered.first().closing
-    var maxDd = 0.0
-    ordered.forEach { e -> peak = maxOf(peak, e.closing); maxDd = maxOf(maxDd, peak - e.closing) }
-    val currentPeak = ordered.lastOrNull()?.let { last -> ordered.takeWhile { it.date != last.date }.fold(0.0) { p, e -> maxOf(p, e.closing) }.let { maxOf(it, last.closing) } } ?: 0.0
-    val current = ordered.last().closing
-    val drawdown = (currentPeak - current).coerceAtLeast(0.0)
-    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Equity & drawdown", style = MaterialTheme.typography.titleMedium)
-        Text("Current balance: " + current.usd() + " · Peak-to-current drawdown: " + drawdown.usd(), color = if (drawdown > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-        Text("Maximum historical drawdown: " + maxDd.usd(), style = MaterialTheme.typography.bodySmall)
-        Text("Drawdown compares recorded closing balances with the highest prior closing balance; deposits/withdrawals may affect it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
-}
-
-// SimpleDateFormat is not thread-safe, so each thread gets its own set of parsers, created once and reused.
-private val reportDateFormats = object : ThreadLocal<List<SimpleDateFormat>>() {
-    override fun initialValue(): List<SimpleDateFormat> =
-        listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "M/d/yyyy").map { SimpleDateFormat(it, Locale.US).apply { isLenient = false } }
-}
-
-private fun reportDate(value: String): Date? {
-    for (format in reportDateFormats.get()) {
-        try { return format.parse(value) } catch (_: Exception) { }
-    }
-    return null
-}
-
-/** Pairs each entry with its parsed report time (null when the date cannot be parsed). Each date is parsed once. */
-private fun List<PnlEntry>.withReportTimes(): List<Pair<PnlEntry, Long?>> = map { it to reportDate(it.date)?.time }
-
-/** Oldest first; entries with unparseable dates sort before dated entries, keeping their original order. */
-private fun List<PnlEntry>.sortedByReportDate(): List<PnlEntry> =
-    withReportTimes().sortedBy { it.second ?: Long.MIN_VALUE }.map { it.first }
-
-@Composable
-fun PnlCalendar(entries: List<PnlEntry>) {
-    if (entries.isEmpty()) return
-    val keyFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
-    val parsed = remember(entries) { entries.mapNotNull { e -> reportDate(e.date)?.let { it to e } } }
-    if (parsed.isEmpty()) return
-    val latest = remember(parsed) { parsed.maxBy { it.first.time }.first }
-    val cal = Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, 1) }
-    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
-    val startOffset = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
-    val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-    val byDay = remember(parsed) { parsed.associate { keyFormat.format(it.first) to it.second } }
-    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("P&L calendar · " + monthTitle, style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth()) { listOf("M", "T", "W", "T", "F", "S", "S").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall) } }
-        val cells = List(startOffset) { 0 } + (1..days).toList()
-        cells.chunked(7).forEach { week -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            (week + List(7 - week.size) { 0 }).forEach { day ->
-                val key = if (day > 0) keyFormat.format(Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, day) }.time) else ""
-                val e = byDay[key]
-                val bg = when { day == 0 -> MaterialTheme.colorScheme.surface; e == null -> MaterialTheme.colorScheme.surfaceVariant; e.pnl > 0 -> profitColor().copy(alpha = 0.18f); e.pnl < 0 -> lossColor().copy(alpha = 0.18f); else -> MaterialTheme.colorScheme.surfaceVariant }
-                Column(Modifier.weight(1f).padding(vertical = 2.dp).background(bg, MaterialTheme.shapes.small).padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (day == 0) " " else day.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
-                    if (e != null) Text(if (e.pnl > 0) "+" + e.pnl.num(0) else e.pnl.num(0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                }
-            }
-        } }
-        Text("Green = profit · Red = loss · Empty = no recorded result", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
-}
-
-@Composable
-fun DailyInsights(entries: List<PnlEntry>) {
-    if (entries.isEmpty()) return
-    val ordered = remember(entries) { entries.sortedByReportDate() }
-    var currentStreak = 0
-    var streakSign = 0
-    var bestWinStreak = 0
-    var bestLossStreak = 0
-    ordered.forEach { e ->
-        val sign = when { e.pnl > 0 -> 1; e.pnl < 0 -> -1; else -> 0 }
-        if (sign == 0) { currentStreak = 0; streakSign = 0 } else if (sign == streakSign) currentStreak++ else { currentStreak = 1; streakSign = sign }
-        if (sign > 0) bestWinStreak = maxOf(bestWinStreak, currentStreak)
-        if (sign < 0) bestLossStreak = maxOf(bestLossStreak, currentStreak)
-    }
-    val weekdayTotals = remember(ordered) { ordered.mapNotNull { e -> reportDate(e.date)?.let { Calendar.getInstance().apply { time = it }.get(Calendar.DAY_OF_WEEK) to e.pnl } }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() } }
-    val bestWeekday = weekdayTotals.maxByOrNull { it.value }
-    val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Streaks & weekday insights", style = MaterialTheme.typography.titleMedium)
-        Text("Current streak: " + if (streakSign == 0) "No active win/loss streak" else "$currentStreak consecutive ${if (streakSign > 0) "winning" else "losing"} days")
-        Text("Longest winning streak: $bestWinStreak days · Longest losing streak: $bestLossStreak days")
-        Text("Best recorded weekday: " + (bestWeekday?.let { names[it.key - 1] + " (" + it.value.usd() + ")" } ?: "Not enough data"))
-        Text("Weekday totals combine all recorded years and may reflect deposits/withdrawals in balances, not just trading skill.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
-}
-
-@Composable
-fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onNavigate: (Int) -> Unit) {
+fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (List<TradeEntry>) -> Unit, onNavigate: (Int) -> Unit) {
     val context = LocalContext.current
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
@@ -909,11 +703,10 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-        Text("Daily profit target is fixed at 2% of the applicable opening balance and is calculated in the Daily P&L dashboard.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved. The daily profit target remains fixed at 2%." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
+        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
-        Text("Exports daily P&L, journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
+        Text("Exports journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export journal & settings (JSON)") }
         OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Choose backup to restore") }
@@ -922,7 +715,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
             AlertDialog(
                 onDismissRequest = { pendingBackupRaw = null },
                 title = { Text("Replace current records?") },
-                text = { Text("Restoring replaces your current daily P&L and journal entries, and may replace saved trade plans, reviews, and risk limits. Export a backup of the current data first if you may need it.") },
+                text = { Text("Restoring replaces your current journal entries, and may replace saved trade plans, reviews, and risk limits. Export a backup of the current data first if you may need it.") },
                 confirmButton = {
                     TextButton(onClick = {
                         val raw = pendingBackupRaw
@@ -930,7 +723,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                         if (raw != null) {
                             try {
                                 onRestore(store.importBackup(raw))
-                                backupMessage = "Backup restored. The selected backup replaced current daily P&L and journal entries."
+                                backupMessage = "Backup restored. The selected backup replaced current journal entries."
                             } catch (e: Exception) {
                                 backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
                             }
