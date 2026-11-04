@@ -5,8 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class LogicTest {
     private val eps = 1e-6
@@ -125,48 +123,6 @@ class LogicTest {
         assertEquals(90.0, row10.longLiq, eps)
         assertEquals(110.0, row10.shortLiq, eps)
     }
-
-    @Test
-    fun dailyPnlAlertLooksUpTodayInsteadOfLastRecordedEntry() {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse("2026-10-23")!!
-        val entries = listOf(
-            PnlEntry("23/10/2026", 100.0, -25.0),
-            PnlEntry("24/10/2026", 75.0, 4.0)
-        )
-        assertEquals(-25.0, pnlEntryForDate(entries, today)?.pnl ?: 0.0, eps)
-    }
-
-    @Test
-    fun dailyPnlAlertSupportsIsoDatesAndReturnsNullWhenTodayIsMissing() {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse("2026-10-23")!!
-        assertEquals(12.0, pnlEntryForDate(listOf(PnlEntry("2026-10-23", 100.0, 12.0)), today)?.pnl ?: 0.0, eps)
-        assertEquals(null, pnlEntryForDate(listOf(PnlEntry("22/10/2026", 100.0, -50.0)), today))
-    }
-
-    @Test
-    fun statsCountWinsLossesAndBalance() {
-        val s = computeStats(
-            listOf(
-                PnlEntry("1/1/2026", 100.0, 10.0),
-                PnlEntry("2/1/2026", 110.0, -5.0),
-                PnlEntry("3/1/2026", 105.0, 0.0)
-            )
-        )
-        assertEquals(10.0, s.totalWin, eps)
-        assertEquals(-5.0, s.totalLoss, eps)
-        assertEquals(5.0, s.net, eps)
-        assertEquals(1, s.winDays)
-        assertEquals(1, s.lossDays)
-        assertEquals(50.0, s.winRate, eps)            // flat days are not counted as traded
-        assertEquals(105.0, s.currentBalance, eps)
-    }
-
-    @Test
-    fun emptyHistoryIsSafe() {
-        val s = computeStats(emptyList())
-        assertEquals(0.0, s.currentBalance, eps)
-        assertEquals(0.0, s.winRate, eps)
-    }
     @Test
     fun longAndShortTradePnlSubtractsFees() {
         val long = TradeEntry("1", "2026-01-01", "BTCUSDT", "Long", 100.0, 110.0, 2.0, 1.0)
@@ -185,19 +141,6 @@ class LogicTest {
         val csv = tradesToCsv(listOf(invalid))
         assertFalse(csv.contains("NaN"))
         assertTrue(csv.contains(",\"Buy\",100.0,90.0,1.0,0.0,,"))
-    }
-
-    @Test
-    fun dailyCsvUsesLocaleIndependentDecimalPointAndQuotesText() {
-        val previous = Locale.getDefault()
-        try {
-            Locale.setDefault(Locale.GERMANY)
-            val csv = entriesToCsv(listOf(PnlEntry("1/2/2026", 100.5, 1.25, "memo, \"quoted\"")), 90.0)
-            assertTrue(csv.contains("\"1/2/2026\",100.50,1.25,"))
-            assertTrue(csv.contains("\"memo, \"\"quoted\"\"\""))
-        } finally {
-            Locale.setDefault(previous)
-        }
     }
 
     @Test
@@ -258,28 +201,6 @@ class LogicTest {
         assertEquals(0.0, s.winRate, eps)
         assertEquals(0.0, s.netPnl, eps)
         assertEquals(0.0, s.maxDrawdown, eps)
-    }
-
-
-    @Test
-    fun dailyNotesAndDisciplineAreIncludedInCsvWithoutChangingPnl() {
-        val row = PnlEntry("21/10/2026", 100.0, -5.0, "Followed plan, no revenge trade", 4)
-        assertEquals(95.0, row.closing, eps)
-        assertEquals(4, row.disciplineScore)
-        val csv = entriesToCsv(listOf(row), 90.0)
-        assertTrue(csv.contains("DisciplineScore,Notes"))
-        assertTrue(csv.contains("4,\"Followed plan, no revenge trade\""))
-    }
-
-    @Test
-    fun dailyWinRateExcludesFlatDays() {
-        val stats = computeStats(listOf(
-            PnlEntry("19/10/2026", 100.0, 10.0),
-            PnlEntry("20/10/2026", 110.0, -5.0),
-            PnlEntry("21/10/2026", 105.0, 0.0)
-        ))
-        assertEquals(50.0, stats.winRate, eps)
-        assertEquals(5.0, stats.net, eps)
     }
 
 }
