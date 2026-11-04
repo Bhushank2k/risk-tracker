@@ -78,15 +78,16 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val scheme = if (dark) {
                 darkColorScheme(
-                    primary = Color(0xFF7DE2B8),
-                    onPrimary = Color(0xFF06271A),
-                    secondary = Color(0xFF91C9FF),
-                    background = Color(0xFF0B1110),
-                    surface = Color(0xFF111A18),
-                    surfaceVariant = Color(0xFF202B28),
-                    primaryContainer = Color(0xFF183D2E),
-                    onPrimaryContainer = Color(0xFFD6F8E7),
-                    error = Color(0xFFFF7B78)
+                    primary = Color(0xFF2DD4BF),
+                    onPrimary = Color(0xFF0F1115),
+                    secondary = Color(0xFF8FA3BF),
+                    background = Color(0xFF0F1115),
+                    surface = Color(0xFF161A22),
+                    surfaceVariant = Color(0xFF1A1E27),
+                    outlineVariant = Color(0xFF262B36),
+                    primaryContainer = Color(0xFF183A33),
+                    onPrimaryContainer = Color(0xFF5EEAD4),
+                    error = Color(0xFFFB7185)
                 )
             } else {
                 lightColorScheme(
