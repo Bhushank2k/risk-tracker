@@ -636,6 +636,122 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
     return geometryValid && !warningBlocksEntry
 }
 
+private data class EntryGuidance(
+    val score: Int,
+    val grade: String,
+    val action: String,
+    val trigger: String,
+    val invalidation: String,
+    val checks: List<Pair<String, Boolean?>>
+)
+
+private fun biasSupportsSide(bias: String, side: String): Boolean {
+    val value = bias.lowercase(Locale.US)
+    val tokens = if (side == "LONG") listOf("bull", "up", "long", "positive")
+        else listOf("bear", "down", "short", "negative")
+    return tokens.any { value.contains(it) }
+}
+
+/** Rule-based entry coaching; it describes conditions and never promises a perfect fill. */
+private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
+    val longSide = idea.side == "LONG"
+    val trend4h = biasSupportsSide(idea.bias4h, idea.side)
+    val trend1h = biasSupportsSide(idea.bias1h, idea.side)
+    val trend5m = biasSupportsSide(idea.bias5m, idea.side)
+    val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
+    val volumeOk = idea.volumeRatio >= 1.15
+    val spreadOk = idea.spreadBps?.let { it in 0.0..10.0 } == true
+    val riskDistance = abs(idea.entry - idea.stop)
+    val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
+    val rewardOk = rr >= 1.5
+    val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
+        (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
+        (if (volumeOk) 15 else 0) + (if (spreadOk) 10 else 0) +
+        (if (rewardOk) 15 else 0)
+    val grade = when {
+        score >= 80 -> "Strong confluence"
+        score >= 65 -> "Good, but verify"
+        score >= 45 -> "Mixed conditions"
+        else -> "Weak confluence"
+    }
+    val zoneHalfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
+    val zoneLow = idea.entry - zoneHalfWidth
+    val zoneHigh = idea.entry + zoneHalfWidth
+    val currentInZone = idea.last in zoneLow..zoneHigh
+    val tooFar = abs(idea.last - idea.entry) > maxOf(idea.entry * 0.003, riskDistance * 0.50)
+    val action = when {
+        idea.side !in listOf("LONG", "SHORT") || !tradeIdeaRiskValid(idea) ->
+            "Skip this setup: direction or stop/target geometry is not valid."
+        idea.entryTriggered && tooFar ->
+            "The trigger has fired, but price is now outside the planned entry area. Do not chase; wait for a fresh setup."
+        idea.entryTriggered && score >= 65 ->
+            "Trigger detected. Check the completed candle and execution spread; only consider the plan while price remains near the entry zone."
+        idea.entryTriggered ->
+            "Trigger detected, but confluence is weak. Wait for another confirmation candle or skip."
+        currentInZone ->
+            "Price is in the entry area. Wait for a clear rejection and a close back in the trade direction; do not enter on a touch alone."
+        tooFar ->
+            "Price is extended from the planned entry. Wait for a pullback into the zone; avoid chasing."
+        else ->
+            "Wait for price to approach the planned entry zone, then require a directional candle close."
+    }
+    val trigger = if (longSide)
+        "LONG: let price retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
+    else
+        "SHORT: let price retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
+    val invalidation = if (longSide)
+        "Cancel the long if price closes below the retest support / stop level before entry."
+    else
+        "Cancel the short if price closes above the retest resistance / stop level before entry."
+    return EntryGuidance(score, grade, action, trigger, invalidation, listOf(
+        "4H trend aligned" to trend4h,
+        "1H trend aligned" to trend1h,
+        "5M trigger trend aligned" to trend5m,
+        ("RSI not stretched (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
+        ("Volume at least 1.15x average (" + "%.2f".format(Locale.US, idea.volumeRatio) + "x)") to volumeOk,
+        "Spread at or below 10 bps" to idea.spreadBps?.let { it in 0.0..10.0 },
+        ("Target 1 offers at least 1.5R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
+    ))
+}
+
+@Composable
+private fun EntryGuidancePanel(idea: TradeIdea) {
+    val guidance = remember(idea) { buildEntryGuidance(idea) }
+    val zoneHalfWidth = maxOf(idea.entry * 0.00075, abs(idea.entry - idea.stop) * 0.10)
+    val zoneLow = idea.entry - zoneHalfWidth
+    val zoneHigh = idea.entry + zoneHalfWidth
+    RiskCard(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+    ) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
+                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+                    fontWeight = FontWeight.SemiBold)
+            }
+            Text("Planned entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+            Text(guidance.action, style = MaterialTheme.typography.bodySmall)
+            Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            HorizontalDivider()
+            Text("Entry quality checklist", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            guidance.checks.forEach { (label, passed) ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (passed == true) "✓" else "○",
+                        color = if (passed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text(label + if (passed == null) " · unavailable" else if (passed) " · pass" else " · wait",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text("Rule-based confluence score, not a win probability. No entry is guaranteed; use the completed candle, limit price, and your own risk rules.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     if (tracked) return TradeIdeaStage.TRACKING
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea)) return TradeIdeaStage.DO_NOT_ENTER
@@ -731,6 +847,9 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     Text(stage.title.uppercase(Locale.US), color = tint, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
+            }
+            if (idea.side == "LONG" || idea.side == "SHORT") {
+                EntryGuidancePanel(idea)
             }
             if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
