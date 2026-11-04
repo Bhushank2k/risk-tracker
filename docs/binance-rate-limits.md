@@ -5,4 +5,4 @@
 - All app Binance REST paths share a process-wide request pacer (minimum 250 ms between requests) and a circuit breaker. HTTP 418 honors Binance's `banned until` timestamp; HTTP 429 honors `Retry-After` and otherwise backs off for one minute. Requests fail fast while the circuit is open rather than repeatedly hitting the banned IP.
 - Historical candles, account balances, order/position snapshots, and account history remain REST operations because they are snapshot/history data, not continuous live quotes.
 - A WebSocket does not remove an existing Binance IP ban for REST. Wait until Binance's supplied expiry timestamp; WebSocket market streams may continue independently.
-- The guard is process-local. A process restart resets its in-memory circuit state, so do not repeatedly relaunch the app during an active ban.
+- The circuit-breaker expiry is persisted in app preferences and restored by the activity and every background sync runner, so force-closing or restarting the app does not immediately resume REST requests.
