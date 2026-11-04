@@ -14,7 +14,6 @@ data class PnlEntry(val date: String, val balance: Double, val pnl: Double, val 
     val closing: Double get() = balance + pnl
 }
 
-// ---------- Position calculator ----------
 
 data class CalcInput(
     val balance: Double = 50.0,

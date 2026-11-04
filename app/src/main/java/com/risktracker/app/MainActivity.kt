@@ -190,22 +190,52 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
     Scaffold(
         topBar = {
+            val pageTitle = when (tab) {
+                0 -> "Overview"
+                1 -> "Trade Journal"
+                2 -> "Position Calculator"
+                5 -> "About"
+                6 -> "Binance Sync"
+                7 -> "Settings"
+                9 -> "Tax Report"
+                11 -> "Trade Risk Gate"
+                13 -> "Scenario Lab"
+                14 -> "Trade Reviews"
+                15 -> "Ledger Audit"
+                16 -> "Live Trades"
+                17 -> "Account Activity"
+                18 -> "Sync Health"
+                19 -> "Risk Alerts"
+                20 -> "Analytics"
+                21 -> "Trade Ideas"
+                22 -> "Target Planner"
+                23 -> "P&L Calendar"
+                else -> "More"
+            }
+            val quickAction = when (tab) {
+                0 -> "Risk" to 11
+                1 -> "Analytics" to 20
+                20 -> "Calendar" to 23
+                21 -> "Targets" to 22
+                16 -> "Risk" to 11
+                else -> null
+            }
             TopAppBar(
+                modifier = Modifier.height(56.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                            Text("RT", color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
-                        }
-                        Text("Risk Tracker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    }
+                    Text(pageTitle, fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 },
                 actions = {
+                    quickAction?.let { (label, destination) ->
+                        TextButton(onClick = { tab = destination }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                        }
+                    }
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.Menu, contentDescription = "All destinations")
                     }
