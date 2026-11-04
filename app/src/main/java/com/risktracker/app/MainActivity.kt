@@ -214,29 +214,29 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
     Scaffold(
         topBar = {
-            val pageTitle = when (tab) {
-                0 -> "Overview"
-                1 -> "Trade Journal"
-                2 -> "Position Calculator"
-                5 -> "About Risk Tracker"
-                6 -> "Binance Sync"
-                7 -> "Settings"
-                9 -> "Crypto Tax Report"
-                11 -> "Trade Risk Gate"
-                13 -> "Risk Scenario Lab"
-                14 -> "Post-Trade Reviews"
-                15 -> "Ledger Audit"
-                16 -> "Live Positions & Orders"
-                17 -> "Account Activity"
-                18 -> "Sync Health"
-                19 -> "Risk Alerts"
-                20 -> "Trading Analytics"
-                21 -> "Daily Trade Ideas"
-                22 -> "Target Planner"
-                23 -> "P&L Calendar"
-                24 -> "AI Trading Intelligence"
-                else -> "More"
-            }
+            val pageTitles = mapOf(
+                0 to "Overview",
+                1 to "Trade Journal",
+                2 to "Position & Leverage Calculator",
+                5 to "About Risk Tracker",
+                6 to "Binance Sync",
+                7 to "Settings",
+                9 to "Crypto Tax Report",
+                11 to "Trade Risk Gate",
+                13 to "Risk Scenario Lab",
+                14 to "Post-Trade Reviews",
+                15 to "Ledger Audit",
+                16 to "Live Positions & Orders",
+                17 to "Account Activity",
+                18 to "Sync Health",
+                19 to "Risk Alerts",
+                20 to "Trading Analytics",
+                21 to "Daily Trade Ideas",
+                22 to "Target Planner",
+                23 to "P&L Calendar",
+                24 to "AI Trading Intelligence"
+            )
+            val pageTitle = pageTitles[tab] ?: "More"
             val quickAction = when (tab) {
                 0 -> "Risk" to 11
                 1 -> "Analytics" to 20
