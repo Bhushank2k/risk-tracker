@@ -16,18 +16,29 @@ import java.util.Date
 import java.util.Locale
 import java.text.SimpleDateFormat
 
+/** Per-pair totals. Order counts use the same grouping as the headline win/loss figures. */
 private data class PairAnalytics(
     val symbol: String,
     val realizedPnl: Double,
-    val realizedOrders: Int
+    val closedOrders: Int,
+    val wins: Int,
+    val losses: Int
 )
+
+private fun plural(count: Int, one: String, many: String): String =
+    "$count " + if (count == 1) one else many
+
+private fun analyticsDate(millis: Long): String =
+    SimpleDateFormat("dd MMM yyyy", Locale.US).format(Date(millis))
+
+/** Fees under one coin are shown with more decimals so small amounts do not read as zero. */
+private fun feeAmount(value: Double): String =
+    if (kotlin.math.abs(value) >= 1.0) "%,.2f".format(Locale.US, value) else "%.6f".format(Locale.US, value)
 
 @Composable
 fun TradingAnalyticsScreen(
     fills: List<BinanceJournalFill>,
     syncStatus: BinanceJournalSyncStatus,
-    dailyEntries: List<PnlEntry> = emptyList(),
-    manualTrades: List<TradeEntry> = emptyList(),
     importedDailyPnl: List<BinanceDailyResult> = emptyList()
 ) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
@@ -50,6 +61,9 @@ fun TradingAnalyticsScreen(
         it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
             it.quantity.isFinite() && it.price.isFinite()
     }
+    val coverage = validFills.minOfOrNull { it.time }?.let { first ->
+        "Executions from ${analyticsDate(first)} to ${analyticsDate(validFills.maxOf { it.time })}"
+    } ?: "No executions in this period"
     fun quoteAsset(symbol: String): String {
         val normalized = symbol.uppercase(Locale.ROOT)
         return listOf("USDT", "USDC", "BUSD", "FDUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD")
@@ -61,7 +75,7 @@ fun TradingAnalyticsScreen(
     val volumeSummary = when (volumeByQuoteAsset.size) {
         0 -> "—"
         1 -> volumeByQuoteAsset.first().second.num() + " " + volumeByQuoteAsset.first().first
-        else -> "${volumeByQuoteAsset.size} quote assets"
+        else -> plural(volumeByQuoteAsset.size, "quote asset", "quote assets")
     }
     val orderAnalytics = remember(validFills) { summarizeExchangeOrders(validFills) }
     val realizedOrders = orderAnalytics.realizedOrders
@@ -69,7 +83,6 @@ fun TradingAnalyticsScreen(
     val losing = realizedOrders.filter { it < 0.0 }
     val grossProfit = orderAnalytics.grossProfit
     val grossLoss = orderAnalytics.grossLoss
-    val netPnl = grossProfit - grossLoss
     val decisiveCount = winning.size + losing.size
     val winRate = orderAnalytics.winRatePercent
     val lossRate = if (decisiveCount > 0) losing.size * 100.0 / decisiveCount else null
@@ -78,11 +91,14 @@ fun TradingAnalyticsScreen(
         .filter { it.realizedPnl?.isFinite() == true }
         .groupBy { it.symbol.ifBlank { "Unknown pair" } }
         .map { (symbol, rows) ->
-            val orderCount = rows.groupBy { fill ->
-                "${fill.exchange}|${fill.market}|" +
-                    (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
-            }.size
-            PairAnalytics(symbol, rows.sumOf { it.realizedPnl ?: 0.0 }, orderCount)
+            val orders = summarizeExchangeOrders(rows).realizedOrders
+            PairAnalytics(
+                symbol = symbol,
+                realizedPnl = rows.sumOf { it.realizedPnl ?: 0.0 },
+                closedOrders = orders.size,
+                wins = orders.count { it > 0.0 },
+                losses = orders.count { it < 0.0 }
+            )
         }
         .sortedByDescending { it.realizedPnl }
     val bestPair = pairStats.firstOrNull { it.realizedPnl > 0.0 }
@@ -91,21 +107,20 @@ fun TradingAnalyticsScreen(
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" } }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
         .toList().sortedByDescending { it.second }
-    val reconciledDaily = remember(dailyEntries, manualTrades, importedDailyPnl, periodDays, now) {
-        val all = reconcileDailyPnl(dailyEntries, importedDailyPnl, manualTrades)
+
+    // Binance-only: daily results come solely from imported Binance records.
+    val reconciledDaily = remember(importedDailyPnl, periodDays, now) {
+        val all = reconcileDailyPnl(emptyList(), importedDailyPnl, emptyList())
         val window = filterPnlEntriesForPeriod(
             all.map { PnlEntry(it.date, 0.0, it.selectedPnl) }, periodDays, now
         ).map { it.date }.toSet()
         all.filter { it.date in window }
     }
-    val dailySnapshot = remember(reconciledDaily, dailyEntries, periodDays, now) {
-        val visibleDates = filterPnlEntriesForPeriod(dailyEntries, periodDays, now).mapNotNull {
-            canonicalPnlDate(it.date)
-        }.toSet()
+    val dailySnapshot = remember(reconciledDaily) {
         buildPerformanceSnapshot(
             pnlValues = reconciledDaily.map { it.selectedPnl },
-            closingBalances = dailyEntries.filter { canonicalPnlDate(it.date) in visibleDates }.map { it.balance },
-            tradeCount = manualTrades.size
+            closingBalances = emptyList(),
+            tradeCount = 0
         )
     }
 
@@ -139,7 +154,7 @@ fun TradingAnalyticsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text("Automatic background refresh approximately every 6 hours; opening this page also requests a refresh.",
+                        Text("Background refresh runs about every 6 hours. To refresh now, use Binance Sync.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (!syncStatus.state.startsWith("Up to date") && syncStatus.detail.isNotBlank()) {
@@ -161,6 +176,9 @@ fun TradingAnalyticsScreen(
                         )
                     }
             }
+            Text(coverage, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp))
         }
         item {
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
@@ -173,9 +191,12 @@ fun TradingAnalyticsScreen(
                     Text("${validFills.size} fetched executions · executed quote amount, counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
-                    volumeByQuoteAsset.forEach { (asset, amount) ->
-                        Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                    // Only break the volume down when there is more than one quote asset.
+                    if (volumeByQuoteAsset.size > 1) {
+                        volumeByQuoteAsset.forEach { (asset, amount) ->
+                            Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                        }
                     }
                 }
             }
@@ -207,7 +228,7 @@ fun TradingAnalyticsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
+                Text("Daily totals come from Binance's daily income records, so they can differ from the execution-level figures above.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AnalyticsMetric("Daily net P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
@@ -218,20 +239,15 @@ fun TradingAnalyticsScreen(
                     AnalyticsMetric("Best day", dailySnapshot.bestDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
                     AnalyticsMetric("Worst day", dailySnapshot.worstDay?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
                 }
-                AnalyticsMetric("Peak-to-trough drawdown", dailySnapshot.maxDrawdownPercent.pct(2), Modifier.fillMaxWidth(),
-                    MaterialTheme.colorScheme.error, "Based on the separate manual balance ledger")
-                Text("${reconciledDaily.size} reconciled days · ${reconciledDaily.count { it.source == DailyPnlSource.BINANCE }} Binance · ${reconciledDaily.count { it.source == DailyPnlSource.MANUAL }} manual · ${reconciledDaily.count { it.source == DailyPnlSource.JOURNAL }} journal estimates",
+                Text("${plural(reconciledDaily.size, "reconciled day", "reconciled days")} · all Binance-imported",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 reconciledDaily.takeLast(7).asReversed().forEach { day ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(day.date, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            Text(when (day.source) {
-                                DailyPnlSource.BINANCE -> "Binance-imported"
-                                DailyPnlSource.MANUAL -> "Manual daily P&L"
-                                DailyPnlSource.JOURNAL -> "Manual journal estimate"
-                            }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Binance-imported", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text((if (day.selectedPnl > 0.0) "+" else "") + day.selectedPnl.usd(),
                             style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
@@ -269,8 +285,10 @@ fun TradingAnalyticsScreen(
                         Text("No realized winning or losing executions in this period.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("$decisiveCount realized close orders · wins: ${winning.size} · losses: ${losing.size}",
+                    Text("${plural(decisiveCount, "closed order", "closed orders")} · wins: ${winning.size} · losses: ${losing.size}",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Sample size is small when there are few closed orders; treat rates as descriptive, not predictive.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -296,7 +314,8 @@ fun TradingAnalyticsScreen(
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(pair.symbol, fontWeight = FontWeight.SemiBold)
-                                    Text("${pair.realizedOrders} realized orders",
+                                    Text("${plural(pair.closedOrders, "closed order", "closed orders")} · " +
+                                        "${plural(pair.wins, "win", "wins")} · ${plural(pair.losses, "loss", "losses")}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -321,7 +340,7 @@ fun TradingAnalyticsScreen(
                         feeTotals.forEach { (asset, amount) ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(asset, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("%.8f".format(Locale.US, amount), fontWeight = FontWeight.SemiBold)
+                                Text(feeAmount(amount), fontWeight = FontWeight.SemiBold)
                             }
                         }
                         Text("Fees are grouped by their original asset. They are not converted into USD without a verified historical conversion rate.",

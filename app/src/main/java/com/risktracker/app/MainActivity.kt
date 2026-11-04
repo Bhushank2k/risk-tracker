@@ -56,7 +56,10 @@ import java.util.Date
 import java.util.Calendar
 import java.util.Locale
 
-fun Double.usd(d: Int = 2) = "$" + "%,.${d}f".format(this)
+/** Currency with the sign before the symbol, e.g. "-$30.37" rather than "$-30.37". */
+fun Double.usd(d: Int = 2): String =
+    (if (this < 0 && kotlin.math.abs(this) >= 0.5 * Math.pow(10.0, -d.toDouble())) "-$" else "$") +
+        "%,.${d}f".format(kotlin.math.abs(this))
 fun Double.pct(d: Int = 2) = "%.${d}f%%".format(this)
 fun Double.num(d: Int = 2) = "%,.${d}f".format(this)
 
@@ -131,17 +134,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             BinanceJournalWorker.schedule(context)
             runCatching {
                 withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
-                exchangeFills = BinanceAutoJournalStore.load(context)
-                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
-            }
-        }
-    }
-    LaunchedEffect(tab) {
-        val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-        if (tab == 20 && BinanceCredentialStore(context).read() != null &&
-            shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
-            appScope.launch {
-                runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
                 exchangeFills = BinanceAutoJournalStore.load(context)
                 exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
             }
@@ -289,7 +281,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
+                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
