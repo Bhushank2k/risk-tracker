@@ -164,6 +164,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Post-trade reviews" to 14,
             "Ledger audit" to 15
         ),
+        "AI INTELLIGENCE" to listOf(
+            "AI Trading Intelligence" to 24
+        ),
         "RISK MANAGEMENT" to listOf(
             "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
@@ -289,6 +292,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
+                24 -> AiTradingIntelligenceScreen(trades, entries)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
