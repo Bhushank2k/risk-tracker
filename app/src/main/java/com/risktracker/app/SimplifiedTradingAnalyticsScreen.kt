@@ -21,12 +21,12 @@ fun SimplifiedTradingAnalyticsScreen(
 ) {
     var periodDays by remember { mutableStateOf<Int?>(30) }
     var showDetailedAnalytics by remember { mutableStateOf(false) }
-    val now = System.currentTimeMillis()
+    val now = remember { System.currentTimeMillis() }
     val start = remember(periodDays, now) {
         periodDays?.let { days -> now - days.toLong() * 86_400_000L }
     }
     val visibleFills = remember(fills, start) {
-        fills.filter { start == null || it.time >= start }
+        fills.filter { (start == null || it.time >= start) && it.time <= now }
             .filter { it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
                 it.quantity.isFinite() && it.price.isFinite() }
     }
@@ -96,6 +96,20 @@ fun SimplifiedTradingAnalyticsScreen(
                 AnalyticsSummaryMetric("Winning orders", wins.toString(), Modifier.weight(1f))
                 AnalyticsSummaryMetric("Losing orders", losses.toString(), Modifier.weight(1f),
                     MaterialTheme.colorScheme.error)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AnalyticsSummaryMetric("Profit factor",
+                    orderStats.profitFactor?.let { if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it) } ?: "—",
+                    Modifier.weight(1f))
+                AnalyticsSummaryMetric("Average win", orderStats.averageWin?.usd() ?: "—",
+                    Modifier.weight(1f), MaterialTheme.colorScheme.primary)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AnalyticsSummaryMetric("Average loss", orderStats.averageLoss?.usd() ?: "—",
+                    Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                AnalyticsSummaryMetric("Net after stable fees", orderStats.netAfterKnownStableFees.usd(),
+                    Modifier.weight(1f),
+                    if (orderStats.netAfterKnownStableFees >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
