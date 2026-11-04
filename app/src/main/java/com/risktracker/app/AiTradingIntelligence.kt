@@ -92,6 +92,8 @@ fun buildAiTradingContext(
     dailyEntries: List<PnlEntry>,
     kind: AiReportKind,
     exchangeFills: List<BinanceJournalFill> = emptyList(),
+    maxTradeRiskUsd: Double? = null,
+    maxDailyLossUsd: Double? = null,
     nowMillis: Long = System.currentTimeMillis()
 ): JSONObject {
     val sorted = trades.filter { it.pnl.isFinite() && it.entry.isFinite() && it.exit.isFinite() && it.quantity.isFinite() }
@@ -155,6 +157,9 @@ fun buildAiTradingContext(
             .put("reviews_available", selected.count { reviews.containsKey(it.id) })
             .put("daily_entries_included", dailyRows.length())
             .put("pnl_basis", "Journal P&L is locally estimated from entry, exit, quantity, direction and fees. Exchange realized P&L is included only where the execution record reports it; fills are executions, not closed positions."))
+        .put("risk_settings", JSONObject()
+            .put("max_trade_risk_usd", maxTradeRiskUsd?.takeIf { it.isFinite() && it > 0.0 } ?: JSONObject.NULL)
+            .put("max_daily_loss_usd", maxDailyLossUsd?.takeIf { it.isFinite() && it > 0.0 } ?: JSONObject.NULL))
         .put("trades", tradeRows).put("exchange_fills", fillRows).put("daily_history", dailyRows)
 }
 
@@ -175,7 +180,7 @@ private class OpenAiTradingAnalyst(private val apiKey: String) {
         .build()
 
     fun analyze(kind: AiReportKind, context: JSONObject): String {
-        val system = """You are Risk Tracker's trading journal analyst. Use only supplied data. Never invent missing metrics, trades, dates, account balances or causes. Explicitly flag small samples and incomplete coverage. Distinguish estimates from exchange-reported facts. Do not provide buy/sell signals, price predictions, or instructions to increase leverage. Give balanced, specific, non-judgmental process feedback. If evidence is insufficient, say so."""
+        val system = """You are Risk Tracker's trading journal analyst. Use only supplied data. Never invent missing metrics, trades, dates, account balances or causes. Treat exchange_fills as individual executions, never as closed positions or round trips; do not derive win rate, profit factor or trade-level outcomes from fills. Use exchange_reported_realized_pnl only as a fill-level reported value. Explicitly flag small samples and incomplete coverage. Distinguish estimates from exchange-reported facts. Do not provide buy/sell signals, price predictions, or instructions to increase leverage. Give balanced, specific, non-judgmental process feedback. If evidence is insufficient, say so."""
         val requestJson = JSONObject()
             .put("model", "gpt-4o-mini")
             .put("temperature", 0.2)
@@ -207,7 +212,9 @@ private class OpenAiTradingAnalyst(private val apiKey: String) {
 fun AiTradingIntelligenceScreen(
     trades: List<TradeEntry>,
     dailyEntries: List<PnlEntry>,
-    exchangeFills: List<BinanceJournalFill> = emptyList()
+    exchangeFills: List<BinanceJournalFill> = emptyList(),
+    maxTradeRiskUsd: Double? = null,
+    maxDailyLossUsd: Double? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val keyStore = remember { OpenAiKeyStore(context) }
@@ -267,7 +274,7 @@ fun AiTradingIntelligenceScreen(
             loading = true; error = null
             scope.launch {
                 try {
-                    val contextData = buildAiTradingContext(trades, reviewStore.load(), dailyEntries, kind, exchangeFills)
+                    val contextData = buildAiTradingContext(trades, reviewStore.load(), dailyEntries, kind, exchangeFills, maxTradeRiskUsd, maxDailyLossUsd)
                     val quality = contextData.optJSONObject("data_quality")
                     if ((quality?.optInt("journal_trade_count", 0) ?: 0) == 0 &&
                         (quality?.optInt("exchange_fill_count", 0) ?: 0) == 0) {
