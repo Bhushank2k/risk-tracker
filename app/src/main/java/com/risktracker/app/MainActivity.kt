@@ -1103,8 +1103,6 @@ fun AboutScreen() {
     }
 }
 
-@Composable
-
 // ---------------- Calculator ----------------
 
 @Composable

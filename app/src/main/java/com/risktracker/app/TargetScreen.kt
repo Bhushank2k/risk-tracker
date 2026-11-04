@@ -142,5 +142,3 @@ private fun TargetNumberField(label: String, value: String, onValueChange: (Stri
     )
 }
 
-@Composable
-
