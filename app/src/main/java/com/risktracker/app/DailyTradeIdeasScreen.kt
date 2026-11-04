@@ -220,7 +220,8 @@ internal object BinanceMarketScanner {
         MarketMicrostructure(spread, imbalance, fundingTask.await(), oiTask.await())
     }
 
-    suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
+    suspend fun scan(context: android.content.Context, progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
+        BinanceRestGuard.configure(context)
         progress("Loading active USDT perpetual contracts…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -238,10 +239,10 @@ internal object BinanceMarketScanner {
         }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
         // Keep scans bounded: use REST for historical snapshots, WebSockets for live prices.
-        val scanCandidates = candidates.take(25)
-        val microstructureSymbols = scanCandidates.take(10).map { it.symbol }.toSet()
+        val scanCandidates = candidates.take(12)
+        val microstructureSymbols = scanCandidates.take(4).map { it.symbol }.toSet()
         val gate = Semaphore(2)
-        progress("Checking the top " + scanCandidates.size + " liquid USDT perpetual pairs (bounded REST snapshot)…")
+        progress("Checking the top " + scanCandidates.size + " liquid USDT perpetual pairs (rate-limited REST snapshot)…")
         coroutineScope {
             scanCandidates.map { ticker -> async {
                 gate.withPermit {
@@ -395,7 +396,7 @@ fun DailyTradeIdeasScreen() {
         status = "Connecting to Binance public market data…"
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan { status = it }
+                val freshIdeas = BinanceMarketScanner.scan(context) { status = it }
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
                 ideas = freshIdeas
@@ -906,7 +907,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
                 ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
-                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
+                ScannerMetric("Live price source", "Binance Futures · live WebSocket")
                 Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
                 LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)

@@ -204,6 +204,7 @@ fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
 
 object BinanceAutoJournalRunner {
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
+        BinanceRestGuard.configure(context)
         val attemptedAt = System.currentTimeMillis()
         val previous = BinanceAutoJournalStore.syncStatus(context)
         val credentials = BinanceCredentialStore(context).read()

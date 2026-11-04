@@ -68,6 +68,7 @@ fun pnlColor(v: Double): Color = if (v > 0) profitColor() else if (v < 0) lossCo
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BinanceRestGuard.configure(applicationContext)
         val store = Store(applicationContext)
         store.clearManualTradesOnce()
         inrRate = store.inr
@@ -493,10 +494,8 @@ fun LiveTradesScreen() {
         .sorted()
     LaunchedEffect(Unit) {
         refresh()
-        while (true) {
-            delay(60_000L)
-            refresh()
-        }
+        // Account/position snapshots are fetched once on entry; live Futures marks use WebSocket.
+        // Refresh is user initiated so this screen cannot create a permanent REST polling loop.
     }
     DisposableEffect(streamSymbols) {
         val stream = BinanceMarkPriceStream(
@@ -522,7 +521,10 @@ fun LiveTradesScreen() {
         item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { refresh() }, enabled = !loading) { Text(if (loading) "Loading…" else "Refresh") }
+                    }
                     if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
                         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }

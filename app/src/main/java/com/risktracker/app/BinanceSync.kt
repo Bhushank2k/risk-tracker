@@ -725,6 +725,7 @@ object BinanceSyncData {
 object BinanceAccountSnapshotRunner {
     /** Refreshes live Spot valuation and USDⓈ-M Futures equity without changing the P&L journal. */
     suspend fun refresh(context: Context): BinanceAccountSnapshot = withContext(Dispatchers.IO) {
+        BinanceRestGuard.configure(context)
         val credentials = BinanceCredentialStore(context).read()
             ?: error("Connect a read-only Binance API key to load account balance.")
         val api = BinanceApi(credentials.first, credentials.second)
@@ -737,6 +738,7 @@ object BinanceAccountSnapshotRunner {
 }
 
 object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
+        BinanceRestGuard.configure(context)
         val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
         BinanceAccountSnapshotRunner.refresh(context)
         val api = BinanceApi(credentials.first, credentials.second)
