@@ -10,6 +10,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,6 +29,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 
 data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
 
@@ -311,23 +314,36 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val s = allSymbols.getJSONObject(i)
             if (s.optString("status") == "TRADING" && s.optString("quoteAsset") in setOf("USDT", "USDC") && s.optString("baseAsset") in symbols) tradable += s.optString("symbol")
         }
-        for (symbol in tradable.take(80)) {
-            var cursor: Long? = null
-            var more = true
-            var pages = 0
-            while (more && pages < 100) {
-                pages++
-                val p = mutableListOf("symbol" to symbol, "limit" to "1000")
-                if (cursor != null) p += "fromId" to cursor.toString()
-                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
-                if (page.length() == 0) {
-                    more = false
-                } else {
-                    for (i in 0 until page.length()) fills += page.getJSONObject(i).put("_symbol", symbol)
-                    val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
-                    if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
+        // Fetch independent symbols with a small fixed pool; FIFO processing below stays chronological.
+        val executor = Executors.newFixedThreadPool(4)
+        try {
+            val requests = tradable.take(80).map { symbol ->
+                executor.submit<List<JSONObject>> {
+                    val symbolFills = mutableListOf<JSONObject>()
+                    var cursor: Long? = null
+                    var more = true
+                    var pages = 0
+                    while (more && pages < 100) {
+                        pages++
+                        val p = mutableListOf("symbol" to symbol, "limit" to "1000")
+                        if (cursor != null) p += "fromId" to cursor.toString()
+                        val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
+                        if (page.length() == 0) {
+                            more = false
+                        } else {
+                            for (i in 0 until page.length()) {
+                                symbolFills += page.getJSONObject(i).put("_symbol", symbol)
+                            }
+                            val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
+                            if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
+                        }
+                    }
+                    symbolFills
                 }
             }
+            requests.forEach { fills.addAll(it.get()) }
+        } finally {
+            executor.shutdown()
         }
         // FIFO cost basis per pair. Only closed quantity contributes realized P&L; commissions are deducted.
         data class Lot(var qty: Double, val cost: Double)
@@ -729,21 +745,34 @@ object BinanceAccountSnapshotRunner {
         val credentials = BinanceCredentialStore(context).read()
             ?: error("Connect a read-only Binance API key to load account balance.")
         val api = BinanceApi(credentials.first, credentials.second)
-        val spot = api.spotPortfolioBalance()
-        val futures = api.futuresAccountBalance()
+        val (spot, futures) = coroutineScope {
+            val spotRequest = async(Dispatchers.IO) { api.spotPortfolioBalance() }
+            val futuresRequest = async(Dispatchers.IO) { api.futuresAccountBalance() }
+            spotRequest.await() to futuresRequest.await()
+        }
+        // Persist only after both requests succeed, preserving the last complete snapshot.
         BinanceAccountSnapshotStore(context).save(spot, futures)
         BinanceAccountSnapshotStore(context).load()
             ?: error("Binance balance was fetched but could not be saved.")
     }
 }
 
-object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
+object BinanceSyncRunner {
+    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
         BinanceRestGuard.configure(context)
-        val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
-        BinanceAccountSnapshotRunner.refresh(context)
+        val credentials = BinanceCredentialStore(context).read()
+            ?: error("Save Binance read-only API credentials first.")
         val api = BinanceApi(credentials.first, credentials.second)
-        val spot = api.spotDailyPnl()
-        val futures = api.futuresDailyPnl()
+        // Account valuation, Spot FIFO history, and Futures income history are independent.
+        val (spot, futures) = coroutineScope {
+            val snapshot = async { BinanceAccountSnapshotRunner.refresh(context) }
+            val spotHistory = async(Dispatchers.IO) { api.spotDailyPnl() }
+            val futuresHistory = async(Dispatchers.IO) { api.futuresDailyPnl() }
+            val dailySpot = spotHistory.await()
+            val dailyFutures = futuresHistory.await()
+            snapshot.await()
+            dailySpot to dailyFutures
+        }
         BinanceSyncData.merge(context, spot, futures)
     }
 }
