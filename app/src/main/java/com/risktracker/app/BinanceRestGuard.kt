@@ -35,4 +35,9 @@ internal object BinanceRestGuard {
     }
 
     fun blockedUntilMillis(): Long = blockedUntil
+
+    internal fun resetForTests() {
+        blockedUntil = 0L
+        nextAllowedAt = 0L
+    }
 }
