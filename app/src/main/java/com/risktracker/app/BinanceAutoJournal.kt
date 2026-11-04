@@ -308,7 +308,6 @@ object BinanceAutoJournalRunner {
                             val rows = if (market == "Spot")
                                 api.spotExecutionHistory(symbol, start, attemptedAt)
                             else api.futuresExecutionHistory(symbol, start, attemptedAt)
-                            BinanceAutoJournalStore.recordSymbolSync(context, market, symbol, attemptedAt)
                             SymbolResult(market, symbol, rows, start)
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
@@ -320,15 +319,19 @@ object BinanceAutoJournalRunner {
             }.awaitAll()
         }
 
-        // Failed symbols retain their previous checkpoint and are retried on later passes.
-        BinanceAutoJournalStore.saveSymbolCursor(context, "Spot", spotBatch.second)
-        BinanceAutoJournalStore.saveSymbolCursor(context, "USDⓈ-M Futures", futuresBatch.second)
         results.filter { it.error != null }.forEach {
             failures += "${it.market} ${it.symbol}: ${it.error}"
         }
 
         val fetched = results.flatMap { it.fills }
+        // Commit fills before advancing checkpoints. A crash between these operations can
+        // cause a harmless re-fetch, never a gap where a checkpoint skips unpersisted fills.
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
+        results.filter { it.error == null }.forEach {
+            BinanceAutoJournalStore.recordSymbolSync(context, it.market, it.symbol, attemptedAt)
+        }
+        BinanceAutoJournalStore.saveSymbolCursor(context, "Spot", spotBatch.second)
+        BinanceAutoJournalStore.saveSymbolCursor(context, "USDⓈ-M Futures", futuresBatch.second)
         val symbolFailures = results.count { it.error != null }
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
