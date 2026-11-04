@@ -218,22 +218,23 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 0 -> "Overview"
                 1 -> "Trade Journal"
                 2 -> "Position Calculator"
-                5 -> "About"
+                5 -> "About Risk Tracker"
                 6 -> "Binance Sync"
                 7 -> "Settings"
-                9 -> "Tax Report"
+                9 -> "Crypto Tax Report"
                 11 -> "Trade Risk Gate"
-                13 -> "Scenario Lab"
-                14 -> "Trade Reviews"
+                13 -> "Risk Scenario Lab"
+                14 -> "Post-Trade Reviews"
                 15 -> "Ledger Audit"
-                16 -> "Live Trades"
+                16 -> "Live Positions & Orders"
                 17 -> "Account Activity"
                 18 -> "Sync Health"
                 19 -> "Risk Alerts"
-                20 -> "Analytics"
-                21 -> "Trade Ideas"
+                20 -> "Trading Analytics"
+                21 -> "Daily Trade Ideas"
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
+                24 -> "AI Trading Intelligence"
                 else -> "More"
             }
             val quickAction = when (tab) {
@@ -339,7 +340,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
+                20 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
