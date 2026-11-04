@@ -14,6 +14,7 @@ data class PnlEntry(val date: String, val balance: Double, val pnl: Double, val 
     val closing: Double get() = balance + pnl
 }
 
+
 data class CalcInput(
     val balance: Double = 50.0,
     val riskPercent: Double = 2.0,
@@ -228,13 +229,6 @@ class Store(context: Context) {
         get() = prefs.getString("theme_mode", "System") ?: "System"
         set(v) = prefs.edit().putString("theme_mode", v).apply()
 
-    /**
-     * The manual balance ledger is no longer used. Any values saved by earlier versions stay
-     * on the device untouched, but nothing reads them into the app or writes new ones.
-     */
-    fun loadEntries(): List<PnlEntry> = emptyList()
-    }
-
     fun loadTrades(): List<TradeEntry> {
         val raw = prefs.getString("trade_journal_v1", null) ?: return emptyList()
         return try {
@@ -277,8 +271,6 @@ class Store(context: Context) {
 
     fun exportBackup(): String {
         val root = JSONObject().put("format", "risk-tracker-backup-v1")
-        val daily = JSONArray()
-        loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl).put("notes",it.notes).put("disciplineScore",it.disciplineScore)) }
         val journal = JSONArray()
         loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
         root.put("tradePlans", JSONArray(TradePlanStore(appContext).exportJson()))
@@ -288,7 +280,7 @@ class Store(context: Context) {
             binanceDaily.put(JSONObject().put("date", row.date).put("spotPnl", row.spotPnl).put("futuresPnl", row.futuresPnl))
         }
         root.put("binanceDailyPnl", binanceDaily)
-        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
+        return root.put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
     /** Restores everything except the retired manual balance ledger; any "dailyEntries" in the file are ignored. */
@@ -308,12 +300,12 @@ class Store(context: Context) {
                 }
             }
         } else null
-        saveTrades(emptyList())
+        saveTrades(journal)
         if (importedBinance != null) BinanceSyncData.replaceAll(appContext, importedBinance)
         if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
         if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
-        return emptyList()
+        return journal
     }
     fun loadInput(): CalcInput {
         val d = CalcInput()
