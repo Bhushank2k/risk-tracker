@@ -292,7 +292,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                24 -> AiTradingIntelligenceScreen(trades, entries, exchangeFills)
+                24 -> AiTradingIntelligenceScreen(trades, entries, exchangeFills, store.maxTradeRisk, store.maxDailyLoss)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
