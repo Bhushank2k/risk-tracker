@@ -167,6 +167,7 @@ class BinanceCredentialStore(context: Context) {
 
 class BinanceApi(private val apiKey: String, private val secret: String) {
     private fun signedRequest(base: String, path: String, params: List<Pair<String, String>>): String {
+        BinanceRestGuard.beforeRequest()
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
@@ -181,6 +182,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
             val body = stream.bufferedReader().use { it.readText() }
+            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("Binance API error ($status): $message")
@@ -611,21 +613,29 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 
 
     private fun publicGetArray(url: String): JSONArray {
+        BinanceRestGuard.beforeRequest()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000
         conn.readTimeout = 20000
         try {
-            if (conn.responseCode !in 200..299) throw IllegalStateException("Could not load Binance market prices.")
-            return JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
+            val status = conn.responseCode
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market prices."))
+            return JSONArray(body)
         } finally { conn.disconnect() }
     }
 
     private fun publicGet(url: String): JSONObject {
+        BinanceRestGuard.beforeRequest()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000; conn.readTimeout = 20000
         try {
-            if (conn.responseCode !in 200..299) throw IllegalStateException("Could not load Binance market symbols.")
-            return JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val status = conn.responseCode
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market symbols."))
+            return JSONObject(body)
         } finally { conn.disconnect() }
     }
 }

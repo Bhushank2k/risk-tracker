@@ -127,6 +127,7 @@ internal object BinanceMarketScanner {
     }.getOrNull()
 
     private fun get(path: String): String {
+        BinanceRestGuard.beforeRequest()
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.connectTimeout = 12000
         c.readTimeout = 16000
@@ -135,6 +136,7 @@ internal object BinanceMarketScanner {
             val code = c.responseCode
             val stream = if (code in 200..299) c.inputStream else c.errorStream
             val body = stream.bufferedReader().use { it.readText() }
+            BinanceRestGuard.recordResponse(code, body, c.getHeaderField("Retry-After"))
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
@@ -235,10 +237,13 @@ internal object BinanceMarketScanner {
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
         }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        val gate = Semaphore(4)
-        progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
+        // Keep scans bounded: use REST for historical snapshots, WebSockets for live prices.
+        val scanCandidates = candidates.take(25)
+        val microstructureSymbols = scanCandidates.take(10).map { it.symbol }.toSet()
+        val gate = Semaphore(2)
+        progress("Checking the top " + scanCandidates.size + " liquid USDT perpetual pairs (bounded REST snapshot)…")
         coroutineScope {
-            candidates.map { ticker -> async {
+            scanCandidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
                         coroutineScope {
@@ -246,7 +251,10 @@ internal object BinanceMarketScanner {
                             val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 200) }
                             val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 200) }
                             val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 90) }
-                            val microTask = async { microstructure(ticker.symbol) }
+                            val microTask = async {
+                                if (ticker.symbol in microstructureSymbols) microstructure(ticker.symbol)
+                                else MarketMicrostructure(null, null, null, null)
+                            }
                             evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
                         }
                     }.getOrNull()
@@ -778,15 +786,20 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
     var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
-    LaunchedEffect(idea.symbol, trackedEntry) {
-        if (trackedEntry != null) {
-            while (true) {
-                val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
-                if (quote != null) livePrice = quote
-                delay(15_000)
-            }
-        } else {
+    DisposableEffect(idea.symbol, trackedEntry != null) {
+        if (trackedEntry == null) {
             livePrice = idea.last
+            onDispose { }
+        } else {
+            val stream = BinanceMarkPriceStream(
+                symbols = listOf(idea.symbol),
+                onMarkPrice = { symbol, price ->
+                    if (symbol.equals(idea.symbol, ignoreCase = true)) livePrice = price
+                },
+                onStatus = {}
+            )
+            stream.start()
+            onDispose { stream.close() }
         }
     }
     val stage = tradeIdeaStage(idea, trackedEntry != null)
@@ -909,8 +922,8 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Risk checks passed. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
-                        val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
-                            ?: livePrice.takeIf { it > 0.0 } ?: idea.last
+                        // Use the latest scanner/stream snapshot instead of making another REST quote call.
+                        val entry = livePrice.takeIf { it > 0.0 } ?: idea.last
                         trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
                         livePrice = entry
                         trackedEntry = entry
