@@ -31,7 +31,7 @@ fun TradingAnalyticsScreen(
     importedDailyPnl: List<BinanceDailyResult> = emptyList()
 ) {
     var periodDays by remember { mutableStateOf<Int?>(null) }
-    val now = System.currentTimeMillis()
+    val now = remember { System.currentTimeMillis() }
     val filtered = remember(fills, periodDays, now) {
         val start = periodDays?.let { days ->
             if (days == 1) {
@@ -44,7 +44,7 @@ fun TradingAnalyticsScreen(
                 }.timeInMillis
             } else now - days.toLong() * 24L * 60L * 60L * 1000L
         }
-        fills.filter { start == null || it.time >= start }
+        fills.filter { (start == null || it.time >= start) && it.time <= now }
     }
     val validFills = filtered.filter {
         it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
@@ -91,6 +91,21 @@ fun TradingAnalyticsScreen(
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" } }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
         .toList().sortedByDescending { it.second }
+    val marketBreakdown = validFills.groupBy { it.market.ifBlank { "Unknown market" } }
+        .mapValues { (_, rows) ->
+            val realized = rows.mapNotNull { it.realizedPnl?.takeIf { value -> value.isFinite() } }
+            Triple(rows.size, realized.size, realized.sum())
+        }
+    val exchangeBreakdown = validFills.groupBy { it.exchange.ifBlank { "Unknown exchange" } }
+        .mapValues { (_, rows) ->
+            val realized = rows.mapNotNull { it.realizedPnl?.takeIf { value -> value.isFinite() } }
+            Triple(rows.size, realized.size, realized.sum())
+        }
+    val sideBreakdown = validFills.groupBy { it.side.ifBlank { "Unknown side" } }
+        .mapValues { (_, rows) ->
+            val realized = rows.mapNotNull { it.realizedPnl?.takeIf { value -> value.isFinite() } }
+            Triple(rows.size, realized.size, realized.sum())
+        }
     val reconciledDaily = remember(dailyEntries, manualTrades, importedDailyPnl, periodDays, now) {
         val all = reconcileDailyPnl(dailyEntries, importedDailyPnl, manualTrades)
         val window = filterPnlEntriesForPeriod(
@@ -305,6 +320,43 @@ fun TradingAnalyticsScreen(
                                     fontWeight = FontWeight.SemiBold)
                             }
                             if (pair != pairStats.take(12).last()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Market & execution breakdown", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold)
+                Text("Realized P&L is shown only where the exchange supplied it. Buy/sell describes execution side, not necessarily the direction of the completed strategy.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                listOf("Market" to marketBreakdown, "Exchange" to exchangeBreakdown,
+                    "Execution side" to sideBreakdown).forEach { (heading, groups) ->
+                    RiskCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Text(heading, style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold)
+                            if (groups.isEmpty()) {
+                                Text("No execution records in this period.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                groups.toList().sortedByDescending { it.second.first }.forEach { (name, stats) ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(name, fontWeight = FontWeight.Medium)
+                                            Text("${stats.first} fills · ${stats.second} with realized P&L",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Text(if (stats.second == 0) "—" else stats.third.usd(),
+                                            color = if (stats.third >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                            fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
