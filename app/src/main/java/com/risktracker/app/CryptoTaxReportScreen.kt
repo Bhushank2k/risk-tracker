@@ -142,7 +142,6 @@ fun CryptoTaxReportScreen() {
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Import historical trades", style = MaterialTheme.typography.titleMedium)
-                Text("Choose a Binance CSV export or ZIP containing CSV files. Importing merges records and skips duplicate IDs; it does not overwrite existing Daily P&L or manual trade journal data.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = { importPicker.launch(arrayOf("text/*", "application/zip", "application/octet-stream", "application/vnd.ms-excel")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Importing…" else "Import Binance CSV / ZIP")
                 }
