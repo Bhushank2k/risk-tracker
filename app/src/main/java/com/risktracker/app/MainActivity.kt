@@ -1095,8 +1095,8 @@ fun AboutScreen() {
             style = MaterialTheme.typography.bodyMedium)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AboutRow("Developer", "Bhushank2k")
-                AboutRow("Version", version)
+                MetricRow("Developer", "Bhushank2k", FontWeight.Medium)
+                MetricRow("Version", version, FontWeight.Medium)
             }
         }
         Warn("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.")
@@ -1104,12 +1104,6 @@ fun AboutScreen() {
 }
 
 @Composable
-fun AboutRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-    }
-}
 
 // ---------------- Calculator ----------------
 

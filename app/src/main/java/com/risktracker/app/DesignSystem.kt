@@ -2,7 +2,11 @@ package com.risktracker.app
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Text
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
@@ -18,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
+import java.util.Locale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.animation.animateContentSize
@@ -142,3 +147,15 @@ fun RiskCard(
         content = content
     )
 }
+
+/** A label on the left and a value on the right, for simple key/value rows. */
+@Composable
+fun MetricRow(label: String, value: String, valueWeight: FontWeight = FontWeight.SemiBold) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(value, fontWeight = valueWeight, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Dollar amount with thousands separators and two decimals, e.g. "$1,234.50". */
+fun usdAmount(value: Double): String = String.format(Locale.US, "$%,.2f", value)

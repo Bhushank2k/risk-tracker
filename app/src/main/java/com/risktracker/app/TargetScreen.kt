@@ -88,8 +88,8 @@ fun TargetScreen() {
             RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Additional net profit needed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(money(profitNeeded!!), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("Starting balance → target: ${money(start!!)} → ${money(goal!!)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(usdAmount(profitNeeded!!), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Starting balance → target: ${usdAmount(start!!)} → ${usdAmount(goal!!)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                     Text("Starting balance is ${String.format(Locale.US, "%.1f", progress * 100)}% of the target balance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
@@ -99,16 +99,16 @@ fun TargetScreen() {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Required pace", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (requiredDaily != null) {
-                        TargetMetric("Average net profit per day", money(requiredDaily))
-                        TargetMetric("7-day equivalent", money(requiredDaily * 7))
-                        TargetMetric("30-day equivalent", money(requiredDaily * 30))
+                        MetricRow("Average net profit per day", usdAmount(requiredDaily))
+                        MetricRow("7-day equivalent", usdAmount(requiredDaily * 7))
+                        MetricRow("30-day equivalent", usdAmount(requiredDaily * 30))
                     } else {
                         Text("Enter a positive number of days to calculate the required daily average.", style = MaterialTheme.typography.bodyMedium)
                     }
                     if (plannedDaily != null && plannedDaily > 0 && estimatedDays != null) {
                         Spacer(Modifier.height(2.dp))
-                        TargetMetric("Estimated days at your planned pace", estimatedDays.toString())
-                        TargetMetric("Estimated weeks", String.format(Locale.US, "%.1f", estimatedDays / 7.0))
+                        MetricRow("Estimated days at your planned pace", estimatedDays.toString())
+                        MetricRow("Estimated weeks", String.format(Locale.US, "%.1f", estimatedDays / 7.0))
                     }
                 }
             }
@@ -143,11 +143,4 @@ private fun TargetNumberField(label: String, value: String, onValueChange: (Stri
 }
 
 @Composable
-private fun TargetMetric(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Text(value, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-    }
-}
 
-private fun money(value: Double): String = String.format(Locale.US, "\$%,.2f", value)
