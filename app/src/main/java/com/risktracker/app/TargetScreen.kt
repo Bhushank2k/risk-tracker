@@ -116,7 +116,6 @@ fun TargetScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Enter your balances", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Enter a starting balance of zero or more and a target balance greater than your starting balance to see the plan.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }

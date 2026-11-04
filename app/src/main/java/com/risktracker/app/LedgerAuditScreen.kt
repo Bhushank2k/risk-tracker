@@ -67,7 +67,6 @@ fun LedgerAuditScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("No saved import report for $year", fontWeight = FontWeight.SemiBold)
-                    Text("Import a Binance USDⓈ-M Futures income CSV from Binance data to populate coverage and duplicate-row metadata.")
                 }
             }
         } else {
@@ -93,7 +92,6 @@ fun LedgerAuditScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Optional source-total reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Enter the independently verified total from your complete Binance statement. This value is stored with the existing year reconciliation settings.")
                     OutlinedTextField(
                         value = sourceTotalText,
                         onValueChange = { sourceTotalText = it },

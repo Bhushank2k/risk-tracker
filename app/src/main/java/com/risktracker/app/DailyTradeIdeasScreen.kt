@@ -933,7 +933,6 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
-                Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -1093,7 +1092,6 @@ private fun TradeSessionTimingCard() {
                 }
             }
             HorizontalDivider()
-            Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
             Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
