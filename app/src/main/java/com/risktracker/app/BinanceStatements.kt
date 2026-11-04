@@ -88,6 +88,9 @@ object BinanceStatementStore {
 
 class BinanceStatementApi(private val apiKey: String, private val secret: String) {
     private fun signedGet(base: String, path: String, params: List<Pair<String, String>>): JSONArray {
+        // Every Binance REST call goes through the shared circuit breaker and pacer,
+        // including statement history, so a ban cannot be extended by this path.
+        BinanceRestGuard.beforeRequest()
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
@@ -99,6 +102,7 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         try {
             val status = conn.responseCode
             val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val msg = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("$path: Binance API error ($status): $msg")
