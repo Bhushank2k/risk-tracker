@@ -1,9 +1,11 @@
 package com.risktracker.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
 
 class BinanceRestGuardTest {
+    @Before fun resetGuard() = BinanceRestGuard.resetForTests()
     @Test
     fun recordsBinance418BanExpiryFromResponseBody() {
         val expiry = 1_793_777_865_683L
