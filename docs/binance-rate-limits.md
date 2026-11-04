@@ -6,3 +6,4 @@
 - Historical candles, account balances, order/position snapshots, and account history remain REST operations because they are snapshot/history data, not continuous live quotes.
 - A WebSocket does not remove an existing Binance IP ban for REST. Wait until Binance's supplied expiry timestamp; WebSocket market streams may continue independently.
 - The circuit-breaker expiry is persisted in app preferences and restored by the activity and every background sync runner, so force-closing or restarting the app does not immediately resume REST requests.
+- The Premium Overview refreshes its positions and account-balance REST snapshots at most once every five minutes, and once on screen open. Live mark prices continue over the WebSocket between snapshots.

@@ -24,6 +24,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Minimum gap between REST snapshots of positions and balances on the Overview.
+ * Live mark prices come from the WebSocket stream; REST is only for snapshots.
+ */
+private const val OVERVIEW_REST_MIN_INTERVAL_MS = 5 * 60_000L
+
 
 @Composable
 fun RiskOverviewScreen(
@@ -59,8 +65,8 @@ fun RiskOverviewScreen(
                 SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(blockedUntil))
             return
         }
-        if (now - lastPositionRestAttempt < 60_000L) {
-            positionsStatus = "Position REST sync is limited to once per minute; live prices continue over WebSocket."
+        if (now - lastPositionRestAttempt < OVERVIEW_REST_MIN_INTERVAL_MS) {
+            positionsStatus = "Position REST sync runs every five minutes; live prices continue over WebSocket."
             return
         }
         val credentials = BinanceCredentialStore(context).read()
@@ -100,7 +106,7 @@ fun RiskOverviewScreen(
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
         val now = System.currentTimeMillis()
-        if (now - lastBalanceRestAttempt < 60_000L) return
+        if (now - lastBalanceRestAttempt < OVERVIEW_REST_MIN_INTERVAL_MS) return
         val blockedUntil = positionsStore.restBlockedUntil()
         if (blockedUntil > System.currentTimeMillis()) {
             balanceStatus = "Binance REST is paused until " +
@@ -138,7 +144,7 @@ fun RiskOverviewScreen(
             refreshLivePositions()
             refreshAccountBalance()
             while (true) {
-                delay(60_000L)
+                delay(OVERVIEW_REST_MIN_INTERVAL_MS)
                 refreshLivePositions()
                 refreshAccountBalance()
             }
