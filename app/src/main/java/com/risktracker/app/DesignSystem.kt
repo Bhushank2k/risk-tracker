@@ -17,7 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.animation.animateContentSize
 
 /**
@@ -41,8 +43,8 @@ object RiskTrackerDesign {
     // Profit and loss: one palette for every screen, chosen by theme for contrast on its surfaces.
     val profitOnLight = Color(0xFF16865D)
     val lossOnLight = Color(0xFFD34B55)
-    val profitOnDark = Color(0xFF7DE2B8)
-    val lossOnDark = Color(0xFFFF7B78)
+    val profitOnDark = Color(0xFF4ADE80)
+    val lossOnDark = Color(0xFFFB7185)
 }
 
 /** Whether the active theme is dark, judged from its background. */
@@ -68,7 +70,13 @@ val RiskTrackerShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp)
 )
 
-val RiskTrackerTypography = Typography()
+val RiskTrackerTypography = Typography().let { base ->
+    base.copy(
+        headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em),
+        headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em),
+        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em)
+    )
+}
 
 private val RiskTrackerCardBorder: BorderStroke
     @Composable get() = BorderStroke(
