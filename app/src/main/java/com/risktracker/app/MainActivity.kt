@@ -185,8 +185,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         "ANALYTICS" to listOf(
             "Trading Analytics" to 20,
             "P&L Calendar" to 23,
-            "Post-trade reviews" to 14,
-            "Ledger audit" to 15
+            "Post-trade reviews" to 14
         ),
         "AI INTELLIGENCE" to listOf(
             "AI Trading Intelligence" to 24
@@ -202,7 +201,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Binance Sync" to 6,
             "Sync health" to 18,
             "Live positions & orders" to 16,
-            "Account activity" to 17
+            "Account activity" to 17,
+            "Ledger audit" to 15
         ),
         "REPORTS & APP" to listOf(
             "Crypto tax report" to 9,
