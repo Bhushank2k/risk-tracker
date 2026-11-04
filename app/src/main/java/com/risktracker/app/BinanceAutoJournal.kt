@@ -7,6 +7,11 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -130,6 +135,20 @@ object BinanceAutoJournalStore {
     fun lastSync(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
+    /** Per-symbol checkpoint. Advance only after that symbol's history fetch succeeds. */
+    fun symbolLastSync(context: Context, market: String, symbol: String): Long {
+        val marketKey = if (market == "Spot") "spot" else "futures"
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong("symbol_last_sync_${marketKey}_${symbol}", 0L)
+    }
+
+    fun recordSymbolSync(context: Context, market: String, symbol: String, syncedThrough: Long) {
+        val marketKey = if (market == "Spot") "spot" else "futures"
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("symbol_last_sync_${marketKey}_${symbol}", syncedThrough)
+            .apply()
+    }
+
     fun syncStatus(context: Context): BinanceJournalSyncStatus {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return BinanceJournalSyncStatus(
@@ -203,6 +222,10 @@ fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
 }
 
 object BinanceAutoJournalRunner {
+    private const val LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
+    private const val CHECKPOINT_OVERLAP_MS = 60_000L
+    private const val MAX_PARALLEL_SYMBOLS = 4
+
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
         BinanceRestGuard.configure(context)
         val attemptedAt = System.currentTimeMillis()
@@ -217,76 +240,111 @@ object BinanceAutoJournalRunner {
             return@withContext 0
         }
 
+        // Record immediately so app-open and screen-open triggers do not start duplicate work.
+        BinanceAutoJournalStore.recordSyncStatus(context, previous.copy(
+            lastAttempt = attemptedAt,
+            state = "Syncing",
+            detail = "Discovering Binance activity and refreshing known symbols."
+        ))
+
         val api = BinanceApi(credentials.first, credentials.second)
-        val end = attemptedAt
-        // Keep a rolling overlap to catch late updates and avoid gaps after the device is offline.
-        val start = end - 7L * 24 * 60 * 60 * 1000
+        val fallbackStart = attemptedAt - LOOKBACK_MS
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
         val failures = mutableListOf<String>()
         var discoverySucceeded = 0
 
-        runCatching { knownSpot += api.recentSpotSymbols() }
-            .onSuccess { discoverySucceeded++ }
+        // Independent discovery calls overlap; the shared REST guard still paces requests.
+        val discovery = coroutineScope {
+            val spot = async { runCatching { api.recentSpotSymbols() } }
+            val positions = async { runCatching {
+                api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.map { it.symbol }.toSet()
+            } }
+            val futures = async { runCatching { api.recentFuturesSymbols(fallbackStart, attemptedAt) } }
+            Triple(spot.await(), positions.await(), futures.await())
+        }
+        discovery.first.onSuccess { knownSpot += it; discoverySucceeded++ }
             .onFailure { failures += "Spot symbol discovery: ${it.message ?: "request failed"}" }
-        runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
-            .onSuccess { discoverySucceeded++ }
+        discovery.second.onSuccess { knownFutures += it; discoverySucceeded++ }
             .onFailure { failures += "Futures position discovery: ${it.message ?: "request failed"}" }
-        runCatching { knownFutures += api.recentFuturesSymbols(start, end) }
-            .onSuccess { discoverySucceeded++ }
+        discovery.third.onSuccess { knownFutures += it; discoverySucceeded++ }
             .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
 
         BinanceAutoJournalStore.rememberSymbols(context, "Spot", knownSpot)
         BinanceAutoJournalStore.rememberSymbols(context, "USDⓈ-M Futures", knownFutures)
 
-        val spotBatch = selectBinanceSymbolBatch(
-            knownSpot, BinanceAutoJournalStore.symbolCursor(context, "Spot")
-        )
-        val futuresBatch = selectBinanceSymbolBatch(
-            knownFutures, BinanceAutoJournalStore.symbolCursor(context, "USDⓈ-M Futures")
-        )
-        BinanceAutoJournalStore.saveSymbolCursor(context, "Spot", spotBatch.second)
-        BinanceAutoJournalStore.saveSymbolCursor(context, "USDⓈ-M Futures", futuresBatch.second)
+        val spotBatch = selectBinanceSymbolBatch(knownSpot, BinanceAutoJournalStore.symbolCursor(context, "Spot"))
+        val futuresBatch = selectBinanceSymbolBatch(knownFutures, BinanceAutoJournalStore.symbolCursor(context, "USDⓈ-M Futures"))
         val coverageLimited = spotBatch.first.size < knownSpot.size || futuresBatch.first.size < knownFutures.size
         if (coverageLimited) {
             failures += "Known symbols exceed the 100-per-market sync batch; this run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols. Remaining symbols rotate into later syncs."
         }
 
-        val fetched = mutableListOf<BinanceJournalFill>()
-        var symbolsAttempted = 0
-        var symbolFailures = 0
-        (spotBatch.first.map { "Spot" to it } +
-            futuresBatch.first.map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
-            symbolsAttempted++
-            val result = runCatching {
-                if (market == "Spot") api.spotExecutionHistory(symbol, start, end)
-                else api.futuresExecutionHistory(symbol, start, end)
-            }
-            result.onSuccess { fetched += it }
-                .onFailure { symbolFailures++; failures += "$market $symbol: ${it.message ?: "request failed"}" }
+        data class SymbolResult(
+            val market: String,
+            val symbol: String,
+            val fills: List<BinanceJournalFill>,
+            val start: Long,
+            val error: String? = null
+        )
+
+        val tasks = spotBatch.first.map { "Spot" to it } + futuresBatch.first.map { "USDⓈ-M Futures" to it }
+        val limiter = Semaphore(MAX_PARALLEL_SYMBOLS)
+        val results = coroutineScope {
+            tasks.map { (market, symbol) ->
+                async {
+                    limiter.withPermit {
+                        val lastSuccess = BinanceAutoJournalStore.symbolLastSync(context, market, symbol)
+                        // One-minute overlap catches delayed records and API boundary effects.
+                        val start = if (lastSuccess > 0L)
+                            maxOf(fallbackStart, lastSuccess - CHECKPOINT_OVERLAP_MS)
+                        else fallbackStart
+                        try {
+                            val rows = if (market == "Spot")
+                                api.spotExecutionHistory(symbol, start, attemptedAt)
+                            else api.futuresExecutionHistory(symbol, start, attemptedAt)
+                            BinanceAutoJournalStore.recordSymbolSync(context, market, symbol, attemptedAt)
+                            SymbolResult(market, symbol, rows, start)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            SymbolResult(market, symbol, emptyList(), start, error.message ?: "request failed")
+                        }
+                    }
+                }
+            }.awaitAll()
         }
 
+        // Failed symbols retain their previous checkpoint and are retried on later passes.
+        BinanceAutoJournalStore.saveSymbolCursor(context, "Spot", spotBatch.second)
+        BinanceAutoJournalStore.saveSymbolCursor(context, "USDⓈ-M Futures", futuresBatch.second)
+        results.filter { it.error != null }.forEach {
+            failures += "${it.market} ${it.symbol}: ${it.error}"
+        }
+
+        val fetched = results.flatMap { it.fills }
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
+        val symbolFailures = results.count { it.error != null }
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Binance symbol discovery is automatic for current Spot holdings and Futures income/positions; older closed Spot pairs may not be discoverable through Binance's symbol-scoped trade-history API."
-            "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
+            "Up to date (7-day window)" -> "Incremental sync completed. Known symbols were refreshed from their last successful checkpoint with a one-minute overlap; first-time symbols retain the rolling 7-day window. Older closed Spot pairs may require Historical import."
+            "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Successful symbols were checkpointed; failed symbols will retry from their previous checkpoint."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."
         }
-        val priorSuccess = previous.lastSuccess
+        val earliestStart = results.minOfOrNull { it.start } ?: fallbackStart
         BinanceAutoJournalStore.recordSyncStatus(context, BinanceJournalSyncStatus(
             lastAttempt = attemptedAt,
-            lastSuccess = if (success) attemptedAt else priorSuccess,
+            lastSuccess = if (success) attemptedAt else previous.lastSuccess,
             state = state,
             detail = detail,
-            symbolsAttempted = symbolsAttempted,
+            symbolsAttempted = results.size,
             symbolsFailed = symbolFailures,
             fillsFetched = fetched.size,
             fillsInserted = inserted,
-            windowStart = start,
-            windowEnd = end
+            windowStart = earliestStart,
+            windowEnd = attemptedAt
         ))
         inserted
     }
