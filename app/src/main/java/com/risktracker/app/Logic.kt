@@ -277,7 +277,6 @@ class Store(context: Context) {
      * on the device untouched, but nothing reads them into the app or writes new ones.
      */
     fun loadEntries(): List<PnlEntry> = emptyList()
-    }
 
     fun loadTrades(): List<TradeEntry> {
         val raw = prefs.getString("trade_journal_v1", null) ?: return emptyList()
