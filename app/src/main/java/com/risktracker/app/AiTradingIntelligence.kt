@@ -91,6 +91,7 @@ fun buildAiTradingContext(
     reviews: Map<String, TradeReview>,
     dailyEntries: List<PnlEntry>,
     kind: AiReportKind,
+    exchangeFills: List<BinanceJournalFill> = emptyList(),
     nowMillis: Long = System.currentTimeMillis()
 ): JSONObject {
     val sorted = trades.filter { it.pnl.isFinite() && it.entry.isFinite() && it.exit.isFinite() && it.quantity.isFinite() }
@@ -102,6 +103,22 @@ fun buildAiTradingContext(
     val weekStart = calendar.timeInMillis
     val weekTrades = sorted.filter { (parseAiDate(it.date)?.time ?: 0L) >= weekStart }
     val selected = if (kind == AiReportKind.WEEKLY) weekTrades else sorted
+    val selectedFills = exchangeFills.filter { it.time > 0L &&
+        (kind != AiReportKind.WEEKLY || it.time >= weekStart) }.sortedBy { it.time }
+    val fillRows = JSONArray()
+    selectedFills.takeLast(250).forEach { fill ->
+        fillRows.put(JSONObject()
+            .put("execution_time_utc_ms", fill.time)
+            .put("market", fill.market.take(20))
+            .put("symbol", fill.symbol.take(24))
+            .put("side", fill.side.take(8))
+            .put("quantity", fill.quantity.takeIf { it.isFinite() } ?: JSONObject.NULL)
+            .put("price", fill.price.takeIf { it.isFinite() } ?: JSONObject.NULL)
+            .put("quote_amount", fill.quoteAmount.takeIf { it.isFinite() } ?: JSONObject.NULL)
+            .put("fee_amount", fill.fee.takeIf { it.isFinite() } ?: JSONObject.NULL)
+            .put("fee_asset", fill.feeAsset.take(12))
+            .put("exchange_reported_realized_pnl", fill.realizedPnl?.takeIf { it.isFinite() } ?: JSONObject.NULL))
+    }
     val tradeRows = JSONArray()
     selected.takeLast(150).forEach { trade ->
         val review = reviews[trade.id]
@@ -133,10 +150,12 @@ fun buildAiTradingContext(
         .put("data_quality", JSONObject()
             .put("journal_trade_count", selected.size)
             .put("trades_included", minOf(selected.size, 150))
+            .put("exchange_fill_count", selectedFills.size)
+            .put("exchange_fills_included", fillRows.length())
             .put("reviews_available", selected.count { reviews.containsKey(it.id) })
             .put("daily_entries_included", dailyRows.length())
-            .put("pnl_basis", "Journal P&L is locally estimated from entry, exit, quantity, direction and fees; it is not exchange-reported P&L."))
-        .put("trades", tradeRows).put("daily_history", dailyRows)
+            .put("pnl_basis", "Journal P&L is locally estimated from entry, exit, quantity, direction and fees. Exchange realized P&L is included only where the execution record reports it; fills are executions, not closed positions."))
+        .put("trades", tradeRows).put("exchange_fills", fillRows).put("daily_history", dailyRows)
 }
 
 private fun parseAiDate(value: String): Date? {
@@ -185,7 +204,11 @@ private class OpenAiTradingAnalyst(private val apiKey: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiTradingIntelligenceScreen(trades: List<TradeEntry>, dailyEntries: List<PnlEntry>) {
+fun AiTradingIntelligenceScreen(
+    trades: List<TradeEntry>,
+    dailyEntries: List<PnlEntry>,
+    exchangeFills: List<BinanceJournalFill> = emptyList()
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val keyStore = remember { OpenAiKeyStore(context) }
     val reviewStore = remember { TradeReviewStore(context) }
@@ -234,7 +257,7 @@ fun AiTradingIntelligenceScreen(trades: List<TradeEntry>, dailyEntries: List<Pnl
             AiReportKind.WEEKLY -> "Reviews trades dated from the current local Monday onward."
             AiReportKind.DISCIPLINE -> "Compares recorded behavior with saved plan-adherence and risk data."
         }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Available journal trades: ${trades.count { it.pnl.isFinite() }} · Daily records: ${dailyEntries.size}")
+        Text("Available journal trades: ${trades.count { it.pnl.isFinite() }} · Exchange fills: ${exchangeFills.size} · Daily records: ${dailyEntries.size}")
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = consent, onCheckedChange = { consent = it })
             Text("I consent to sending this selected, minimized journal data to OpenAI for this report.")
@@ -244,8 +267,10 @@ fun AiTradingIntelligenceScreen(trades: List<TradeEntry>, dailyEntries: List<Pnl
             loading = true; error = null
             scope.launch {
                 try {
-                    val contextData = buildAiTradingContext(trades, reviewStore.load(), dailyEntries, kind)
-                    if (contextData.optJSONObject("data_quality")?.optInt("journal_trade_count", 0) == 0) {
+                    val contextData = buildAiTradingContext(trades, reviewStore.load(), dailyEntries, kind, exchangeFills)
+                    val quality = contextData.optJSONObject("data_quality")
+                    if ((quality?.optInt("journal_trade_count", 0) ?: 0) == 0 &&
+                        (quality?.optInt("exchange_fill_count", 0) ?: 0) == 0) {
                         throw IllegalStateException("There are no valid closed journal trades to analyze.")
                     }
                     val result = withContext(Dispatchers.IO) {
