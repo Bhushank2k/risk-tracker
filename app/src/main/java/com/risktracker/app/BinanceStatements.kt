@@ -171,6 +171,7 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
 
 object BinanceStatementSyncRunner {
     suspend fun sync(context: Context): BinanceStatementSyncResult = withContext(Dispatchers.IO) {
+        BinanceRestGuard.configure(context)
         val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
         val fetch = BinanceStatementApi(credentials.first, credentials.second).fetchAvailableStatements()
         val saved = BinanceStatementStore.saveMerge(context, fetch.records)
