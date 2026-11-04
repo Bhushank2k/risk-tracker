@@ -89,7 +89,6 @@ enum class AiReportKind(val title: String, val instruction: String) {
 fun buildAiTradingContext(
     trades: List<TradeEntry>,
     reviews: Map<String, TradeReview>,
-    dailyEntries: List<PnlEntry>,
     kind: AiReportKind,
     exchangeFills: List<BinanceJournalFill> = emptyList(),
     maxTradeRiskUsd: Double? = null,
@@ -142,12 +141,6 @@ fun buildAiTradingContext(
             .put("emotion_before_self_report", review?.emotionBefore?.take(80) ?: "")
             .put("review_note", review?.notes?.take(300) ?: ""))
     }
-    val dailyRows = JSONArray()
-    dailyEntries.filter { it.pnl.isFinite() && it.balance.isFinite() }.takeLast(35).forEach {
-        dailyRows.put(JSONObject().put("date", it.date.take(24)).put("reported_daily_pnl", it.pnl)
-            .put("opening_balance", it.balance).put("discipline_score", it.disciplineScore)
-            .put("note", it.notes.take(200)))
-    }
     return JSONObject().put("report_type", kind.name)
         .put("data_quality", JSONObject()
             .put("journal_trade_count", selected.size)
@@ -155,12 +148,11 @@ fun buildAiTradingContext(
             .put("exchange_fill_count", selectedFills.size)
             .put("exchange_fills_included", fillRows.length())
             .put("reviews_available", selected.count { reviews.containsKey(it.id) })
-            .put("daily_entries_included", dailyRows.length())
             .put("pnl_basis", "Journal P&L is locally estimated from entry, exit, quantity, direction and fees. Exchange realized P&L is included only where the execution record reports it; fills are executions, not closed positions."))
         .put("risk_settings", JSONObject()
             .put("max_trade_risk_usd", maxTradeRiskUsd?.takeIf { it.isFinite() && it > 0.0 } ?: JSONObject.NULL)
             .put("max_daily_loss_usd", maxDailyLossUsd?.takeIf { it.isFinite() && it > 0.0 } ?: JSONObject.NULL))
-        .put("trades", tradeRows).put("exchange_fills", fillRows).put("daily_history", dailyRows)
+        .put("trades", tradeRows).put("exchange_fills", fillRows)
 }
 
 private fun parseAiDate(value: String): Date? {
@@ -211,7 +203,6 @@ private class OpenAiTradingAnalyst(private val apiKey: String) {
 @Composable
 fun AiTradingIntelligenceScreen(
     trades: List<TradeEntry>,
-    dailyEntries: List<PnlEntry>,
     exchangeFills: List<BinanceJournalFill> = emptyList(),
     maxTradeRiskUsd: Double? = null,
     maxDailyLossUsd: Double? = null
@@ -264,7 +255,7 @@ fun AiTradingIntelligenceScreen(
             AiReportKind.WEEKLY -> "Reviews trades dated from the current local Monday onward."
             AiReportKind.DISCIPLINE -> "Compares recorded behavior with saved plan-adherence and risk data."
         }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Available journal trades: ${trades.count { it.pnl.isFinite() }} · Exchange fills: ${exchangeFills.size} · Daily records: ${dailyEntries.size}")
+        Text("Available journal trades: ${trades.count { it.pnl.isFinite() }} · Exchange fills: ${exchangeFills.size}")
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = consent, onCheckedChange = { consent = it })
             Text("I consent to sending this selected, minimized journal data to OpenAI for this report.")
@@ -274,7 +265,7 @@ fun AiTradingIntelligenceScreen(
             loading = true; error = null
             scope.launch {
                 try {
-                    val contextData = buildAiTradingContext(trades, reviewStore.load(), dailyEntries, kind, exchangeFills, maxTradeRiskUsd, maxDailyLossUsd)
+                    val contextData = buildAiTradingContext(trades, reviewStore.load(), kind, exchangeFills, maxTradeRiskUsd, maxDailyLossUsd)
                     val quality = contextData.optJSONObject("data_quality")
                     if ((quality?.optInt("journal_trade_count", 0) ?: 0) == 0 &&
                         (quality?.optInt("exchange_fill_count", 0) ?: 0) == 0) {

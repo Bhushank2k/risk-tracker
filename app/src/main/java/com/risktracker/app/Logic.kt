@@ -272,21 +272,11 @@ class Store(context: Context) {
         get() = prefs.getString("theme_mode", "System") ?: "System"
         set(v) = prefs.edit().putString("theme_mode", v).apply()
 
-    fun loadEntries(): List<PnlEntry> {
-        val raw = prefs.getString("entries", null) ?: return emptyList()
-        val arr = JSONArray(raw)
-        return (0 until arr.length()).map {
-            val o = arr.getJSONObject(it)
-            PnlEntry(o.getString("date"), o.getDouble("balance"), o.getDouble("pnl"), o.optString("notes", ""), o.optInt("disciplineScore", 0))
-        }
-    }
-
-    fun saveEntries(list: List<PnlEntry>) {
-        val arr = JSONArray()
-        list.forEach {
-            arr.put(JSONObject().put("date", it.date).put("balance", it.balance).put("pnl", it.pnl).put("notes", it.notes).put("disciplineScore", it.disciplineScore))
-        }
-        prefs.edit().putString("entries", arr.toString()).apply()
+    /**
+     * The manual balance ledger is no longer used. Any values saved by earlier versions stay
+     * on the device untouched, but nothing reads them into the app or writes new ones.
+     */
+    fun loadEntries(): List<PnlEntry> = emptyList()
     }
 
     fun loadTrades(): List<TradeEntry> {
@@ -345,11 +335,10 @@ class Store(context: Context) {
         return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
-    fun importBackup(raw: String): Pair<List<PnlEntry>, List<TradeEntry>> {
+    /** Restores everything except the retired manual balance ledger; any "dailyEntries" in the file are ignored. */
+    fun importBackup(raw: String): List<TradeEntry> {
         val root = JSONObject(raw)
         require(root.optString("format") == "risk-tracker-backup-v1") { "Unsupported backup format." }
-        val a = root.getJSONArray("dailyEntries")
-        val daily = (0 until a.length()).map { i -> a.getJSONObject(i).let { PnlEntry(it.getString("date"),it.getDouble("balance"),it.getDouble("pnl"),it.optString("notes",""),it.optInt("disciplineScore",0)) } }
         val b = root.getJSONArray("trades")
         val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
         val importedBinance = if (root.has("binanceDailyPnl")) {
@@ -363,12 +352,12 @@ class Store(context: Context) {
                 }
             }
         } else null
-        saveEntries(daily); saveTrades(emptyList())
+        saveTrades(emptyList())
         if (importedBinance != null) BinanceSyncData.replaceAll(appContext, importedBinance)
         if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
         if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
-        return daily to emptyList()
+        return emptyList()
     }
     fun loadInput(): CalcInput {
         val d = CalcInput()
