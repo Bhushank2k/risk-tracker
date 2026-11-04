@@ -28,12 +28,35 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.RateReview
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -148,7 +171,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     }
     val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Refresh)
+    val icons = listOf(Icons.Default.Home, Icons.Default.ReceiptLong, Icons.Default.ShowChart, Icons.Default.Lightbulb)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
@@ -356,16 +379,20 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 Modifier.padding(vertical = 8.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
                             )
-                            Text(group, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(groupIcon(group), contentDescription = null,
+                                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text(group, style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                         items(destinations, key = { it.second }) { (label, destination) ->
                             NavigationDrawerItem(
                                 label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
                                 selected = tab == destination,
                                 onClick = { tab = destination; menuExpanded = false },
-                                icon = { Icon(Icons.Default.Menu, contentDescription = null) },
+                                icon = { Icon(destinationIcon(destination), contentDescription = null) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp)
                             )
@@ -375,6 +402,43 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
+}
+
+/** Icon for each menu destination, keyed by the screen index used by the router. */
+private fun destinationIcon(destination: Int): ImageVector = when (destination) {
+    0 -> Icons.Default.Home
+    1 -> Icons.Default.ReceiptLong
+    2 -> Icons.Default.Calculate
+    5 -> Icons.Default.Info
+    6 -> Icons.Default.Sync
+    7 -> Icons.Default.Settings
+    9 -> Icons.Default.Description
+    11 -> Icons.Default.Shield
+    13 -> Icons.Default.Science
+    14 -> Icons.Default.RateReview
+    15 -> Icons.Default.FactCheck
+    16 -> Icons.Default.Timeline
+    17 -> Icons.Default.History
+    18 -> Icons.Default.HealthAndSafety
+    19 -> Icons.Default.Notifications
+    20 -> Icons.Default.ShowChart
+    21 -> Icons.Default.Lightbulb
+    22 -> Icons.Default.Flag
+    23 -> Icons.Default.CalendarMonth
+    24 -> Icons.Default.AutoAwesome
+    else -> Icons.Default.Menu
+}
+
+/** Icon for each menu section heading. */
+private fun groupIcon(group: String): ImageVector = when (group) {
+    "HOME" -> Icons.Default.Home
+    "MARKET OPPORTUNITIES" -> Icons.Default.Explore
+    "ANALYTICS" -> Icons.Default.Analytics
+    "AI INTELLIGENCE" -> Icons.Default.AutoAwesome
+    "RISK MANAGEMENT" -> Icons.Default.Shield
+    "BINANCE & DATA" -> Icons.Default.Storage
+    "REPORTS & APP" -> Icons.Default.Folder
+    else -> Icons.Default.Menu
 }
 
 // ---------------- Binance sync health ----------------
