@@ -209,6 +209,15 @@ internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, 
 
 /** Minimum gap between syncs started by opening a screen. Each sync makes several signed API calls. */
 const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 5L * 60 * 1000
+const val BINANCE_SYMBOL_SYNC_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
+const val BINANCE_SYMBOL_SYNC_OVERLAP_MS = 60_000L
+
+/** Incremental cursor start with a bounded recovery window and a small duplicate-safe overlap. */
+internal fun binanceSymbolSyncStart(lastSuccess: Long, end: Long): Long {
+    val fallback = (end - BINANCE_SYMBOL_SYNC_LOOKBACK_MS).coerceAtLeast(0L)
+    if (lastSuccess <= 0L || lastSuccess > end) return fallback
+    return maxOf(fallback, lastSuccess - BINANCE_SYMBOL_SYNC_OVERLAP_MS)
+}
 
 /**
  * Whether opening a screen should start a sync, given when the last attempt ran.
@@ -222,8 +231,6 @@ fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
 }
 
 object BinanceAutoJournalRunner {
-    private const val LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
-    private const val CHECKPOINT_OVERLAP_MS = 60_000L
     private const val MAX_PARALLEL_SYMBOLS = 4
 
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
@@ -248,7 +255,7 @@ object BinanceAutoJournalRunner {
         ))
 
         val api = BinanceApi(credentials.first, credentials.second)
-        val fallbackStart = attemptedAt - LOOKBACK_MS
+        val fallbackStart = (attemptedAt - BINANCE_SYMBOL_SYNC_LOOKBACK_MS).coerceAtLeast(0L)
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
         val failures = mutableListOf<String>()
@@ -296,9 +303,7 @@ object BinanceAutoJournalRunner {
                     limiter.withPermit {
                         val lastSuccess = BinanceAutoJournalStore.symbolLastSync(context, market, symbol)
                         // One-minute overlap catches delayed records and API boundary effects.
-                        val start = if (lastSuccess > 0L)
-                            maxOf(fallbackStart, lastSuccess - CHECKPOINT_OVERLAP_MS)
-                        else fallbackStart
+                        val start = binanceSymbolSyncStart(lastSuccess, attemptedAt)
                         try {
                             val rows = if (market == "Spot")
                                 api.spotExecutionHistory(symbol, start, attemptedAt)
