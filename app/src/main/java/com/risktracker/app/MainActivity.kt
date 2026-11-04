@@ -245,14 +245,14 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 else -> null
             }
             TopAppBar(
-                modifier = Modifier.height(56.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 title = {
                     Text(pageTitle, fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 },
                 actions = {
                     quickAction?.let { (label, destination) ->
