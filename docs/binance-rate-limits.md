@@ -7,3 +7,8 @@
 - A WebSocket does not remove an existing Binance IP ban for REST. Wait until Binance's supplied expiry timestamp; WebSocket market streams may continue independently.
 - The circuit-breaker expiry is persisted in app preferences and restored by the activity and every background sync runner, so force-closing or restarting the app does not immediately resume REST requests.
 - The Premium Overview refreshes its positions and account-balance REST snapshots at most once every five minutes, and once on screen open. Live mark prices continue over the WebSocket between snapshots.
+
+- Account-history sync uses bounded concurrency (four workers) for independent Spot symbols and statement categories. The shared REST pacer remains authoritative, so parallel work never bypasses the 250 ms request gap or circuit breaker.
+- Automatic trade-journal sync stores a successful timestamp per market/symbol. Repeat syncs request only the interval since that symbol's last successful checkpoint, with a one-minute overlap; first-time symbols retain the rolling seven-day recovery window. Failed symbols do not advance their checkpoint.
+- Spot FIFO P&L is still calculated after all fetched fills are combined and sorted chronologically; network concurrency does not change lot matching order.
+- Account snapshot refresh fetches Spot and Futures balances concurrently and writes a new snapshot only after both requests succeed.
