@@ -4,3 +4,25 @@ local.properties
 .idea/
 *.iml
 captures/
+
+# Kotlin/Android build output
+.kotlin/
+.cxx/
+.externalNativeBuild/
+*.apk
+*.aab
+
+# Local credentials and environment files
+.env*
+!.env.example
+keystore.properties
+secrets.properties
+*.jks
+*.keystore
+
+# Logs and temporary/editor/OS files
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
