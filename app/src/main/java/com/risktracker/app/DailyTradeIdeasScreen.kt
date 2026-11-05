@@ -1007,14 +1007,11 @@ private fun TradeSessionTimingCard() {
                 }
             }
             HorizontalDivider()
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    next?.let { "Next · ${it.slot.name} opens · ${it.detail.removePrefix("Opens in ")}" }
-                        ?: "Session activity windows shown in local market time",
-                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium
-                )
-                TextButton(onClick = { }) { Text(" ") }
-            }
+            Text(
+                next?.let { "Next · ${it.slot.name} opens · ${it.detail.removePrefix("Opens in ")}" }
+                    ?: "Session activity windows shown in local market time",
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium
+            )
             statuses.forEach { status ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
