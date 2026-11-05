@@ -176,14 +176,26 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     Button(onClick = {
                         if (credentials.read() == null) { status = "Save valid API credentials first."; return@Button }
                         busy = true
-                        status = "Syncing Spot and Futures history…"
+                        status = "Refreshing Binance account balances…"
                         scope.launch {
                             try {
+                                // Fetch and display the lightweight account snapshot first. Full Spot
+                                // FIFO history can involve many paginated requests, so it must not
+                                // block the first useful result from appearing on screen.
+                                val snapshotResult = runCatching {
+                                    BinanceAccountSnapshotRunner.refresh(context)
+                                }
+                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
+                                if (snapshotResult.isSuccess) {
+                                    onSynced()
+                                    status = "Balances refreshed. Loading complete Spot and Futures P&L history…"
+                                } else {
+                                    status = "Balances unavailable: ${describeBinanceError(snapshotResult.exceptionOrNull()!!)}. Continuing with P&L history…"
+                                }
+
                                 BinanceSyncRunner.sync(context)
                                 rows = BinanceSyncData.load(context)
                                 lastSync = BinanceSyncData.lastSync(context)
-                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
-                                onSynced()
                                 BinanceAutoJournalRunner.sync(context)
                                 val journalStatus = BinanceAutoJournalStore.syncStatus(context)
                                 onJournalImported()
@@ -193,6 +205,9 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                     "Sync completed: balances refreshed; ${journalStatus.fillsFetched} trade fills fetched, ${journalStatus.fillsInserted} new fills added."
                                 }
                             } catch (e: Exception) {
+                                // Preserve and show the last successful account snapshot if a later
+                                // historical request fails; never clear previously saved P&L.
+                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
                                 status = "Sync failed: " + describeBinanceError(e)
                             } finally { busy = false }
                         }
