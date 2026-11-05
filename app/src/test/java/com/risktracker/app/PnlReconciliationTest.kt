@@ -46,4 +46,22 @@ class PnlReconciliationTest {
         assertEquals(DailyPnlSource.JOURNAL, rows[1].source)
         assertEquals(3.0, rows[1].selectedPnl, 0.0001)
     }
+
+    @Test fun aggregatesDuplicateDatesWithinEachSourceButKeepsSourcePrecedence() {
+        val manual = listOf(
+            PnlEntry("2026-06-09", 100.0, 2.0),
+            PnlEntry("9/6/2026", 100.0, 3.0)
+        )
+        val imported = listOf(
+            BinanceDailyResult("2026-06-09", 1.0, 2.0),
+            BinanceDailyResult("2026-06-09", 3.0, 4.0)
+        )
+        val rows = reconcileDailyPnl(manual, imported, emptyList())
+        assertEquals(1, rows.size)
+        assertEquals(5.0, rows.single().manualPnl!!, 0.0001)
+        assertEquals(10.0, rows.single().binancePnl!!, 0.0001)
+        assertEquals(DailyPnlSource.BINANCE, rows.single().source)
+        assertEquals(10.0, rows.single().selectedPnl, 0.0001)
+    }
+
 }
