@@ -154,7 +154,16 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         if (BinanceCredentialStore(context).read() != null) {
-            BinanceJournalWorker.schedule(context)
+            // One-time upgrade migration: previously installed daily and statement jobs
+            // may still have been enqueued without CONNECTED network constraints. UPDATE
+            // them once after upgrading, rather than resetting periodic work on every app open.
+            val schedulePrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
+            if (!schedulePrefs.getBoolean("binance_connected_network_v1", false)) {
+                BinanceDailyWorker.schedule(context)
+                BinanceStatementWorker.schedule(context)
+                BinanceJournalWorker.schedule(context)
+                schedulePrefs.edit().putBoolean("binance_connected_network_v1", true).apply()
+            }
             runCatching {
                 withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
                 exchangeFills = BinanceAutoJournalStore.load(context)
