@@ -28,35 +28,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.HealthAndSafety
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.RateReview
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,7 +68,6 @@ fun pnlColor(v: Double): Color = if (v > 0) profitColor() else if (v < 0) lossCo
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        BinanceRestGuard.configure(applicationContext)
         val store = Store(applicationContext)
         store.clearManualTradesOnce()
         inrRate = store.inr
@@ -101,16 +77,15 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val scheme = if (dark) {
                 darkColorScheme(
-                    primary = Color(0xFF2DD4BF),
-                    onPrimary = Color(0xFF0F1115),
-                    secondary = Color(0xFF8FA3BF),
-                    background = Color(0xFF0F1115),
-                    surface = Color(0xFF161A22),
-                    surfaceVariant = Color(0xFF1A1E27),
-                    outlineVariant = Color(0xFF262B36),
-                    primaryContainer = Color(0xFF183A33),
-                    onPrimaryContainer = Color(0xFF5EEAD4),
-                    error = Color(0xFFFB7185)
+                    primary = Color(0xFF7DE2B8),
+                    onPrimary = Color(0xFF06271A),
+                    secondary = Color(0xFF91C9FF),
+                    background = Color(0xFF0B1110),
+                    surface = Color(0xFF111A18),
+                    surfaceVariant = Color(0xFF202B28),
+                    primaryContainer = Color(0xFF183D2E),
+                    onPrimaryContainer = Color(0xFFD6F8E7),
+                    error = Color(0xFFFF7B78)
                 )
             } else {
                 lightColorScheme(
@@ -137,17 +112,15 @@ class MainActivity : ComponentActivity() {
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
-    var analyticsSection by remember { mutableIntStateOf(0) }
-    var riskSection by remember { mutableIntStateOf(0) }
-    var binanceSection by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
+    var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
+    var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
     val todayPnlDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    // Daily P&L comes only from imported Binance records; the manual ledger is not used.
-    val todayReconciledPnl = remember(importedPnl, todayPnlDate) {
-        reconcileDailyPnl(emptyList(), importedPnl, emptyList()).firstOrNull { it.date == todayPnlDate }
+    val todayReconciledPnl = remember(entries, importedPnl, trades, todayPnlDate) {
+        reconcileDailyPnl(entries, importedPnl, trades).firstOrNull { it.date == todayPnlDate }
     }
     var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
     var exchangeSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
@@ -174,7 +147,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     }
     val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
-    val icons = listOf(Icons.Default.Home, Icons.Default.ReceiptLong, Icons.Default.ShowChart, Icons.Default.Lightbulb)
+    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Refresh)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
@@ -186,75 +159,77 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Daily Trade Ideas" to 21
         ),
         "ANALYTICS" to listOf(
-            "Analytics workspace" to 20
-        ),
-        "AI INTELLIGENCE" to listOf(
-            "AI Trading Intelligence" to 24
+            "Trading Analytics" to 20,
+            "P&L Calendar" to 23,
+            "Post-trade reviews" to 14,
+            "Ledger audit" to 15
         ),
         "RISK MANAGEMENT" to listOf(
-            "Risk Center" to 25
+            "Position & leverage calculator" to 2,
+            "Trade Risk Gate" to 11,
+            "Risk alerts" to 19,
+            "Risk Scenario Lab" to 13,
+            "Target Planner" to 22
         ),
         "BINANCE & DATA" to listOf(
-            "Binance & Accounts" to 26
+            "Binance Sync" to 6,
+            "Sync health" to 18,
+            "Live positions & orders" to 16,
+            "Account activity" to 17
         ),
         "REPORTS & APP" to listOf(
             "Crypto tax report" to 9,
             "Settings" to 7,
+            "About Risk Tracker" to 5
         )
     )
 
     val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
     Scaffold(
         topBar = {
-            val pageTitles = mapOf(
-                0 to "Overview",
-                1 to "Trade Journal",
-                2 to "Position & Leverage Calculator",
-                6 to "Binance & Accounts",
-                25 to "Risk Center",
-                26 to "Binance & Accounts",
-                7 to "Settings",
-                9 to "Crypto Tax Report",
-                11 to "Trade Risk Gate",
-                13 to "Risk Scenario Lab",
-                14 to "Post-Trade Reviews",
-                16 to "Live Positions & Orders",
-                17 to "Account Activity",
-                19 to "Risk Alerts",
-                20 to "Analytics",
-                21 to "Daily Trade Ideas",
-                22 to "Target Planner",
-                23 to "P&L Calendar",
-                24 to "AI Trading Intelligence"
-            )
-            val pageTitle = pageTitles[tab] ?: "More"
+            val pageTitle = when (tab) {
+                0 -> "Overview"
+                1 -> "Trade Journal"
+                2 -> "Position Calculator"
+                5 -> "About"
+                6 -> "Binance Sync"
+                7 -> "Settings"
+                9 -> "Tax Report"
+                11 -> "Trade Risk Gate"
+                13 -> "Scenario Lab"
+                14 -> "Trade Reviews"
+                15 -> "Ledger Audit"
+                16 -> "Live Trades"
+                17 -> "Account Activity"
+                18 -> "Sync Health"
+                19 -> "Risk Alerts"
+                20 -> "Analytics"
+                21 -> "Trade Ideas"
+                22 -> "Target Planner"
+                23 -> "P&L Calendar"
+                else -> "More"
+            }
             val quickAction = when (tab) {
-                0 -> "Risk" to 25
+                0 -> "Risk" to 11
                 1 -> "Analytics" to 20
-                20 -> "Calendar" to 20
-                21 -> "Targets" to 25
-                16 -> "Risk" to 25
+                20 -> "Calendar" to 23
+                21 -> "Targets" to 22
+                16 -> "Risk" to 11
                 else -> null
             }
             TopAppBar(
+                modifier = Modifier.height(56.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 title = {
                     Text(pageTitle, fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.titleMedium, maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 },
                 actions = {
                     quickAction?.let { (label, destination) ->
-                        TextButton(onClick = {
-                            when (tab) {
-                                20 -> { analyticsSection = 1; tab = 20 }
-                                21 -> { riskSection = 4; tab = 25 }
-                                else -> tab = destination
-                            }
-                        }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        TextButton(onClick = { tab = destination }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                         }
                     }
@@ -301,7 +276,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 label = "screen-transition"
             ) { destination ->
                 when (destination) {
-                0 -> PnlScreen(store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it })
+                0 -> PnlScreen(entries, syncedCount, store.maxDailyLoss, importedPnl, trades, onNavigate = { tab = it }, onImportedPnlChange = { importedPnl = it }) {
+                    entries = it
+                    store.saveEntries(it)
+                }
                 1 -> TradeJournalScreen(exchangeFills)
                 2 -> CombinedTradingCalculatorScreen(
                     input = input,
@@ -311,48 +289,18 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                6, 26 -> Column(Modifier.fillMaxSize()) {
-                    ScrollableTabRow(selectedTabIndex = binanceSection, edgePadding = 12.dp) {
-                        listOf("Sync", "Live Positions", "Account Activity").forEachIndexed { index, label ->
-                            Tab(selected = binanceSection == index, onClick = { binanceSection = index }, text = { Text(label, maxLines = 1) })
-                        }
-                    }
-                    when (binanceSection) {
-                        0 -> BinanceSyncScreen(
-                            onSynced = { importedPnl = BinanceSyncData.load(context) },
-                            onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) },
-                            onNavigate = { destination -> binanceSection = when (destination) { 16 -> 1; 17 -> 2; else -> 0 } }
-                        )
-                        1 -> LiveTradesScreen()
-                        else -> BinanceStatementsScreen(onBack = { binanceSection = 0 })
-                    }
-                }
+                5 -> AboutScreen()
+                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
-                25 -> Column(Modifier.fillMaxSize()) {
-                    ScrollableTabRow(selectedTabIndex = riskSection, edgePadding = 12.dp) {
-                        listOf("Calculator", "Risk Gate", "Alerts", "Scenarios", "Targets").forEachIndexed { index, label ->
-                            Tab(selected = riskSection == index, onClick = { riskSection = index }, text = { Text(label, maxLines = 1) })
-                        }
-                    }
-                    when (riskSection) {
-                        0 -> CombinedTradingCalculatorScreen(
-                            input = input,
-                            accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
-                            onChange = { input = it; store.saveInput(it) }
-                        )
-                        1 -> TradeRiskGateScreen(TradeRiskSettings(
-                            maxTradeRisk = store.maxTradeRisk,
-                            maxDailyLoss = store.maxDailyLoss,
-                            dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
-                            maxTradesPerDay = 10,
-                            tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
-                            dailyPnlKnown = todayReconciledPnl != null
-                        ))
-                        2 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                        3 -> RiskScenarioLabScreen()
-                        else -> TargetScreen()
-                    }
-                }
+                11 -> TradeRiskGateScreen(TradeRiskSettings(
+                    maxTradeRisk = store.maxTradeRisk,
+                    maxDailyLoss = store.maxDailyLoss,
+                    dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
+                    maxTradesPerDay = 10,
+                    tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
+                    dailyPnlKnown = todayReconciledPnl != null
+                ))
+                13 -> RiskScenarioLabScreen()
                 14 -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
                     if (BinanceCredentialStore(context).read() != null) {
                         appScope.launch {
@@ -362,36 +310,19 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
+                15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
-                19 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> Column(Modifier.fillMaxSize()) {
-                    ScrollableTabRow(selectedTabIndex = analyticsSection, edgePadding = 12.dp) {
-                        listOf("Performance", "P&L Calendar", "Trade Reviews").forEachIndexed { index, label ->
-                            Tab(selected = analyticsSection == index, onClick = { analyticsSection = index }, text = { Text(label, maxLines = 1) })
-                        }
-                    }
-                    when (analyticsSection) {
-                        0 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
-                        1 -> PnlCalendarScreen(trades, exchangeFills)
-                        else -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
-                            if (BinanceCredentialStore(context).read() != null) {
-                                appScope.launch {
-                                    runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
-                                    exchangeFills = BinanceAutoJournalStore.load(context)
-                                    exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
-                                }
-                            }
-                        })
-                    }
-                }
+                18 -> BinanceSyncHealthScreen()
+                19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                24 -> AiTradingIntelligenceScreen(trades, exchangeFills, store.maxTradeRisk, store.maxDailyLoss)
-                else -> MoreScreen(store, trades, themeMode, onThemeModeChange,
-                    onRestore = { restoredTrades ->
-                        trades = restoredTrades
+                else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
+                    onRestore = { pair ->
+                        entries = pair.first
+                        trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
                     }) { tab = it }
                 }
@@ -424,20 +355,16 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 Modifier.padding(vertical = 8.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
                             )
-                            Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(groupIcon(group), contentDescription = null,
-                                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                Text(group, style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            }
+                            Text(group, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
                         items(destinations, key = { it.second }) { (label, destination) ->
                             NavigationDrawerItem(
                                 label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
                                 selected = tab == destination,
                                 onClick = { tab = destination; menuExpanded = false },
-                                icon = { Icon(destinationIcon(destination), contentDescription = null) },
+                                icon = { Icon(Icons.Default.Menu, contentDescription = null) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp)
                             )
@@ -447,40 +374,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-}
-
-/** Icon for each menu destination, keyed by the screen index used by the router. */
-private fun destinationIcon(destination: Int): ImageVector = when (destination) {
-    0 -> Icons.Default.Home
-    1 -> Icons.Default.ReceiptLong
-    2 -> Icons.Default.Calculate
-    6 -> Icons.Default.Sync
-    7 -> Icons.Default.Settings
-    9 -> Icons.Default.Description
-    11 -> Icons.Default.Shield
-    13 -> Icons.Default.Science
-    14 -> Icons.Default.RateReview
-    16 -> Icons.Default.Timeline
-    17 -> Icons.Default.History
-    19 -> Icons.Default.Notifications
-    20 -> Icons.Default.ShowChart
-    21 -> Icons.Default.Lightbulb
-    22 -> Icons.Default.Flag
-    23 -> Icons.Default.CalendarMonth
-    24 -> Icons.Default.AutoAwesome
-    else -> Icons.Default.Menu
-}
-
-/** Icon for each menu section heading. */
-private fun groupIcon(group: String): ImageVector = when (group) {
-    "HOME" -> Icons.Default.Home
-    "MARKET OPPORTUNITIES" -> Icons.Default.Explore
-    "ANALYTICS" -> Icons.Default.Analytics
-    "AI INTELLIGENCE" -> Icons.Default.AutoAwesome
-    "RISK MANAGEMENT" -> Icons.Default.Shield
-    "BINANCE & DATA" -> Icons.Default.Storage
-    "REPORTS & APP" -> Icons.Default.Folder
-    else -> Icons.Default.Menu
 }
 
 // ---------------- Binance sync health ----------------
@@ -626,8 +519,10 @@ fun LiveTradesScreen() {
         .sorted()
     LaunchedEffect(Unit) {
         refresh()
-        // Account/position snapshots are fetched once on entry; live Futures marks use WebSocket.
-        // Refresh is user initiated so this screen cannot create a permanent REST polling loop.
+        while (true) {
+            delay(60_000L)
+            refresh()
+        }
     }
     DisposableEffect(streamSymbols) {
         val stream = BinanceMarkPriceStream(
@@ -653,10 +548,7 @@ fun LiveTradesScreen() {
         item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { refresh() }, enabled = !loading) { Text(if (loading) "Loading…" else "Refresh") }
-                    }
+                    Text("Live trades", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
                         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
@@ -749,26 +641,231 @@ fun LiveTradesScreen() {
 
 @Composable
 fun PnlScreen(
+    entries: List<PnlEntry>,
+    syncedCount: Int,
     maxDailyLoss: Double,
     importedPnl: List<BinanceDailyResult> = emptyList(),
     trades: List<TradeEntry> = emptyList(),
     onNavigate: (Int) -> Unit = {},
-    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {}
+    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit = {},
+    onChange: (List<PnlEntry>) -> Unit
 ) {
     RiskOverviewScreen(
+        entries = entries,
         importedPnl = importedPnl,
         trades = trades,
         maxDailyLoss = maxDailyLoss,
-        onNavigate = onNavigate
+        onNavigate = onNavigate,
+        onChange = onChange
     )
 }
 
 @Composable
-fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (List<TradeEntry>) -> Unit, onNavigate: (Int) -> Unit) {
+fun BalanceChart(entries: List<PnlEntry>) {
+    if (entries.size < 2) return
+    var metric by remember { mutableStateOf("Balance") }
+    var range by remember { mutableStateOf("All") }
+    val timed = remember(entries) { entries.withReportTimes().sortedBy { it.second ?: Long.MIN_VALUE } }
+    val datedEntries = timed.map { it.first }
+    var cumulative = 0.0
+    val allPoints = datedEntries.map { entry ->
+        cumulative += entry.pnl
+        entry to if (metric == "Balance") entry.closing else cumulative
+    }
+    val latestTime = timed.mapNotNull { it.second }.maxOrNull()
+    val rangeDays = when (range) { "1W" -> 7; "1M" -> 30; "3M" -> 90; else -> null }
+    val filteredPoints = if (rangeDays == null || latestTime == null) allPoints else {
+        val cutoff = latestTime - rangeDays * 24L * 60L * 60L * 1000L
+        allPoints.filterIndexed { index, _ -> timed[index].second?.let { it >= cutoff } == true }
+            .ifEmpty { allPoints }
+    }
+    val points = filteredPoints.map { it.second }
+    val lo = points.minOrNull() ?: 0.0
+    val hi = points.maxOrNull() ?: 0.0
+    val line = MaterialTheme.colorScheme.primary
+    RiskCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Balance", "Net P&L").forEach { option ->
+                    FilterChip(selected = metric == option, onClick = { metric = option }, label = { Text(option) })
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("1W", "1M", "3M", "All").forEach { option ->
+                    FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
+                }
+            }
+            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+                val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
+                val path = Path()
+                points.forEachIndexed { i, value ->
+                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
+                    val y = (size.height * (1 - (value - lo) / rangeValue)).toFloat()
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, line, style = Stroke(width = 4f))
+                drawLine(Color.LightGray.copy(alpha = 0.5f), Offset(0f, size.height), Offset(size.width, size.height))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+
+@Composable
+fun AddEntryDialog(last: PnlEntry?, onDismiss: () -> Unit, onAdd: (PnlEntry) -> Unit) {
+    val today = remember { SimpleDateFormat("d/M/yyyy", Locale.getDefault()).format(Date()) }
+    var date by remember { mutableStateOf(today) }
+    var balance by remember { mutableStateOf(last?.closing?.let { "%.2f".format(it) } ?: "") }
+    var pnl by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var discipline by remember { mutableIntStateOf(3) }
+    val b = balance.toDoubleOrNull()
+    val p = pnl.toDoubleOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add day") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(date, { date = it }, label = { Text("Date") }, singleLine = true)
+                OutlinedTextField(
+                    balance, { balance = it }, label = { Text("Opening balance (USD)") },
+                    supportingText = { Text("Change it if you deposited or withdrew") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = pnl, onValueChange = { pnl = it }, label = { Text("Daily P&L (USD)") },
+                        supportingText = { Text("Enter profit or loss") }, modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                    OutlinedButton(onClick = { pnl = when { pnl.startsWith("-") -> pnl.removePrefix("-"); pnl.isNotBlank() -> "-$pnl"; else -> "-" } }) { Text("−", fontSize = 22.sp) }
+                }
+                OutlinedTextField(notes, { notes = it }, label = { Text("Daily notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Text("Discipline score: $discipline / 5")
+                Slider(value = discipline.toFloat(), onValueChange = { discipline = it.toInt().coerceIn(0, 5) }, valueRange = 0f..5f, steps = 4)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = b != null && p != null && date.isNotBlank(),
+                onClick = { onAdd(PnlEntry(date.trim(), b!!, p!!, notes.trim(), discipline)) }) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun EquityDrawdownCard(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val ordered = remember(entries) { entries.sortedByReportDate() }
+    var peak = ordered.first().closing
+    var maxDd = 0.0
+    ordered.forEach { e -> peak = maxOf(peak, e.closing); maxDd = maxOf(maxDd, peak - e.closing) }
+    val currentPeak = ordered.lastOrNull()?.let { last -> ordered.takeWhile { it.date != last.date }.fold(0.0) { p, e -> maxOf(p, e.closing) }.let { maxOf(it, last.closing) } } ?: 0.0
+    val current = ordered.last().closing
+    val drawdown = (currentPeak - current).coerceAtLeast(0.0)
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Equity & drawdown", style = MaterialTheme.typography.titleMedium)
+        Text("Current balance: " + current.usd() + " · Peak-to-current drawdown: " + drawdown.usd(), color = if (drawdown > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        Text("Maximum historical drawdown: " + maxDd.usd(), style = MaterialTheme.typography.bodySmall)
+        Text("Drawdown compares recorded closing balances with the highest prior closing balance; deposits/withdrawals may affect it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
+// SimpleDateFormat is not thread-safe, so each thread gets its own set of parsers, created once and reused.
+private val reportDateFormats = object : ThreadLocal<List<SimpleDateFormat>>() {
+    override fun initialValue(): List<SimpleDateFormat> =
+        listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd", "M/d/yyyy").map { SimpleDateFormat(it, Locale.US).apply { isLenient = false } }
+}
+
+private fun reportDate(value: String): Date? {
+    for (format in reportDateFormats.get()) {
+        try { return format.parse(value) } catch (_: Exception) { }
+    }
+    return null
+}
+
+/** Pairs each entry with its parsed report time (null when the date cannot be parsed). Each date is parsed once. */
+private fun List<PnlEntry>.withReportTimes(): List<Pair<PnlEntry, Long?>> = map { it to reportDate(it.date)?.time }
+
+/** Oldest first; entries with unparseable dates sort before dated entries, keeping their original order. */
+private fun List<PnlEntry>.sortedByReportDate(): List<PnlEntry> =
+    withReportTimes().sortedBy { it.second ?: Long.MIN_VALUE }.map { it.first }
+
+@Composable
+fun PnlCalendar(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val keyFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+    val parsed = remember(entries) { entries.mapNotNull { e -> reportDate(e.date)?.let { it to e } } }
+    if (parsed.isEmpty()) return
+    val latest = remember(parsed) { parsed.maxBy { it.first.time }.first }
+    val cal = Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, 1) }
+    val monthTitle = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
+    val startOffset = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val byDay = remember(parsed) { parsed.associate { keyFormat.format(it.first) to it.second } }
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("P&L calendar · " + monthTitle, style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth()) { listOf("M", "T", "W", "T", "F", "S", "S").forEach { Text(it, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall) } }
+        val cells = List(startOffset) { 0 } + (1..days).toList()
+        cells.chunked(7).forEach { week -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            (week + List(7 - week.size) { 0 }).forEach { day ->
+                val key = if (day > 0) keyFormat.format(Calendar.getInstance().apply { time = latest; set(Calendar.DAY_OF_MONTH, day) }.time) else ""
+                val e = byDay[key]
+                val bg = when { day == 0 -> MaterialTheme.colorScheme.surface; e == null -> MaterialTheme.colorScheme.surfaceVariant; e.pnl > 0 -> profitColor().copy(alpha = 0.18f); e.pnl < 0 -> lossColor().copy(alpha = 0.18f); else -> MaterialTheme.colorScheme.surfaceVariant }
+                Column(Modifier.weight(1f).padding(vertical = 2.dp).background(bg, MaterialTheme.shapes.small).padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (day == 0) " " else day.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    if (e != null) Text(if (e.pnl > 0) "+" + e.pnl.num(0) else e.pnl.num(0), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                }
+            }
+        } }
+        Text("Green = profit · Red = loss · Empty = no recorded result", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
+@Composable
+fun DailyInsights(entries: List<PnlEntry>) {
+    if (entries.isEmpty()) return
+    val ordered = remember(entries) { entries.sortedByReportDate() }
+    var currentStreak = 0
+    var streakSign = 0
+    var bestWinStreak = 0
+    var bestLossStreak = 0
+    ordered.forEach { e ->
+        val sign = when { e.pnl > 0 -> 1; e.pnl < 0 -> -1; else -> 0 }
+        if (sign == 0) { currentStreak = 0; streakSign = 0 } else if (sign == streakSign) currentStreak++ else { currentStreak = 1; streakSign = sign }
+        if (sign > 0) bestWinStreak = maxOf(bestWinStreak, currentStreak)
+        if (sign < 0) bestLossStreak = maxOf(bestLossStreak, currentStreak)
+    }
+    val weekdayTotals = remember(ordered) { ordered.mapNotNull { e -> reportDate(e.date)?.let { Calendar.getInstance().apply { time = it }.get(Calendar.DAY_OF_WEEK) to e.pnl } }.groupBy({ it.first }, { it.second }).mapValues { it.value.sum() } }
+    val bestWeekday = weekdayTotals.maxByOrNull { it.value }
+    val names = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+    RiskCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Streaks & weekday insights", style = MaterialTheme.typography.titleMedium)
+        Text("Current streak: " + if (streakSign == 0) "No active win/loss streak" else "$currentStreak consecutive ${if (streakSign > 0) "winning" else "losing"} days")
+        Text("Longest winning streak: $bestWinStreak days · Longest losing streak: $bestLossStreak days")
+        Text("Best recorded weekday: " + (bestWeekday?.let { names[it.key - 1] + " (" + it.value.usd() + ")" } ?: "Not enough data"))
+        Text("Weekday totals combine all recorded years and may reflect deposits/withdrawals in balances, not just trading skill.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } }
+}
+
+@Composable
+fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onNavigate: (Int) -> Unit) {
     val context = LocalContext.current
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
+    var tradingExpanded by remember { mutableStateOf(true) }
+    var riskExpanded by remember { mutableStateOf(false) }
+    var exchangeExpanded by remember { mutableStateOf(false) }
+    var reportsExpanded by remember { mutableStateOf(false) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -785,14 +882,62 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Workspace", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Your trading tools, exchange data and reports in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        RiskCard(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("QUICK ACCESS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MoreQuickTile("Trading\nAnalytics", "P&L and stats", Modifier.weight(1f)) { onNavigate(20) }
+                    MoreQuickTile("Trade\nJournal", "External trades & Binance positions", Modifier.weight(1f)) { onNavigate(1) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MoreQuickTile("Position\nCalculator", "Size and leverage", Modifier.weight(1f)) { onNavigate(2) }
+                    MoreQuickTile("Binance\nSync", "Exchange connection", Modifier.weight(1f)) { onNavigate(6) }
+                }
+            }
+        }
+        MoreMenuSection("Analytics", "Execution results and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
+            MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
+            MoreDestinationCard("P&L Calendar", "Daily realized results with manual and Binance Futures sources") { onNavigate(23) }
+            MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
+            MoreDestinationCard("Ledger audit", "Check imported history, duplicates and daily totals") { onNavigate(15) }
+        }
+        MoreMenuSection("Risk workspace", "Plan position size and control trading risk", riskExpanded, { riskExpanded = !riskExpanded }) {
+            MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
+            MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
+            MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
+            MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
+            MoreDestinationCard("Target Planner", "Plan a balance goal and required daily net-profit pace") { onNavigate(22) }
+        }
+        MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
+            MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
+            MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
+            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
+            MoreDestinationCard("Account activity", "Recent deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
+        }
+        MoreMenuSection("Reports & app", "Tax summaries, app information and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
+            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
+            MoreDestinationCard("About Risk Tracker", "App version, developer and important disclosures") { onNavigate(5) }
+        }
         HorizontalDivider()
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
+        Text("Daily profit target is fixed at 2% of the applicable opening balance and is calculated in the Daily P&L dashboard.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = { val d = dailyLimit.toDoubleOrNull(); val t = tradeLimit.toDoubleOrNull(); if (d != null && t != null && d > 0 && t > 0) { store.maxDailyLoss = d; store.maxTradeRisk = t; backupMessage = "Risk limits saved. The daily profit target remains fixed at 2%." } else backupMessage = "Enter positive numbers for both risk limits." }, modifier = Modifier.fillMaxWidth()) { Text("Save risk limits") }
         HorizontalDivider()
         Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
-        Text("Exports journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
+        Text("Exports daily P&L, journal trades, saved trade plans/reviews, risk targets, and imported daily Binance P&L. API credentials, raw exchange fills/statements, and external screenshot files are not included; keep original exchange exports separately.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { exportPicker.launch("risk-tracker-backup.json") }, modifier = Modifier.fillMaxWidth()) { Text("Export journal & settings (JSON)") }
         OutlinedButton(onClick = { importPicker.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Choose backup to restore") }
@@ -801,7 +946,7 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
             AlertDialog(
                 onDismissRequest = { pendingBackupRaw = null },
                 title = { Text("Replace current records?") },
-                text = { Text("Restoring replaces your current journal entries, and may replace saved trade plans, reviews, and risk limits. Export a backup of the current data first if you may need it.") },
+                text = { Text("Restoring replaces your current daily P&L and journal entries, and may replace saved trade plans, reviews, and risk limits. Export a backup of the current data first if you may need it.") },
                 confirmButton = {
                     TextButton(onClick = {
                         val raw = pendingBackupRaw
@@ -809,7 +954,7 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
                         if (raw != null) {
                             try {
                                 onRestore(store.importBackup(raw))
-                                backupMessage = "Backup restored. The selected backup replaced current journal entries."
+                                backupMessage = "Backup restored. The selected backup replaced current daily P&L and journal entries."
                             } catch (e: Exception) {
                                 backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
                             }
@@ -824,11 +969,67 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
         HorizontalDivider()
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
-        HorizontalDivider()
-        Text("About Risk Tracker", style = MaterialTheme.typography.titleMedium)
-        Text("Crypto futures trading tracker for daily P&L, position sizing and leverage risk.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Version " + (runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable
+private fun MoreMenuSection(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onToggle) {
+                    Text(if (expanded) "−" else "+", style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            if (expanded) content()
+        }
+    }
+}
+
+@Composable
+private fun MoreQuickTile(title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    RiskCard(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(15.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MoreDestinationCard(title: String, subtitle: String, onClick: () -> Unit) {
+    RiskCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(13.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
@@ -1030,11 +1231,19 @@ fun AboutScreen() {
             style = MaterialTheme.typography.bodyMedium)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MetricRow("Developer", "Bhushank2k", FontWeight.Medium)
-                MetricRow("Version", version, FontWeight.Medium)
+                AboutRow("Developer", "Bhushank2k")
+                AboutRow("Version", version)
             }
         }
         Warn("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.")
+    }
+}
+
+@Composable
+fun AboutRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(value, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

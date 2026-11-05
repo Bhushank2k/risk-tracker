@@ -114,7 +114,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
         val context = applicationContext
         if (!TradeIdeaNotifications.isEnabled(context) || !TradeIdeaNotifications.hasPermission(context)) return Result.success()
         return try {
-            val ideas = BinanceMarketScanner.scan(context) { }
+            val ideas = BinanceMarketScanner.scan { }
             val plans = TradeIdeaAlertPlanStore.load(context)
             ideas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&

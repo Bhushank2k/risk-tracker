@@ -156,6 +156,7 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
         stop.toDoubleOrNull() ?: Double.NaN, parsedTarget, fees.toDoubleOrNull() ?: Double.NaN, settings)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Trade Risk Gate", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Check a proposed trade against your rules before entry. This screen does not place orders.")
         OutlinedTextField(symbol, { symbol = it.uppercase(Locale.ROOT) }, label = { Text("Symbol") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = side == "Long", onClick = { side = "Long" }, label = { Text("Long") })
