@@ -1138,7 +1138,6 @@ fun PnlCalendarScreen(trades: List<TradeEntry>, exchangeFills: List<BinanceJourn
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("P&L Calendar", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Closed-trade results by local calendar day", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
