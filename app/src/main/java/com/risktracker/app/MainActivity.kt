@@ -121,35 +121,7 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(store.themeMode) }
             val dark = when (themeMode) { "Light" -> false; "Dark" -> true; else -> isSystemInDarkTheme() }
             val ctx = LocalContext.current
-            val scheme = if (dark) {
-                darkColorScheme(
-                    primary = RiskTrackerDesign.accent,
-                    onPrimary = Color(0xFF06271A),
-                    secondary = Color(0xFF929DAA),
-                    background = RiskTrackerDesign.canvasDark,
-                    surface = RiskTrackerDesign.surfaceDark,
-                    surfaceVariant = RiskTrackerDesign.raisedDark,
-                    outline = RiskTrackerDesign.borderDark,
-                    outlineVariant = RiskTrackerDesign.borderDark,
-                    primaryContainer = Color(0xFF183D2E),
-                    onPrimaryContainer = Color(0xFFD6F8E7),
-                    error = RiskTrackerDesign.danger
-                )
-            } else {
-                lightColorScheme(
-                    primary = Color(0xFF16865D),
-                    onPrimary = Color.White,
-                    secondary = Color(0xFF52616B),
-                    background = Color(0xFFF5F7F6),
-                    surface = Color(0xFFFFFFFF),
-                    surfaceVariant = Color(0xFFE9EFEC),
-                    outline = Color(0xFFD6DEDA),
-                    outlineVariant = Color(0xFFD6DEDA),
-                    primaryContainer = Color(0xFFDDF4E8),
-                    onPrimaryContainer = Color(0xFF123D2C),
-                    error = Color(0xFFD34B55)
-                )
-            }
+            val scheme = if (dark) RiskTrackerDarkColors else RiskTrackerLightColors
             MaterialTheme(colorScheme = scheme, shapes = RiskTrackerShapes, typography = RiskTrackerTypography) {
                 Surface(Modifier.fillMaxSize()) { App(store, themeMode, onThemeModeChange = { themeMode = it; store.themeMode = it }) }
             }
@@ -196,8 +168,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
-    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.ShowChart, Icons.Filled.Lightbulb)
+    val titles = listOf("Overview", "Journal", "Risk", "Analytics")
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.FactCheck, Icons.Filled.Monitor)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
@@ -235,7 +207,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
+    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 11 -> 2; 20 -> 3; else -> -1 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -295,7 +267,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21 } },
+                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 11; 3 -> tab = 20 } },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
