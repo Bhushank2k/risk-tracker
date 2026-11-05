@@ -89,7 +89,7 @@ object BinanceStatementStore {
             .put("status", r.status).put("reference", r.reference).put("details", r.details)) }
         prefs.edit().putString("rows", a.toString())
             .putLong("last_sync", System.currentTimeMillis()).apply()
-        return fresh.size to all.size
+        return fresh to all.size
     }
 
     fun lastSync(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
