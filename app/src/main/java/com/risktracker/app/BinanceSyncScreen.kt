@@ -663,8 +663,11 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 }
             }
         }
-        if (status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true) || status.startsWith("Imported")) {
-            Text(status, color = if (status.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (status.isNotBlank()) {
+            val hasSyncProblem = status.contains("failed", true) || status.contains("error", true) ||
+                status.contains("could not", true) || status.contains("partial sync", true)
+            Text(status, color = if (hasSyncProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
     }
