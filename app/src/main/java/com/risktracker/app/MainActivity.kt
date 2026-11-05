@@ -168,8 +168,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
-    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.ShowChart, Icons.Filled.Lightbulb)
+    val titles = listOf("Overview", "Journal", "Risk", "Analytics")
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.FactCheck, Icons.Filled.Monitor)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
@@ -207,7 +207,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> -1 }
+    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 11 -> 2; 20 -> 3; else -> -1 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -267,7 +267,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21 } },
+                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 11; 3 -> tab = 20 } },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
