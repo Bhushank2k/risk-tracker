@@ -728,6 +728,15 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
     }
 }
 
+internal fun parseBinanceDailyResults(raw: String?): List<BinanceDailyResult> {
+    val rows = JSONArray(raw ?: "[]")
+    return (0 until rows.length()).map { i ->
+        rows.getJSONObject(i).let {
+            BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl"))
+        }
+    }
+}
+
 object BinanceSyncData {
     private const val PREFS = "binance_import_v1"
 
@@ -735,9 +744,10 @@ object BinanceSyncData {
      * Merge only dates returned by each source. A recent Futures API refresh must not erase
      * older saved years merely because the income endpoint cannot return them.
      */
+    @Synchronized
     fun merge(context: Context, spot: Map<String, Double>, futures: Map<String, Double>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
         (spot.keys + futures.keys).forEach { day ->
             val previous = merged[day]
             merged[day] = BinanceDailyResult(
@@ -757,10 +767,11 @@ object BinanceSyncData {
      * Replace the selected year's Futures net-income values from a complete user-selected
      * Binance export while preserving Spot totals and every other year.
      */
+    @Synchronized
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
         val yearPrefix = "$year-"
         merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
             val previous = merged.getValue(day)
@@ -778,6 +789,7 @@ object BinanceSyncData {
     }
 
     /** Replace the complete saved daily import during an explicit backup restore. */
+    @Synchronized
     fun replaceAll(context: Context, data: List<BinanceDailyResult>) {
         require(data.all { it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.date.isNotBlank() }) {
             "Imported Binance rows must have valid dates and finite P&L values."
@@ -791,9 +803,10 @@ object BinanceSyncData {
     }
 
     /** Backward-compatible save for callers that provide complete combined daily rows. */
+    @Synchronized
     fun save(context: Context, data: List<BinanceDailyResult>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
         data.forEach { merged[it.date] = it }
         val array = JSONArray()
         merged.values.sortedBy { it.date }.forEach {
@@ -802,10 +815,9 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
-    fun load(context: Context): List<BinanceDailyResult> = try {
-        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
-        (0 until a.length()).map { i -> a.getJSONObject(i).let { BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl")) } }
-    } catch (_: Exception) { emptyList() }
+    fun load(context: Context): List<BinanceDailyResult> = runCatching {
+        parseBinanceDailyResults(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
+    }.getOrDefault(emptyList())
 
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 }

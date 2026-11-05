@@ -93,7 +93,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         BinanceRestGuard.configure(applicationContext)
         val store = Store(applicationContext)
-        store.clearManualTradesOnce()
         inrRate = store.inr
         setContent {
             var themeMode by remember { mutableStateOf(store.themeMode) }
