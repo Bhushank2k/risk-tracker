@@ -68,31 +68,38 @@ internal fun areEquivalentCsvAndApiFills(a: BinanceJournalFill, b: BinanceJourna
         kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
 }
 
+internal fun parseBinanceJournalFills(raw: String?): List<BinanceJournalFill> {
+    val rows = JSONArray(raw ?: "[]")
+    return (0 until rows.length()).map { i ->
+        val row = rows.getJSONObject(i)
+        BinanceJournalFill(
+            id = row.getString("id"), exchange = row.optString("exchange", "Binance"),
+            market = row.optString("market", "Spot"), symbol = row.optString("symbol"),
+            side = row.optString("side"), quantity = row.optDouble("quantity"),
+            price = row.optDouble("price"), quoteAmount = row.optDouble("quoteAmount"),
+            fee = row.optDouble("fee"), feeAsset = row.optString("feeAsset"),
+            realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
+            time = row.optLong("time"), orderId = row.optString("orderId")
+        )
+    }.distinctBy { it.id }.sortedByDescending { it.time }
+}
+
 object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
 
-    fun load(context: Context): List<BinanceJournalFill> = try {
-        val rows = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
-        (0 until rows.length()).map { i ->
-            val row = rows.getJSONObject(i)
-            BinanceJournalFill(
-                id = row.getString("id"), exchange = row.optString("exchange", "Binance"),
-                market = row.optString("market", "Spot"), symbol = row.optString("symbol"),
-                side = row.optString("side"), quantity = row.optDouble("quantity"),
-                price = row.optDouble("price"), quoteAmount = row.optDouble("quoteAmount"),
-                fee = row.optDouble("fee"), feeAsset = row.optString("feeAsset"),
-                realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
-                time = row.optLong("time"), orderId = row.optString("orderId")
-            )
-        }.distinctBy { it.id }.sortedByDescending { it.time }
-    } catch (_: Exception) { emptyList() }
+    fun load(context: Context): List<BinanceJournalFill> = runCatching {
+        parseBinanceJournalFills(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]")
+        )
+    }.getOrDefault(emptyList())
 
     /** Merge is idempotent: exchange + market + symbol + exchange trade ID is the primary key. */
     @Synchronized
     fun merge(context: Context, incoming: List<BinanceJournalFill>): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val all = load(context).associateBy { it.id }.toMutableMap()
+        val storedRaw = prefs.getString(KEY, "[]")
+        val all = parseBinanceJournalFills(storedRaw).associateBy { it.id }.toMutableMap()
         var inserted = 0
         incoming.forEach { fill ->
             val existingById = all[fill.id]
