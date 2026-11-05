@@ -231,7 +231,7 @@ fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
 }
 
 object BinanceAutoJournalRunner {
-    private const val MAX_PARALLEL_SYMBOLS = 4
+    private const val MAX_PARALLEL_SYMBOLS = 8
 
     suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
         BinanceRestGuard.configure(context)
