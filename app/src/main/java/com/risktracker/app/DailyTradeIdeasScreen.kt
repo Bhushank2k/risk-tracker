@@ -447,6 +447,7 @@ fun DailyTradeIdeasScreen() {
     } ?: "Not scanned yet"
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
@@ -531,7 +532,6 @@ fun DailyTradeIdeasScreen() {
                 }
             }
         }
-        item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -922,66 +922,120 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
 
 private data class TradeSessionSlot(
     val name: String,
-    val startMinute: Int,
-    val endMinute: Int,
-    val focus: String
+    val timeZoneId: String,
+    val openHour: Int,
+    val closeHour: Int
 )
+
+private data class TradeSessionStatus(
+    val slot: TradeSessionSlot,
+    val isActive: Boolean,
+    val detail: String,
+    val minutesUntilChange: Long
+)
+
+private fun tradeSessionStatus(slot: TradeSessionSlot, nowMillis: Long): TradeSessionStatus {
+    val zone = TimeZone.getTimeZone(slot.timeZoneId)
+    val localNow = Calendar.getInstance(zone).apply { timeInMillis = nowMillis }
+    val minute = localNow.get(Calendar.HOUR_OF_DAY) * 60 + localNow.get(Calendar.MINUTE)
+    val openMinute = slot.openHour * 60
+    val closeMinute = slot.closeHour * 60
+    val active = minute in openMinute until closeMinute
+    val target = (localNow.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, if (active) slot.closeHour else slot.openHour)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        if (timeInMillis <= nowMillis) add(Calendar.DAY_OF_YEAR, 1)
+    }
+    val minutes = ((target.timeInMillis - nowMillis + 59_999L) / 60_000L).coerceAtLeast(0L)
+    val hours = minutes / 60
+    val remainder = minutes % 60
+    val action = if (active) "Closes" else "Opens"
+    return TradeSessionStatus(slot, active, "$action in ${hours}h ${remainder}m", minutes)
+}
 
 @Composable
 private fun TradeSessionTimingCard() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(60_000)
+            delay(1_000)
             nowMillis = System.currentTimeMillis()
         }
     }
     val sessions = remember {
         listOf(
-            TradeSessionSlot("Asia activity", 9 * 60, 11 * 60, "Range development · 5M / 15M scalp watch"),
-            TradeSessionSlot("London open", 13 * 60 + 30, 16 * 60 + 30, "Breakout follow-through · 15M / 1H intraday"),
-            TradeSessionSlot("US open & overlap", 20 * 60, 23 * 60, "Higher liquidity · intraday and 4H swing review")
+            TradeSessionSlot("Tokyo / Asia", "Asia/Tokyo", 9, 18),
+            TradeSessionSlot("London", "Europe/London", 8, 17),
+            TradeSessionSlot("New York", "America/New_York", 8, 17)
         )
     }
-    val ist = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata")).apply { timeInMillis = nowMillis }
-    val minuteOfDay = ist.get(Calendar.HOUR_OF_DAY) * 60 + ist.get(Calendar.MINUTE)
-    val active = sessions.firstOrNull { slot ->
-        if (slot.endMinute > slot.startMinute) minuteOfDay in slot.startMinute until slot.endMinute
-        else minuteOfDay >= slot.startMinute || minuteOfDay < slot.endMinute
+    val localClock = remember(nowMillis) {
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date(nowMillis))
     }
-    val next = sessions.map { slot ->
-        val delta = (slot.startMinute - minuteOfDay + 1440) % 1440
-        slot to delta
-    }.filter { it.second > 0 }.minByOrNull { it.second } ?: (sessions.first() to (1440 - minuteOfDay + sessions.first().startMinute))
-    var timingExpanded by remember { mutableStateOf(false) }
-    fun clock(minutes: Int): String = "%02d:%02d".format(Locale.US, minutes / 60, minutes % 60)
-    val remaining = if (active != null) {
-        val end = active.endMinute
-        if (end > minuteOfDay) end - minuteOfDay else 1440 - minuteOfDay + end
-    } else next.second
+    val localDate = remember(nowMillis) {
+        SimpleDateFormat("EEE, dd MMM · z", Locale.getDefault()).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date(nowMillis))
+    }
+    val statuses = sessions.map { tradeSessionStatus(it, nowMillis) }
+    val active = statuses.filter { it.isActive }
+    val next = statuses.filterNot { it.isActive }.minByOrNull { it.minutesUntilChange }
     RiskCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Trade timing · India (IST)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                if (active != null) "Window active: " + active.name + " · ends in " + (remaining / 60) + "h " + (remaining % 60) + "m"
-                else "Next window: " + next.first.name + " · starts in " + (remaining / 60) + "h " + (remaining % 60) + "m",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium
-            )
-            TextButton(onClick = { timingExpanded = !timingExpanded }, modifier = Modifier.align(Alignment.End)) { Text(if (timingExpanded) "Hide windows" else "Show windows") }
-            if (timingExpanded) {
-            sessions.forEach { slot ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(slot.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                        Text(slot.focus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Market time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(localClock, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(localDate, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("CURRENT SESSION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (active.isNotEmpty()) {
+                        active.forEach { status ->
+                            Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
+                                Text(status.slot.name, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    } else {
+                        Text("Between sessions", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     }
-                    Text(clock(slot.startMinute) + "–" + clock(slot.endMinute), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
                 }
             }
             HorizontalDivider()
-            Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
-            Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                next?.let { "Next · ${it.slot.name} opens · ${it.detail.removePrefix("Opens in ")}" }
+                    ?: "Session activity windows shown in local market time",
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium
+            )
+            statuses.forEach { status ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(7.dp),
+                            shape = RoundedCornerShape(50),
+                            color = if (status.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        ) {}
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(status.slot.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            Text(status.slot.timeZoneId.replace('_', ' '), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text(
+                        if (status.isActive) "Active · ${status.detail}" else "Closed · ${status.detail}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (status.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+            Text(
+                "Session hours use local exchange-center time and adjust for daylight saving. Crypto trades 24/7; these are activity windows, not exchange opening hours or trade signals.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
