@@ -154,14 +154,13 @@ fun RiskOverviewScreen(
     }
 
     val streamSymbols = livePositions.map { it.symbol }.distinct().sorted().joinToString(",")
+    val currentLivePositions by rememberUpdatedState(livePositions)
     DisposableEffect(streamSymbols) {
         val symbols = streamSymbols.split(",").filter { it.isNotBlank() }
         val stream = BinanceMarkPriceStream(
             symbols = symbols,
             onMarkPrice = { symbol, price ->
-                val updated = livePositions.map { position ->
-                    if (position.symbol.equals(symbol, ignoreCase = true)) position.withMarkPrice(price) else position
-                }
+                val updated = currentLivePositions.withStreamedMarkPrice(symbol, price)
                 livePositions = updated
                 positionsStore.save(updated)
             },
