@@ -32,8 +32,8 @@ fun DailyDisciplineScreen(
     val todaysTrades = trades.filter { canonicalPnlDate(it.date) == today }
     val reviewedCount = trades.count { reviews.containsKey(it.id) }
     val reviewCoverage = if (trades.isEmpty()) null else reviewedCount * 100 / trades.size
-    val syncKnown = syncStatus.lastSuccess > 0L && !syncStatus.state.contains("failed", true) &&
-        !syncStatus.state.contains("error", true)
+    val syncKnown = syncStatus.lastSuccess > 0L && syncStatus.symbolsFailed == 0 &&
+        syncStatus.state.startsWith("Up to date", ignoreCase = true)
     val pnlLabel = todayPnl?.let { it.usd() } ?: "Incomplete"
     val dailyLossUsed = todayPnl?.let { (-it).coerceAtLeast(0.0) }
     val lossRemaining = dailyLossUsed?.let { (maxDailyLoss - it).coerceAtLeast(0.0) }
@@ -134,8 +134,8 @@ fun DailyDisciplineScreen(
 @Composable
 private fun SnapshotRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
     }
 }
 
