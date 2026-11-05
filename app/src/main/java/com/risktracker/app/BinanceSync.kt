@@ -4,8 +4,11 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -833,8 +836,18 @@ class BinanceDailyWorker(context: Context, params: WorkerParameters) : Coroutine
 
     companion object {
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(24, TimeUnit.HOURS).build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork("binance_daily_trade_sync", ExistingPeriodicWorkPolicy.KEEP, request)
+            // Historical P&L/account refresh also needs a connected network. UPDATE
+            // replaces older unconstrained schedules already installed on the device.
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(24, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "binance_daily_trade_sync", ExistingPeriodicWorkPolicy.UPDATE, request
+            )
         }
         fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork("binance_daily_trade_sync")
     }
