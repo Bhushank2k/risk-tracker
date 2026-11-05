@@ -52,6 +52,22 @@ data class BinanceJournalSyncStatus(
     val windowEnd: Long = 0L
 )
 
+/**
+ * Approximate matching is only safe when reconciling one CSV-imported row with one API row.
+ * Distinct API trade IDs always represent distinct executions, even when a single order
+ * produces identical partial fills within the same second.
+ */
+internal fun areEquivalentCsvAndApiFills(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
+    val aIsCsv = a.id.contains(":csv:")
+    val bIsCsv = b.id.contains(":csv:")
+    if (aIsCsv == bIsCsv) return false
+    if (a.exchange != b.exchange || a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
+    if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
+    return kotlin.math.abs(a.time - b.time) <= 1_000L &&
+        kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+        kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+}
+
 object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
@@ -73,25 +89,18 @@ object BinanceAutoJournalStore {
     } catch (_: Exception) { emptyList() }
 
     /** Merge is idempotent: exchange + market + symbol + exchange trade ID is the primary key. */
+    @Synchronized
     fun merge(context: Context, incoming: List<BinanceJournalFill>): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val all = load(context).associateBy { it.id }.toMutableMap()
         var inserted = 0
-        fun sameExecution(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
-            if (a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
-            if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
-            val timeTolerance = 1_000L
-            return kotlin.math.abs(a.time - b.time) <= timeTolerance &&
-                kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
-                kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
-        }
         incoming.forEach { fill ->
             val existingById = all[fill.id]
             if (existingById != null) {
                 all[fill.id] = fill
                 return@forEach
             }
-            val equivalent = all.values.firstOrNull { sameExecution(it, fill) }
+            val equivalent = all.values.firstOrNull { areEquivalentCsvAndApiFills(it, fill) }
             if (equivalent == null) {
                 all[fill.id] = fill
                 inserted++
