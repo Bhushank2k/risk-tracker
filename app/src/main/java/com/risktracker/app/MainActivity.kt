@@ -26,6 +26,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Monitor
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DateRange
@@ -55,6 +75,29 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Calendar
 import java.util.Locale
+
+private fun pageIcon(destination: Int): ImageVector = when (destination) {
+    0 -> Icons.Filled.Dashboard
+    1 -> Icons.Filled.MenuBook
+    2 -> Icons.Filled.Calculate
+    5 -> Icons.Filled.Info
+    6 -> Icons.Filled.Sync
+    7 -> Icons.Filled.Settings
+    9 -> Icons.Filled.Assignment
+    11 -> Icons.Filled.Security
+    13 -> Icons.Filled.Science
+    14 -> Icons.Filled.History
+    15 -> Icons.Filled.Description
+    16 -> Icons.Filled.ShowChart
+    17 -> Icons.Filled.AccountBalanceWallet
+    18 -> Icons.Filled.Monitor
+    19 -> Icons.Filled.Notifications
+    20 -> Icons.Filled.ShowChart
+    21 -> Icons.Filled.Lightbulb
+    22 -> Icons.Filled.Flag
+    23 -> Icons.Filled.Receipt
+    else -> Icons.Filled.Apps
+}
 
 fun Double.usd(d: Int = 2) = "$" + "%,.${d}f".format(this)
 fun Double.pct(d: Int = 2) = "%.${d}f%%".format(this)
@@ -147,7 +190,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     }
     val titles = listOf("Overview", "Journal", "Analytics", "Ideas")
-    val icons = listOf(Icons.Default.DateRange, Icons.Default.Build, Icons.Default.Info, Icons.Default.Refresh)
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.ShowChart, Icons.Filled.Lightbulb)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     val menuGroups = listOf(
@@ -224,8 +267,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     scrolledContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 title = {
-                    Text(pageTitle, fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(pageIcon(tab), contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(pageTitle, fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    }
                 },
                 actions = {
                     quickAction?.let { (label, destination) ->
@@ -364,7 +412,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
                                 selected = tab == destination,
                                 onClick = { tab = destination; menuExpanded = false },
-                                icon = { Icon(Icons.Default.Menu, contentDescription = null) },
+                                icon = { Icon(pageIcon(destination), contentDescription = null) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(14.dp)
                             )
