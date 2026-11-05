@@ -97,9 +97,7 @@ fun buildAiTradingContext(
 ): JSONObject {
     val sorted = trades.filter { it.pnl.isFinite() && it.entry.isFinite() && it.exit.isFinite() && it.quantity.isFinite() }
         .sortedBy { it.date }
-    // Pin the week to Monday. Locales such as en-US start weeks on Sunday, which would move
-    // the Monday to the following day and push the weekly window into the future.
-    val calendar = Calendar.getInstance().apply { firstDayOfWeek = Calendar.MONDAY; timeInMillis = nowMillis }
+    val calendar = Calendar.getInstance().apply { timeInMillis = nowMillis }
     calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
     calendar.set(Calendar.HOUR_OF_DAY, 0); calendar.set(Calendar.MINUTE, 0)
     calendar.set(Calendar.SECOND, 0); calendar.set(Calendar.MILLISECOND, 0)
@@ -243,16 +241,7 @@ fun AiTradingIntelligenceScreen(
             }
             TextButton(onClick = { showKeyDialog = true }) { Text(if (hasKey) "Update" else "Add key") }
         }
-        if (hasKey) TextButton(onClick = {
-            keyStore.clear()
-            context.getSharedPreferences(AI_PREFS, Context.MODE_PRIVATE).edit()
-                .remove("last_report").remove("last_report_kind").remove("last_report_at").apply()
-            hasKey = false
-            report = null
-            reportKind = null
-            consent = false
-            error = null
-        }) {
+        if (hasKey) TextButton(onClick = { keyStore.clear(); hasKey = false; report = null; reportKind = null }) {
             Text("Remove API key and saved AI report", color = MaterialTheme.colorScheme.error)
         }
         Text("Choose an analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

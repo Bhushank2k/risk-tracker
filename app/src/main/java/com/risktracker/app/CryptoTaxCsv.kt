@@ -38,9 +38,6 @@ fun historicalTradesToCsv(trades: List<HistoricalCryptoTrade>, financialYearStar
 }
 
 private fun String.toCsvCell(): String {
-    // Spreadsheets run a cell that starts with = + - @ as a formula. Prefix such text with an
-    // apostrophe so it is shown as text. Real negative numbers are left alone.
-    val safe = if (isNotEmpty() && first() in "=+-@\t\r" && toDoubleOrNull() == null) "'$this" else this
-    if (safe.none { it == ',' || it == '"' || it == '\n' || it == '\r' }) return safe
-    return "\"" + safe.replace("\"", "\"\"") + "\""
+    if (none { it == ',' || it == '"' || it == '\n' || it == '\r' }) return this
+    return "\"" + replace("\"", "\"\"") + "\""
 }

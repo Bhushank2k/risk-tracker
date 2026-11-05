@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         BinanceRestGuard.configure(applicationContext)
         val store = Store(applicationContext)
+        store.clearManualTradesOnce()
         inrRate = store.inr
         setContent {
             var themeMode by remember { mutableStateOf(store.themeMode) }
@@ -153,33 +154,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         if (BinanceCredentialStore(context).read() != null) {
-            // One-time upgrade migration: previously installed daily and journal jobs
-            // may still have been enqueued without CONNECTED network constraints. UPDATE
-            // them once after upgrading, rather than resetting periodic work on every app open.
-            val schedulePrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
-            if (!schedulePrefs.getBoolean("binance_connected_network_v1", false)) {
-                BinanceDailyWorker.schedule(context)
-                BinanceJournalWorker.schedule(context)
-                schedulePrefs.edit().putBoolean("binance_connected_network_v1", true).apply()
-            }
-            // App startup and the analytics destination share the same throttle.
-            // This avoids duplicating a costly journal fetch when periodic work or a
-            // recent manual refresh has already completed.
-            val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-            if (shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
-                runCatching {
-                    withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
-                    exchangeFills = BinanceAutoJournalStore.load(context)
-                    exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
-                }
-            }
-            // Statement history changes much less often than fills. Move the periodic
-            // fetch to a weekly cadence while keeping the manual "Sync statements now"
-            // action available on the Account Activity screen.
-            val statementPrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
-            if (!statementPrefs.getBoolean("binance_statement_weekly_v2", false)) {
-                BinanceStatementWorker.schedule(context)
-                statementPrefs.edit().putBoolean("binance_statement_weekly_v2", true).apply()
+            BinanceJournalWorker.schedule(context)
+            runCatching {
+                withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
+                exchangeFills = BinanceAutoJournalStore.load(context)
+                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
             }
         }
     }
@@ -534,7 +513,7 @@ fun BinanceSyncHealthScreen() {
                 status = BinanceAutoJournalStore.syncStatus(context)
                 fillCount = BinanceAutoJournalStore.load(context).size
             } catch (e: Exception) {
-                operationError = "Sync failed: " + describeBinanceError(e)
+                operationError = e.message ?: "Sync failed unexpectedly. Check connectivity and API permissions."
                 status = BinanceAutoJournalStore.syncStatus(context)
             } finally {
                 loading = false
@@ -792,7 +771,7 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
     var backupMessage by remember { mutableStateOf("") }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) try { (context.contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Could not open the selected file.")).bufferedWriter().use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
+        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
     }
     val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {

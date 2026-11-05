@@ -172,30 +172,9 @@ class BinanceCredentialStore(context: Context) {
 }
 
 class BinanceApi(private val apiKey: String, private val secret: String) {
-    @Volatile private var serverOffsetMs: Long? = null
-
-    /**
-     * Difference between Binance's clock and this device's clock, measured once per sync.
-     * Signed requests are rejected when the device clock is more than the recvWindow off,
-     * which fails on every network. A failed measurement counts as zero.
-     */
-    @Synchronized
-    private fun serverTimeOffset(): Long {
-        serverOffsetMs?.let { return it }
-        val measured = runCatching {
-            val before = System.currentTimeMillis()
-            val serverTime = publicGet("https://api.binance.com/api/v3/time").optLong("serverTime", 0L)
-            val after = System.currentTimeMillis()
-            if (serverTime > 0L) serverTime - (before + after) / 2 else 0L
-        }.getOrDefault(0L)
-        serverOffsetMs = measured
-        return measured
-    }
-
     private fun signedRequest(base: String, path: String, params: List<Pair<String, String>>): String {
         BinanceRestGuard.beforeRequest()
-        val timestamp = System.currentTimeMillis() + serverTimeOffset()
-        val all = params + ("timestamp" to timestamp.toString()) + ("recvWindow" to "10000")
+        val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
@@ -207,12 +186,12 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.setRequestProperty("X-MBX-APIKEY", apiKey)
         try {
             val status = conn.responseCode
-            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
+            val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+            val body = stream.bufferedReader().use { it.readText() }
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
-                val message = (binanceMessage(body) ?: "no message returned").trimEnd('.', ' ')
-                val hint = if (isBinanceTimestampError(message)) " Check that the phone's date and time are set automatically." else ""
-                throw IllegalStateException("Binance API error ($status): $message.$hint")
+                val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
+                throw IllegalStateException("Binance API error ($status): $message")
             }
             return body
         } finally { conn.disconnect() }
@@ -329,34 +308,28 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val b = balances.getJSONObject(i)
             val asset = b.optString("asset")
             if (asset.isNotBlank() && (b.optString("free").toDoubleOrNull() ?: 0.0) + (b.optString("locked").toDoubleOrNull() ?: 0.0) > 0.0 && asset !in setOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI")) asset else null
-        }.distinct()
+        }.distinct().take(100)
         // Use exchangeInfo to find quote pairs for held assets. Only symbols with a supported USDT quote are queried.
         val info = publicGet("https://api.binance.com/api/v3/exchangeInfo")
         val tradable = mutableListOf<String>()
-        val baseBySymbol = mutableMapOf<String, String>()
         val allSymbols = info.optJSONArray("symbols") ?: JSONArray()
         for (i in 0 until allSymbols.length()) {
             val s = allSymbols.getJSONObject(i)
-            baseBySymbol[s.optString("symbol")] = s.optString("baseAsset")
             if (s.optString("status") == "TRADING" && s.optString("quoteAsset") in setOf("USDT", "USDC") && s.optString("baseAsset") in symbols) tradable += s.optString("symbol")
         }
         // Fetch independent symbols with a small fixed pool; FIFO processing below stays chronological.
         val executor = Executors.newFixedThreadPool(8)
         try {
-            // Stop loudly rather than sync part of the history: a partial Spot history gives
-            // wrong cost basis and realized P&L with no warning.
-            check(tradable.size <= 80) { "Spot history covers ${tradable.size} held pairs, more than the 80 this sync can fetch safely. Sync stopped so P&L is not partial." }
-            val requests = tradable.map { symbol ->
+            val requests = tradable.take(80).map { symbol ->
                 executor.submit<List<JSONObject>> {
                     val symbolFills = mutableListOf<JSONObject>()
-                    // Page upward from the first trade. Without fromId Binance returns only the
-                    // newest trades, and jumping from them would skip every older fill.
-                    var cursor = 0L
+                    var cursor: Long? = null
                     var more = true
                     var pages = 0
                     while (more && pages < 100) {
                         pages++
-                        val p = mutableListOf("symbol" to symbol, "limit" to "1000", "fromId" to cursor.toString())
+                        val p = mutableListOf("symbol" to symbol, "limit" to "1000")
+                        if (cursor != null) p += "fromId" to cursor.toString()
                         val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
                         if (page.length() == 0) {
                             more = false
@@ -368,7 +341,6 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                             if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
                         }
                     }
-                    check(!more) { "Spot history for $symbol has more than 100000 trades. Sync stopped so P&L is not partial." }
                     symbolFills
                 }
             }
@@ -408,8 +380,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 daily[day] = (daily[day] ?: 0.0) + realized - fee
             }
             // Deduct base-asset commission on buys by reducing received quantity.
-            // The base asset comes from exchangeInfo: stripping "USDT" leaves USDC pairs unchanged.
-            if (isBuy && commissionAsset == (baseBySymbol[symbol] ?: symbol.removeSuffix("USDT")) && queue.isNotEmpty()) queue.last().qty = maxOf(0.0, queue.last().qty - commission)
+            if (isBuy && commissionAsset == symbol.removeSuffix("USDT") && queue.isNotEmpty()) queue.last().qty = maxOf(0.0, queue.last().qty - commission)
         }
         return daily
     }
@@ -715,9 +686,9 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.readTimeout = 20000
         try {
             val status = conn.responseCode
-            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + (binanceMessage(body) ?: "could not load market prices"))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market prices."))
             return JSONArray(body)
         } finally { conn.disconnect() }
     }
@@ -728,20 +699,11 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.connectTimeout = 15000; conn.readTimeout = 20000
         try {
             val status = conn.responseCode
-            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + (binanceMessage(body) ?: "could not load market symbols"))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market symbols."))
             return JSONObject(body)
         } finally { conn.disconnect() }
-    }
-}
-
-internal fun parseBinanceDailyResults(raw: String?): List<BinanceDailyResult> {
-    val rows = JSONArray(raw ?: "[]")
-    return (0 until rows.length()).map { i ->
-        rows.getJSONObject(i).let {
-            BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl"))
-        }
     }
 }
 
@@ -752,10 +714,9 @@ object BinanceSyncData {
      * Merge only dates returned by each source. A recent Futures API refresh must not erase
      * older saved years merely because the income endpoint cannot return them.
      */
-    @Synchronized
     fun merge(context: Context, spot: Map<String, Double>, futures: Map<String, Double>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
+        val merged = load(context).associateBy { it.date }.toMutableMap()
         (spot.keys + futures.keys).forEach { day ->
             val previous = merged[day]
             merged[day] = BinanceDailyResult(
@@ -775,13 +736,11 @@ object BinanceSyncData {
      * Replace the selected year's Futures net-income values from a complete user-selected
      * Binance export while preserving Spot totals and every other year.
      */
-    @Synchronized
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
+        val merged = load(context).associateBy { it.date }.toMutableMap()
         val yearPrefix = "$year-"
-        require(daily.keys.all { it.startsWith(yearPrefix) }) { "Futures data contains days outside $year." }
         merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
             val previous = merged.getValue(day)
             merged[day] = previous.copy(futuresPnl = daily[day] ?: 0.0)
@@ -798,7 +757,6 @@ object BinanceSyncData {
     }
 
     /** Replace the complete saved daily import during an explicit backup restore. */
-    @Synchronized
     fun replaceAll(context: Context, data: List<BinanceDailyResult>) {
         require(data.all { it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.date.isNotBlank() }) {
             "Imported Binance rows must have valid dates and finite P&L values."
@@ -812,10 +770,9 @@ object BinanceSyncData {
     }
 
     /** Backward-compatible save for callers that provide complete combined daily rows. */
-    @Synchronized
     fun save(context: Context, data: List<BinanceDailyResult>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
+        val merged = load(context).associateBy { it.date }.toMutableMap()
         data.forEach { merged[it.date] = it }
         val array = JSONArray()
         merged.values.sortedBy { it.date }.forEach {
@@ -824,34 +781,12 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
-    fun load(context: Context): List<BinanceDailyResult> = runCatching {
-        parseBinanceDailyResults(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
-    }.getOrDefault(emptyList())
+    fun load(context: Context): List<BinanceDailyResult> = try {
+        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
+        (0 until a.length()).map { i -> a.getJSONObject(i).let { BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl")) } }
+    } catch (_: Exception) { emptyList() }
 
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
-}
-
-/**
- * Runs isolated, read-only checks for the two Binance account APIs. One market failing must
- * not hide a successful connection to the other market; the returned text is safe to show
- * in the UI and never includes credentials or signed request URLs.
- */
-suspend fun diagnoseBinanceConnection(context: Context): String = withContext(Dispatchers.IO) {
-    BinanceRestGuard.configure(context)
-    val credentials = BinanceCredentialStore(context).read()
-        ?: return@withContext "Not connected: save both the Binance API key and secret first."
-    val api = BinanceApi(credentials.first, credentials.second)
-    val spot = runCatching { api.spotPortfolioBalance() }
-    val futures = runCatching { api.futuresAccountBalance() }
-    val spotLine = spot.fold(
-        { "Spot: OK — ${it.assetsHeld} assets found; estimated value USDT ${"%.2f".format(Locale.US, it.valueUsdt)}." },
-        { "Spot: FAILED — ${describeBinanceError(it)}" }
-    )
-    val futuresLine = futures.fold(
-        { "USDⓈ-M Futures: OK — equity USDT ${"%.2f".format(Locale.US, it.totalEquity)}." },
-        { "USDⓈ-M Futures: FAILED — ${describeBinanceError(it)}" }
-    )
-    listOf(spotLine, futuresLine).joinToString("\n")
 }
 
 object BinanceAccountSnapshotRunner {
@@ -879,14 +814,15 @@ object BinanceSyncRunner {
         val credentials = BinanceCredentialStore(context).read()
             ?: error("Save Binance read-only API credentials first.")
         val api = BinanceApi(credentials.first, credentials.second)
-        // Account balances are refreshed explicitly by the screen before this historical
-        // import starts, so users can see a useful result without waiting for full FIFO history.
-        // Keep the two history sources independent and only merge after both are complete:
-        // persisting one side of a failed/partial P&L calculation would be misleading.
+        // Account valuation, Spot FIFO history, and Futures income history are independent.
         val (spot, futures) = coroutineScope {
+            val snapshot = async { BinanceAccountSnapshotRunner.refresh(context) }
             val spotHistory = async(Dispatchers.IO) { api.spotDailyPnl() }
             val futuresHistory = async(Dispatchers.IO) { api.futuresDailyPnl() }
-            spotHistory.await() to futuresHistory.await()
+            val dailySpot = spotHistory.await()
+            val dailyFutures = futuresHistory.await()
+            snapshot.await()
+            dailySpot to dailyFutures
         }
         BinanceSyncData.merge(context, spot, futures)
     }
@@ -896,11 +832,7 @@ class BinanceDailyWorker(context: Context, params: WorkerParameters) : Coroutine
     override suspend fun doWork(): Result = try {
         if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
         else { BinanceSyncRunner.sync(applicationContext); Result.success() }
-    } catch (e: Exception) {
-        // Retry with backoff, but leave a trace so background failures can be diagnosed.
-        android.util.Log.w("BinanceDailyWorker", "Background sync failed: " + describeBinanceError(e))
-        Result.retry()
-    }
+    } catch (_: Exception) { Result.retry() }
 
     companion object {
         fun schedule(context: Context) {

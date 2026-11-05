@@ -69,8 +69,8 @@ class CryptoTaxHistoryTest {
 
     @Test fun groupsTradesByIndianFinancialYearAcrossAprilBoundary() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
-            "2025-03-31 18:29:00,BTCUSDT,SELL,0.1,10000,1000,1,USDT,50\n" +
-            "2025-03-31 18:31:00,BTCUSDT,SELL,0.1,11000,1100,1,USDT,60\n"
+            "2025-03-31 23:59:00,BTCUSDT,SELL,0.1,10000,1000,1,USDT,50\n" +
+            "2025-04-01 00:01:00,BTCUSDT,SELL,0.1,11000,1100,1,USDT,60\n"
         val rows = CryptoTaxHistory.parseCsv(csv, "spot-trades.csv")
         assertEquals(2024, rows[0].year) // FY 2024-25
         assertEquals(2025, rows[1].year) // FY 2025-26

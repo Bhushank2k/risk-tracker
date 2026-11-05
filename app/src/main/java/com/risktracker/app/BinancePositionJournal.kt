@@ -103,7 +103,7 @@ object BinancePositionJournal {
                     baseQuantityBought = ordered.filter { it.side.equals("BUY", true) }.sumOf { it.quantity },
                     baseQuantitySold = ordered.filter { it.side.equals("SELL", true) }.sumOf { it.quantity },
                     quoteVolume = ordered.sumOf { it.quoteAmount },
-                    feeTotals = ordered.filter { it.fee.isFinite() && it.fee != 0.0 }
+                    feeTotals = ordered.filter { it.fee.isFinite() && it.fee > 0.0 }
                         .groupBy { it.feeAsset.ifBlank { "Unknown" } }
                         .mapValues { (_, values) -> values.sumOf { it.fee } }
                 )
@@ -133,12 +133,6 @@ object BinancePositionJournal {
         fun addOpen(fill: BinanceJournalFill, quantity: Double, fraction: Double = 1.0) {
             openedQuantity += quantity
             entryNotional += quantity * fill.price
-            // An opening-looking fill that reports realized P&L is a close of a position that was
-            // already open when observation began. Keep that exchange P&L instead of dropping it.
-            fill.realizedPnl?.takeIf { it.isFinite() && it != 0.0 }?.let {
-                realizedPnl += it
-                hasRealizedPnl = true
-            }
             addCommon(fill, fraction)
         }
 
@@ -160,7 +154,7 @@ object BinancePositionJournal {
             firstTime = minOf(firstTime, fill.time)
             lastTime = maxOf(lastTime, fill.time)
             sequence++
-            if (fill.fee.isFinite() && fill.fee != 0.0) {
+            if (fill.fee.isFinite() && fill.fee > 0.0) {
                 val asset = fill.feeAsset.ifBlank { "Unknown" }
                 feeTotals[asset] = (feeTotals[asset] ?: 0.0) + fill.fee * fraction
             }

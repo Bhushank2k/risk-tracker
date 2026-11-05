@@ -2,11 +2,8 @@ package com.risktracker.app
 
 import android.content.Context
 import android.net.Uri
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -51,45 +48,30 @@ data class BinanceStatementSyncResult(
  * Read-only account statement importer. Binance has no single endpoint for every statement type;
  * each supported endpoint is best-effort and Binance retention limits still apply.
  */
-internal fun parseBinanceStatements(raw: String?): List<BinanceStatement> {
-    val rows = JSONArray(raw ?: "[]")
-    return (0 until rows.length()).map { i ->
-        val row = rows.getJSONObject(i)
-        BinanceStatement(row.getString("id"), row.getLong("time"), row.getString("category"),
-            row.optString("asset"), row.optDouble("amount"), row.optString("status"),
-            row.optString("reference"), row.optString("details"))
-    }.sortedByDescending { it.time }
-}
-
 object BinanceStatementStore {
     private const val PREFS = "binance_account_statements_v1"
     fun load(context: Context): List<BinanceStatement> = runCatching {
-        parseBinanceStatements(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
+        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
+        (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            BinanceStatement(o.getString("id"), o.getLong("time"), o.getString("category"),
+                o.optString("asset"), o.optDouble("amount"), o.optString("status"),
+                o.optString("reference"), o.optString("details"))
+        }.sortedByDescending { it.time }
     }.getOrDefault(emptyList())
 
-    private fun statementKey(r: BinanceStatement): String = listOf(r.category, r.time, r.asset, r.amount).joinToString("|")
-
-    @Synchronized
     fun saveMerge(context: Context, incoming: List<BinanceStatement>): Pair<Int, Int> {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val old = parseBinanceStatements(prefs.getString("rows", "[]"))
-        // A record is identified by time, category, asset and amount, not by txId or status: a
-        // withdrawal gets its txId only on completion, and a deposit moves from pending to
-        // completed. Keep the newest version of each record, which also collapses duplicates
-        // stored by earlier syncs.
-        val oldKeys = old.map { statementKey(it) }.toHashSet()
-        val fresh = incoming.map { statementKey(it) }.filter { it !in oldKeys }.toHashSet().size
-        val byKey = LinkedHashMap<String, BinanceStatement>()
-        old.forEach { byKey[statementKey(it)] = it }
-        incoming.forEach { byKey[statementKey(it)] = it }
-        val all = byKey.values.sortedBy { it.time }
+        val old = load(context)
+        val seen = old.map { it.id }.toHashSet()
+        val fresh = incoming.filter { seen.add(it.id) }
+        val all = (old + fresh).sortedBy { it.time }
         val a = JSONArray()
         all.forEach { r -> a.put(JSONObject().put("id", r.id).put("time", r.time)
             .put("category", r.category).put("asset", r.asset).put("amount", r.amount)
             .put("status", r.status).put("reference", r.reference).put("details", r.details)) }
-        prefs.edit().putString("rows", a.toString())
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("rows", a.toString())
             .putLong("last_sync", System.currentTimeMillis()).apply()
-        return fresh to all.size
+        return fresh.size to all.size
     }
 
     fun lastSync(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
@@ -120,7 +102,7 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         conn.setRequestProperty("X-MBX-APIKEY", apiKey)
         try {
             val status = conn.responseCode
-            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val msg = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
@@ -140,10 +122,9 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
             // A bounded overlap is intentional: repeat syncs safely catch late-arriving records.
             val page = signedGet(base, path, params)
             for (i in 0 until page.length()) mapper(page.getJSONObject(i))?.let(rows::add)
-        } catch (error: Exception) {
-            // Keep syncing other statement types, but keep the reason (a rate-limit pause and a
-            // bad key need different fixes) so the UI can show it.
-            failedCategories += "$category (${error.message ?: "request failed"})"
+        } catch (_: Exception) {
+            // Keep syncing other statement types, but report this category as unavailable to the UI.
+            failedCategories += category
         }
     }
 
@@ -243,18 +224,8 @@ class BinanceStatementWorker(context: Context, params: WorkerParameters) : Corou
     } catch (_: Exception) { Result.retry() }
     companion object {
         fun schedule(context: Context) {
-            // Statement downloads require a working network. UPDATE replaces older
-            // schedules that may have been created without this constraint.
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(7, TimeUnit.DAYS)
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "binance_statement_sync", ExistingPeriodicWorkPolicy.UPDATE, req
-            )
+            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(24, TimeUnit.HOURS).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork("binance_statement_sync", ExistingPeriodicWorkPolicy.KEEP, req)
         }
         fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork("binance_statement_sync")
     }

@@ -134,10 +134,11 @@ internal object BinanceMarketScanner {
         c.requestMethod = "GET"
         return try {
             val code = c.responseCode
-            val body = readBinanceBody(if (code in 200..299) c.inputStream else c.errorStream)
+            val stream = if (code in 200..299) c.inputStream else c.errorStream
+            val body = stream.bufferedReader().use { it.readText() }
             BinanceRestGuard.recordResponse(code, body, c.getHeaderField("Retry-After"))
             if (code !in 200..299) {
-                val message = binanceMessage(body) ?: "no message returned"
+                val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
             }
             body
@@ -242,10 +243,7 @@ internal object BinanceMarketScanner {
         val microstructureSymbols = scanCandidates.take(4).map { it.symbol }.toSet()
         val gate = Semaphore(2)
         progress("Checking the top " + scanCandidates.size + " liquid USDT perpetual pairs (rate-limited REST snapshot)…")
-        // Keep the first failure of each pair so a total failure reports its real cause
-        // (a rate-limit pause, a regional block, a timeout) instead of an empty result.
-        val failures = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
-        val results = coroutineScope {
+        coroutineScope {
             scanCandidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
@@ -260,14 +258,10 @@ internal object BinanceMarketScanner {
                             }
                             evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
                         }
-                    }.onFailure { failures.add(it) }.getOrNull()
+                    }.getOrNull()
                 }
             } }.awaitAll().filterNotNull().sortedByDescending { it.score }
         }
-        if (results.isEmpty() && failures.size == scanCandidates.size) {
-            throw IllegalStateException("Could not load Binance market data: " + describeBinanceError(failures.first()))
-        }
-        results
     }
 
     private fun evaluate(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): TradeIdea? {

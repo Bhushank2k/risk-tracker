@@ -195,6 +195,19 @@ class Store(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("risk_tracker", Context.MODE_PRIVATE)
 
+    /**
+     * One-time migration to the exchange-only journal. Removes legacy locally saved manual
+     * trades while leaving Binance fills, account data, plans, reviews and daily P&L untouched.
+     */
+    fun clearManualTradesOnce() {
+        if (!prefs.getBoolean("manual_trade_journal_cleared_v1", false)) {
+            prefs.edit()
+                .remove("trade_journal_v1")
+                .putBoolean("manual_trade_journal_cleared_v1", true)
+                .apply()
+        }
+    }
+
     var webUrl: String
         get() = prefs.getString("sync_url", "") ?: ""
         set(v) = prefs.edit().putString("sync_url", v).apply()
