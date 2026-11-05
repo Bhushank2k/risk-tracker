@@ -27,22 +27,30 @@ import androidx.compose.animation.animateContentSize
  * and primitives so surfaces, spacing and motion stay consistent everywhere.
  */
 object RiskTrackerDesign {
-    val pagePadding = 16.dp
-    val sectionGap = 16.dp
+    val pagePadding = 18.dp
+    val sectionGap = 18.dp
     val cardGap = 12.dp
     val cardPadding = 16.dp
     val compactCardPadding = 12.dp
+    val pageTitleSize = 22.dp
+    val navigationIconSize = 24.dp
+    val cardRadius = 18.dp
 
-    val success = androidx.compose.ui.graphics.Color(0xFF20A879)
-    val warning = androidx.compose.ui.graphics.Color(0xFFE6A23C)
-    val danger = androidx.compose.ui.graphics.Color(0xFFE05B62)
-    val info = androidx.compose.ui.graphics.Color(0xFF62A9E8)
+    val canvasDark = Color(0xFF111418)
+    val surfaceDark = Color(0xFF1B2026)
+    val raisedDark = Color(0xFF242B33)
+    val borderDark = Color(0xFF303841)
+    val accent = Color(0xFF35B77A)
+    val success = Color(0xFF35B77A)
+    val warning = Color(0xFFE5AC52)
+    val danger = Color(0xFFE16B70)
+    val info = Color(0xFF929DAA)
 
     // Profit and loss: one palette for every screen, chosen by theme for contrast on its surfaces.
     val profitOnLight = Color(0xFF16865D)
     val lossOnLight = Color(0xFFD34B55)
-    val profitOnDark = Color(0xFF7DE2B8)
-    val lossOnDark = Color(0xFFFF7B78)
+    val profitOnDark = Color(0xFF35B77A)
+    val lossOnDark = Color(0xFFE16B70)
 }
 
 /** Whether the active theme is dark, judged from its background. */
@@ -64,8 +72,8 @@ val RiskTrackerShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(24.dp)
 )
 
 val RiskTrackerTypography = Typography()
@@ -83,13 +91,13 @@ private val RiskTrackerCardBorder: BorderStroke
 @Composable
 fun RiskCard(
     modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.large,
+    shape: Shape = MaterialTheme.shapes.medium,
     colors: CardColors = CardDefaults.cardColors(
         containerColor = MaterialTheme.colorScheme.surface
     ),
     elevation: CardElevation = CardDefaults.cardElevation(
-        defaultElevation = 1.dp,
-        pressedElevation = 3.dp
+        defaultElevation = 0.dp,
+        pressedElevation = 1.dp
     ),
     border: BorderStroke? = RiskTrackerCardBorder,
     content: @Composable ColumnScope.() -> Unit
