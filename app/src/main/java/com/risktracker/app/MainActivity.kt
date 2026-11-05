@@ -439,7 +439,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                     )
                                 }
                             }
-                        }                    }
+                        }
+                    }
                 }
             }
         },
