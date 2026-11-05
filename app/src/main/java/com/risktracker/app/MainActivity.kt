@@ -157,7 +157,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             // One-time upgrade migration: previously installed daily and statement jobs
             // may still have been enqueued without CONNECTED network constraints. UPDATE
             // them once after upgrading, rather than resetting periodic work on every app open.
-            val schedulePrefs = context.getSharedPreferences("worker_schedule_migrations_v1", Context.MODE_PRIVATE)
+            val schedulePrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
             if (!schedulePrefs.getBoolean("binance_connected_network_v1", false)) {
                 BinanceDailyWorker.schedule(context)
                 BinanceStatementWorker.schedule(context)
