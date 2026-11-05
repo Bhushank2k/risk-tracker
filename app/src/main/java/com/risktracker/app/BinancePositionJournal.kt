@@ -133,6 +133,12 @@ object BinancePositionJournal {
         fun addOpen(fill: BinanceJournalFill, quantity: Double, fraction: Double = 1.0) {
             openedQuantity += quantity
             entryNotional += quantity * fill.price
+            // An opening-looking fill that reports realized P&L is a close of a position that was
+            // already open when observation began. Keep that exchange P&L instead of dropping it.
+            fill.realizedPnl?.takeIf { it.isFinite() && it != 0.0 }?.let {
+                realizedPnl += it
+                hasRealizedPnl = true
+            }
             addCommon(fill, fraction)
         }
 

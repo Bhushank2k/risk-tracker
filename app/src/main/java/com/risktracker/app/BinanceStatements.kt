@@ -67,13 +67,22 @@ object BinanceStatementStore {
         parseBinanceStatements(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
     }.getOrDefault(emptyList())
 
+    private fun statementKey(r: BinanceStatement): String = listOf(r.category, r.time, r.asset, r.amount).joinToString("|")
+
     @Synchronized
     fun saveMerge(context: Context, incoming: List<BinanceStatement>): Pair<Int, Int> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val old = parseBinanceStatements(prefs.getString("rows", "[]"))
-        val seen = old.map { it.id }.toHashSet()
-        val fresh = incoming.filter { seen.add(it.id) }
-        val all = (old + fresh).sortedBy { it.time }
+        // A record is identified by time, category, asset and amount, not by txId or status: a
+        // withdrawal gets its txId only on completion, and a deposit moves from pending to
+        // completed. Keep the newest version of each record, which also collapses duplicates
+        // stored by earlier syncs.
+        val oldKeys = old.map { statementKey(it) }.toHashSet()
+        val fresh = incoming.map { statementKey(it) }.filter { it !in oldKeys }.toHashSet().size
+        val byKey = LinkedHashMap<String, BinanceStatement>()
+        old.forEach { byKey[statementKey(it)] = it }
+        incoming.forEach { byKey[statementKey(it)] = it }
+        val all = byKey.values.sortedBy { it.time }
         val a = JSONArray()
         all.forEach { r -> a.put(JSONObject().put("id", r.id).put("time", r.time)
             .put("category", r.category).put("asset", r.asset).put("amount", r.amount)
@@ -131,9 +140,10 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
             // A bounded overlap is intentional: repeat syncs safely catch late-arriving records.
             val page = signedGet(base, path, params)
             for (i in 0 until page.length()) mapper(page.getJSONObject(i))?.let(rows::add)
-        } catch (_: Exception) {
-            // Keep syncing other statement types, but report this category as unavailable to the UI.
-            failedCategories += category
+        } catch (error: Exception) {
+            // Keep syncing other statement types, but keep the reason (a rate-limit pause and a
+            // bad key need different fixes) so the UI can show it.
+            failedCategories += "$category (${error.message ?: "request failed"})"
         }
     }
 

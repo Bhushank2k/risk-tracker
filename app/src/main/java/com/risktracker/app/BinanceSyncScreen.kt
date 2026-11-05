@@ -154,6 +154,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     try {
                         if (secret.isNotBlank()) credentials.save(apiKey, secret)
                         else if (!hasSaved) error("Enter the API secret.")
+                        else if (credentials.read()?.first != apiKey.trim()) error("Enter the API secret again to save a changed API key.")
                         BinanceDailyWorker.schedule(context)
                         BinanceStatementWorker.schedule(context)
                         BinanceJournalWorker.schedule(context)
