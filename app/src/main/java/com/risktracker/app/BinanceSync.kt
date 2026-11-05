@@ -315,7 +315,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             if (s.optString("status") == "TRADING" && s.optString("quoteAsset") in setOf("USDT", "USDC") && s.optString("baseAsset") in symbols) tradable += s.optString("symbol")
         }
         // Fetch independent symbols with a small fixed pool; FIFO processing below stays chronological.
-        val executor = Executors.newFixedThreadPool(4)
+        val executor = Executors.newFixedThreadPool(8)
         try {
             val requests = tradable.take(80).map { symbol ->
                 executor.submit<List<JSONObject>> {
