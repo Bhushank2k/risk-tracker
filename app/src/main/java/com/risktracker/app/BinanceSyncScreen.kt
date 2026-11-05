@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -25,6 +26,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -629,8 +637,27 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 }
             }
         }
-        if (status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true) || status.startsWith("Imported")) {
-            Text(status, color = if (status.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (status.isNotBlank()) {
+            val statusFailed = status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true)
+            val statusSucceeded = status.contains("completed", true) || status.contains("saved", true) ||
+                status.contains("imported", true) || status.contains("restored", true) || status.contains("ready", true)
+            val statusProgress = status.contains("syncing", true) || status.contains("fetching", true) ||
+                status.contains("importing", true) || status.contains("requesting", true) || status.contains("checking", true)
+            val statusIcon = when {
+                statusFailed -> Icons.Filled.Error
+                statusSucceeded -> Icons.Filled.CheckCircle
+                statusProgress -> Icons.Filled.Sync
+                else -> Icons.Filled.Info
+            }
+            val statusColor = when {
+                statusFailed -> MaterialTheme.colorScheme.error
+                statusSucceeded -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Icon(statusIcon, contentDescription = null, tint = statusColor, modifier = Modifier.size(18.dp))
+                Text(status, color = statusColor, style = MaterialTheme.typography.bodySmall)
+            }
         }
         Spacer(Modifier.height(12.dp))
     }
