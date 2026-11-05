@@ -63,9 +63,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Path
@@ -277,12 +279,18 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = barShape,
-                    color = MaterialTheme.colorScheme.surface,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
                     border = androidx.compose.foundation.BorderStroke(
-                        1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f)
+                        1.dp,
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.22f else 0.58f),
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+                            )
+                        )
                     ),
                     tonalElevation = 0.dp,
-                    shadowElevation = 1.dp
+                    shadowElevation = 2.dp
                 ) {
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxWidth()
@@ -320,6 +328,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         } else {
                             Color(0xFF946200)
                         }
+                        val pageIconAccent = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+                            Color(0xFF78CDEB)
+                        } else {
+                            Color(0xFF087EA4)
+                        }
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -332,7 +345,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 Icon(
                                     imageVector = pageIcon(tab),
                                     contentDescription = pageTitle,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = pageIconAccent,
                                     modifier = Modifier.size(26.dp)
                                 )
                                 Text(
@@ -420,9 +433,19 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 val navShape = RoundedCornerShape(26.dp)
                 NavigationBar(
                     modifier = Modifier.fillMaxWidth()
+                        .shadow(2.dp, navShape)
                         .clip(navShape)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f), navShape),
-                    containerColor = MaterialTheme.colorScheme.surface,
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.22f else 0.58f),
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+                                )
+                            ),
+                            navShape
+                        ),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
                     contentColor = MaterialTheme.colorScheme.onSurface,
                     tonalElevation = 0.dp,
                     windowInsets = WindowInsets(0.dp)
@@ -436,8 +459,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
                         alwaysShowLabel = true,
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            selectedIconColor = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF78CDEB) else Color(0xFF087EA4),
+                            selectedTextColor = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF78CDEB) else Color(0xFF087EA4),
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
