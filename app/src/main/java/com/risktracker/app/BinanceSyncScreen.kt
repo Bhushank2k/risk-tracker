@@ -38,12 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -224,17 +219,10 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                 val endMs = endDate.time + 24L * 60 * 60 * 1000 - 1
                                 val rows = withContext(Dispatchers.IO) {
                                     val api = BinanceApi(credentialsNow.first, credentialsNow.second)
-                                    val limiter = Semaphore(4)
-                                    coroutineScope {
-                                        symbols.map { symbol ->
-                                            async {
-                                                limiter.withPermit {
-                                                    if (historyMarket == "Spot") api.spotExecutionHistory(symbol, startMs, endMs)
-                                                    else api.futuresExecutionHistory(symbol, startMs, endMs)
-                                                }
-                                            }
-                                        }.awaitAll().flatten().distinctBy { it.id }.sortedByDescending { it.time }
-                                    }
+                                    symbols.flatMap { symbol ->
+                                        if (historyMarket == "Spot") api.spotExecutionHistory(symbol, startMs, endMs)
+                                        else api.futuresExecutionHistory(symbol, startMs, endMs)
+                                    }.distinctBy { it.id }.sortedByDescending { it.time }
                                 }
                                 historyPreview = rows
                                 status = "Preview ready: ${rows.size} execution fill(s). Nothing has been imported yet."

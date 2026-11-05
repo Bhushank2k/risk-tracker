@@ -4,17 +4,12 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,7 +27,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.Executors
 
 data class BinanceActivityItem(val id: String, val symbol: String, val side: String, val quantity: Double, val price: Double, val quoteAmount: Double, val fee: Double, val feeAsset: String, val time: Long, val source: String)
 
@@ -173,7 +167,6 @@ class BinanceCredentialStore(context: Context) {
 
 class BinanceApi(private val apiKey: String, private val secret: String) {
     private fun signedRequest(base: String, path: String, params: List<Pair<String, String>>): String {
-        BinanceRestGuard.beforeRequest()
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
@@ -188,7 +181,6 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
             val body = stream.bufferedReader().use { it.readText() }
-            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("Binance API error ($status): $message")
@@ -317,36 +309,23 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val s = allSymbols.getJSONObject(i)
             if (s.optString("status") == "TRADING" && s.optString("quoteAsset") in setOf("USDT", "USDC") && s.optString("baseAsset") in symbols) tradable += s.optString("symbol")
         }
-        // Fetch independent symbols with a small fixed pool; FIFO processing below stays chronological.
-        val executor = Executors.newFixedThreadPool(8)
-        try {
-            val requests = tradable.take(80).map { symbol ->
-                executor.submit<List<JSONObject>> {
-                    val symbolFills = mutableListOf<JSONObject>()
-                    var cursor: Long? = null
-                    var more = true
-                    var pages = 0
-                    while (more && pages < 100) {
-                        pages++
-                        val p = mutableListOf("symbol" to symbol, "limit" to "1000")
-                        if (cursor != null) p += "fromId" to cursor.toString()
-                        val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
-                        if (page.length() == 0) {
-                            more = false
-                        } else {
-                            for (i in 0 until page.length()) {
-                                symbolFills += page.getJSONObject(i).put("_symbol", symbol)
-                            }
-                            val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
-                            if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
-                        }
-                    }
-                    symbolFills
+        for (symbol in tradable.take(80)) {
+            var cursor: Long? = null
+            var more = true
+            var pages = 0
+            while (more && pages < 100) {
+                pages++
+                val p = mutableListOf("symbol" to symbol, "limit" to "1000")
+                if (cursor != null) p += "fromId" to cursor.toString()
+                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
+                if (page.length() == 0) {
+                    more = false
+                } else {
+                    for (i in 0 until page.length()) fills += page.getJSONObject(i).put("_symbol", symbol)
+                    val lastId = page.getJSONObject(page.length() - 1).optLong("id", -1)
+                    if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
                 }
             }
-            requests.forEach { fills.addAll(it.get()) }
-        } finally {
-            executor.shutdown()
         }
         // FIFO cost basis per pair. Only closed quantity contributes realized P&L; commissions are deducted.
         data class Lot(var qty: Double, val cost: Double)
@@ -389,65 +368,44 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
     fun spotExecutionHistory(symbol: String, startTime: Long, endTime: Long): List<BinanceJournalFill> {
         require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Enter a valid Binance symbol, such as BTCUSDT." }
         require(startTime <= endTime) { "Start date must be before end date." }
-
-        // Spot myTrades is symbol-scoped. Start at the requested timestamp, then page by
-        // trade ID until the requested end time. Binance allows startTime without endTime
-        // for histories longer than 24 hours; sending both would impose a 24-hour limit.
-        // Sparse histories therefore need one request instead of one request per day.
         val output = mutableListOf<BinanceJournalFill>()
-        var fromId: Long? = null
-        var pages = 0
-        var paginationComplete = false
-        while (!paginationComplete && pages < 4000) {
-            pages++
-            val params = mutableListOf("symbol" to symbol, "limit" to "1000")
-            if (fromId == null) {
-                params += "startTime" to startTime.toString()
-            } else {
-                params += "fromId" to fromId.toString()
-            }
-
-            val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
-            if (page.length() == 0) {
-                paginationComplete = true
-                break
-            }
-
-            var lastId = -1L
-            for (i in 0 until page.length()) {
-                val row = page.getJSONObject(i)
-                val id = row.optLong("id", -1)
-                lastId = maxOf(lastId, id)
-                val time = row.optLong("time")
-                if (time > endTime) {
-                    paginationComplete = true
-                    break
-                }
-                if (time !in startTime..endTime) continue
-                output += BinanceJournalFill(
-                    id = "binance:spot:$symbol:$id", exchange = "Binance", market = "Spot", symbol = symbol,
-                    side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
-                    quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
-                    price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
-                    quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
-                    fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
-                    feeAsset = row.optString("commissionAsset"), realizedPnl = null,
-                    time = time, orderId = row.optString("orderId")
+        var windowStart = startTime
+        var windows = 0
+        val windowSize = 24L * 60 * 60 * 1000
+        while (windowStart <= endTime && windows++ < 4000) {
+            val windowEnd = minOf(endTime, windowStart + windowSize - 1)
+            var fromId: Long? = null
+            var pages = 0
+            while (pages++ < 100) {
+                val params = mutableListOf(
+                    "symbol" to symbol, "startTime" to windowStart.toString(),
+                    "endTime" to windowEnd.toString(), "limit" to "1000"
                 )
+                fromId?.let { params += "fromId" to it.toString() }
+                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
+                if (page.length() == 0) break
+                var lastId = -1L
+                for (i in 0 until page.length()) {
+                    val row = page.getJSONObject(i)
+                    val id = row.optLong("id", -1)
+                    lastId = maxOf(lastId, id)
+                    val time = row.optLong("time")
+                    if (time !in windowStart..windowEnd) continue
+                    output += BinanceJournalFill(
+                        id = "binance:spot:$symbol:$id", exchange = "Binance", market = "Spot", symbol = symbol,
+                        side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
+                        quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
+                        price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
+                        quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
+                        fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
+                        feeAsset = row.optString("commissionAsset"), realizedPnl = null,
+                        time = time, orderId = row.optString("orderId")
+                    )
+                }
+                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
+                fromId = lastId + 1
             }
-
-            if (paginationComplete) break
-            if (page.length() < 1000) {
-                paginationComplete = true
-                break
-            }
-            if (lastId < 0 || (fromId != null && lastId < fromId!!)) {
-                throw IllegalStateException("Binance Spot history returned an invalid trade-ID cursor for $symbol; checkpoint was not advanced.")
-            }
-            fromId = lastId + 1
-        }
-        if (!paginationComplete) {
-            throw IllegalStateException("Binance Spot history reached the 4,000-page safety limit for $symbol; incomplete history was not checkpointed and will retry.")
+            windowStart = windowEnd + 1
         }
         return output.distinctBy { it.id }.sortedBy { it.time }
     }
@@ -460,38 +418,24 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         var windowStart = startTime
         var windows = 0
         val windowSize = 7L * 24 * 60 * 60 * 1000
-        while (windowStart <= endTime && windows < 600) {
-            windows++
+        while (windowStart <= endTime && windows++ < 600) {
             val windowEnd = minOf(endTime, windowStart + windowSize - 1)
             var fromId: Long? = null
             var pages = 0
-            var windowComplete = false
-            while (!windowComplete && pages < 100) {
-                pages++
-                // Binance rejects fromId when combined with startTime/endTime. Apply the
-                // time window on the first page, then continue by trade ID alone.
-                val params = mutableListOf("symbol" to symbol, "limit" to "1000")
-                if (fromId == null) {
-                    params += "startTime" to windowStart.toString()
-                    params += "endTime" to windowEnd.toString()
-                } else {
-                    params += "fromId" to fromId.toString()
-                }
+            while (pages++ < 100) {
+                val params = mutableListOf(
+                    "symbol" to symbol, "startTime" to windowStart.toString(),
+                    "endTime" to windowEnd.toString(), "limit" to "1000"
+                )
+                fromId?.let { params += "fromId" to it.toString() }
                 val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", params)
-                if (page.length() == 0) {
-                    windowComplete = true
-                    break
-                }
+                if (page.length() == 0) break
                 var lastId = -1L
                 for (i in 0 until page.length()) {
                     val row = page.getJSONObject(i)
                     val id = row.optLong("id", -1)
                     lastId = maxOf(lastId, id)
                     val time = row.optLong("time")
-                    if (time > windowEnd) {
-                        windowComplete = true
-                        break
-                    }
                     if (time !in windowStart..windowEnd) continue
                     output += BinanceJournalFill(
                         id = "binance:futures:$symbol:$id", exchange = "Binance", market = "USDⓈ-M Futures", symbol = symbol,
@@ -505,23 +449,10 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                         time = time, orderId = row.optString("orderId")
                     )
                 }
-                if (windowComplete) break
-                if (page.length() < 1000) {
-                    windowComplete = true
-                    break
-                }
-                if (lastId < 0 || (fromId != null && lastId < fromId!!)) {
-                    throw IllegalStateException("Binance Futures history returned an invalid trade-ID cursor for $symbol; checkpoint was not advanced.")
-                }
+                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
                 fromId = lastId + 1
             }
-            if (!windowComplete) {
-                throw IllegalStateException("Binance Futures history reached the 100-page safety limit for $symbol; incomplete history was not checkpointed and will retry.")
-            }
             windowStart = windowEnd + 1
-        }
-        if (windowStart <= endTime) {
-            throw IllegalStateException("Binance Futures history exceeded the 600-window safety limit for $symbol; incomplete history was not checkpointed and will retry.")
         }
         return output.distinctBy { it.id }.sortedBy { it.time }
     }
@@ -680,29 +611,21 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 
 
     private fun publicGetArray(url: String): JSONArray {
-        BinanceRestGuard.beforeRequest()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000
         conn.readTimeout = 20000
         try {
-            val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
-            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market prices."))
-            return JSONArray(body)
+            if (conn.responseCode !in 200..299) throw IllegalStateException("Could not load Binance market prices.")
+            return JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
         } finally { conn.disconnect() }
     }
 
     private fun publicGet(url: String): JSONObject {
-        BinanceRestGuard.beforeRequest()
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000; conn.readTimeout = 20000
         try {
-            val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
-            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market symbols."))
-            return JSONObject(body)
+            if (conn.responseCode !in 200..299) throw IllegalStateException("Could not load Binance market symbols.")
+            return JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
         } finally { conn.disconnect() }
     }
 }
@@ -792,38 +715,23 @@ object BinanceSyncData {
 object BinanceAccountSnapshotRunner {
     /** Refreshes live Spot valuation and USDⓈ-M Futures equity without changing the P&L journal. */
     suspend fun refresh(context: Context): BinanceAccountSnapshot = withContext(Dispatchers.IO) {
-        BinanceRestGuard.configure(context)
         val credentials = BinanceCredentialStore(context).read()
             ?: error("Connect a read-only Binance API key to load account balance.")
         val api = BinanceApi(credentials.first, credentials.second)
-        val (spot, futures) = coroutineScope {
-            val spotRequest = async(Dispatchers.IO) { api.spotPortfolioBalance() }
-            val futuresRequest = async(Dispatchers.IO) { api.futuresAccountBalance() }
-            spotRequest.await() to futuresRequest.await()
-        }
-        // Persist only after both requests succeed, preserving the last complete snapshot.
+        val spot = api.spotPortfolioBalance()
+        val futures = api.futuresAccountBalance()
         BinanceAccountSnapshotStore(context).save(spot, futures)
         BinanceAccountSnapshotStore(context).load()
             ?: error("Binance balance was fetched but could not be saved.")
     }
 }
 
-object BinanceSyncRunner {
-    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
-        BinanceRestGuard.configure(context)
-        val credentials = BinanceCredentialStore(context).read()
-            ?: error("Save Binance read-only API credentials first.")
+object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
+        val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
+        BinanceAccountSnapshotRunner.refresh(context)
         val api = BinanceApi(credentials.first, credentials.second)
-        // Account valuation, Spot FIFO history, and Futures income history are independent.
-        val (spot, futures) = coroutineScope {
-            val snapshot = async { BinanceAccountSnapshotRunner.refresh(context) }
-            val spotHistory = async(Dispatchers.IO) { api.spotDailyPnl() }
-            val futuresHistory = async(Dispatchers.IO) { api.futuresDailyPnl() }
-            val dailySpot = spotHistory.await()
-            val dailyFutures = futuresHistory.await()
-            snapshot.await()
-            dailySpot to dailyFutures
-        }
+        val spot = api.spotDailyPnl()
+        val futures = api.futuresDailyPnl()
         BinanceSyncData.merge(context, spot, futures)
     }
 }
@@ -836,18 +744,8 @@ class BinanceDailyWorker(context: Context, params: WorkerParameters) : Coroutine
 
     companion object {
         fun schedule(context: Context) {
-            // Historical P&L/account refresh also needs a connected network. UPDATE
-            // replaces older unconstrained schedules already installed on the device.
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(24, TimeUnit.HOURS)
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "binance_daily_trade_sync", ExistingPeriodicWorkPolicy.UPDATE, request
-            )
+            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(24, TimeUnit.HOURS).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork("binance_daily_trade_sync", ExistingPeriodicWorkPolicy.KEEP, request)
         }
         fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork("binance_daily_trade_sync")
     }

@@ -61,13 +61,15 @@ object RiskAlertEngine {
 }
 
 @Composable
-fun RiskAlertsScreen(trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: Double) {
+fun RiskAlertsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: Double) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("risk_alert_settings_v1", Context.MODE_PRIVATE) }
     var dailyEnabled by remember { mutableStateOf(prefs.getBoolean("daily_enabled", true)) }
+    var drawdownEnabled by remember { mutableStateOf(prefs.getBoolean("drawdown_enabled", true)) }
     var staleEnabled by remember { mutableStateOf(prefs.getBoolean("stale_enabled", true)) }
     var streakEnabled by remember { mutableStateOf(prefs.getBoolean("streak_enabled", true)) }
     var streakLimit by remember { mutableStateOf(prefs.getInt("streak_limit", 3).toString()) }
+    var drawdownThreshold by remember { mutableStateOf(prefs.getFloat("drawdown_threshold", 10f).toString()) }
     var staleHours by remember { mutableStateOf(prefs.getInt("stale_hours", 24).toString()) }
     var savedMessage by remember { mutableStateOf("") }
     var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean("background_notifications_enabled", false)) }
@@ -85,17 +87,28 @@ fun RiskAlertsScreen(trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: 
         }
     }
 
-    // Drawdown alerts relied on the manual balance ledger, which has been removed.
+    val ordered = entries.mapNotNull { entry ->
+        parseRiskDate(entry.date)?.let { it.time to entry.closing }
+    }.sortedBy { it.first }
+    var peak = Double.NaN
+    var maxDrawdownPct = 0.0
+    ordered.forEach { (_, balance) ->
+        if (balance.isFinite() && balance > 0.0) {
+            peak = if (peak.isNaN()) balance else maxOf(peak, balance)
+            if (peak > 0.0) maxDrawdownPct = maxOf(maxDrawdownPct, ((peak - balance) / peak * 100.0).coerceAtLeast(0.0))
+        }
+    }
     val recentTradeResults = trades.mapNotNull { trade ->
         parseRiskDate(trade.date)?.let { it.time to trade.pnl }
     }.sortedByDescending { it.first }
     val consecutiveLosses = recentTradeResults.takeWhile { it.second < 0.0 }.size
     val status = remember(context) { BinanceAutoJournalStore.syncStatus(context) }
     val hasCredentials = remember(context) { BinanceCredentialStore(context).read() != null }
+    val threshold = drawdownThreshold.toDoubleOrNull()
     val staleWindow = staleHours.toLongOrNull()?.coerceIn(1L, 720L) ?: 24L
     val alerts = RiskAlertEngine.evaluate(
         dailyPnl, maxDailyLoss, dailyEnabled,
-        null, 10.0, false,
+        if (ordered.isEmpty()) null else maxDrawdownPct, threshold ?: 10.0, drawdownEnabled,
         hasCredentials, status.lastSuccess, System.currentTimeMillis(), staleWindow * 3_600_000L, staleEnabled,
         consecutiveLosses, streakLimit.toIntOrNull() ?: 3, streakEnabled
     )
@@ -143,6 +156,16 @@ fun RiskAlertsScreen(trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: 
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
+                        Text("Recorded drawdown", fontWeight = FontWeight.Medium)
+                        Text("Compares recorded closing balances with the previous peak.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = drawdownEnabled, onCheckedChange = { drawdownEnabled = it })
+                }
+                OutlinedTextField(drawdownThreshold, { drawdownThreshold = it }, label = { Text("Drawdown threshold (%)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
                         Text("Stale Binance sync", fontWeight = FontWeight.Medium)
                         Text("Warns when connected execution-history data has not synced successfully within the selected window.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -162,18 +185,20 @@ fun RiskAlertsScreen(trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: 
                 OutlinedTextField(staleHours, { staleHours = it.filter(Char::isDigit).take(3) },
                     label = { Text("Stale after (hours, 1–720)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Button(onClick = {
+                    val d = drawdownThreshold.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
                     val h = staleHours.toLongOrNull()?.takeIf { it in 1L..720L }
                     val s = streakLimit.toIntOrNull()?.takeIf { it in 1..20 }
-                    if (h != null && s != null) {
+                    if (d != null && h != null && s != null) {
                         prefs.edit().putBoolean("daily_enabled", dailyEnabled)
-                            .putBoolean("stale_enabled", staleEnabled)
+                            .putBoolean("drawdown_enabled", drawdownEnabled).putBoolean("stale_enabled", staleEnabled)
                             .putBoolean("streak_enabled", streakEnabled)
-                            .putInt("stale_hours", h.toInt())
+                            .putFloat("drawdown_threshold", d.toFloat()).putInt("stale_hours", h.toInt())
                             .putInt("streak_limit", s).apply()
+                        drawdownThreshold = d.toString()
                         staleHours = h.toString()
                         streakLimit = s.toString()
                         savedMessage = "Alert settings saved."
-                    } else savedMessage = "Use a stale window of 1–720 hours and a loss-streak threshold of 1–20."
+                    } else savedMessage = "Use a positive drawdown percentage, a stale window of 1–720 hours, and a loss-streak threshold of 1–20."
                 }, modifier = Modifier.fillMaxWidth()) { Text("Save alert settings") }
                 if (savedMessage.isNotBlank()) Text(savedMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
@@ -188,6 +213,8 @@ fun RiskAlertsScreen(trades: List<TradeEntry>, dailyPnl: Double?, maxDailyLoss: 
                 }
                 if (dailyPnl == null) Text("Today's P&L is unknown; missing data is not treated as zero.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Recorded peak drawdown: " + if (ordered.isEmpty()) "Unavailable" else "%.2f%%".format(Locale.US, maxDrawdownPct),
+                    style = MaterialTheme.typography.bodySmall)
                 Text("Binance sync: " + status.state + ". Last successful sync: " +
                     if (status.lastSuccess <= 0L) "Not recorded" else SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(status.lastSuccess)) + ".",
                     style = MaterialTheme.typography.bodySmall)

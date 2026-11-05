@@ -53,6 +53,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(onClick = onBack) { Text("Back to Binance sync") }
         Text("Account activity", style = MaterialTheme.typography.headlineSmall)
+        Text("Read-only Binance history for deposits, withdrawals, distributions, transfers and Futures income. Records are deduplicated and kept separate from your journal and Daily P&L.", style = MaterialTheme.typography.bodyMedium)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Recent history only", style = MaterialTheme.typography.titleMedium)

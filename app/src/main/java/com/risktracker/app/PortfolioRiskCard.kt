@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
+private fun portfolioUsd(value: Double): String = String.format(Locale.US, "$%,.2f", value)
 
 @Composable
 fun PortfolioRiskCard(
@@ -38,7 +39,7 @@ fun PortfolioRiskCard(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Open notional", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(exposure.let { usdAmount(it) }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(exposure.let { portfolioUsd(it) }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
                 }
                 HorizontalDivider()
@@ -64,7 +65,7 @@ fun PortfolioRiskCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(row.key, style = MaterialTheme.typography.bodySmall)
-                            Text(row.value.let { usdAmount(it) } + " · " + String.format(Locale.US, "%.1f%%", share), style = MaterialTheme.typography.bodySmall,
+                            Text(row.value.let { portfolioUsd(it) } + " · " + String.format(Locale.US, "%.1f%%", share), style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium)
                         }
                     }

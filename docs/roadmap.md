@@ -9,7 +9,7 @@ This document combines the former product roadmap and usability/reliability plan
 3. Deterministic Risk Scenario Lab and consecutive-loss stress testing.
 4. Post-trade reviews and plan-adherence tracking.
 5. Ledger provenance, reconciliation and historical coverage.
-6. Optional AI summaries only after privacy, source quality and completeness checks are established. The `feat/ai-trading-intelligence` implementation adds opt-in, on-demand OpenAI journal summaries, behavioral explanations, weekly reviews and risk-discipline observations; see [AI Trading Intelligence](ai-trading-intelligence.md).
+6. Optional AI summaries only after privacy, source quality and completeness checks are established.
 
 Engineering guardrails: deterministic calculations with unit tests; no double-counting of imported and estimated results; missing coverage is not zero; no order execution or withdrawal permissions; preserve backup compatibility; label estimates and assumptions.
 

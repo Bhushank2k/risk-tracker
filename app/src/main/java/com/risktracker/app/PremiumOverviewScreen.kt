@@ -24,19 +24,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Minimum gap between REST snapshots of positions and balances on the Overview.
- * Live mark prices come from the WebSocket stream; REST is only for snapshots.
- */
-private const val OVERVIEW_REST_MIN_INTERVAL_MS = 5 * 60_000L
-
 
 @Composable
 fun RiskOverviewScreen(
+    entries: List<PnlEntry>,
     importedPnl: List<BinanceDailyResult>,
     trades: List<TradeEntry>,
     maxDailyLoss: Double,
-    onNavigate: (Int) -> Unit
+    onNavigate: (Int) -> Unit,
+    onChange: (List<PnlEntry>) -> Unit
 ) {
     val context = LocalContext.current
     val positionsStore = remember { BinanceLivePositionsStore(context) }
@@ -63,8 +59,8 @@ fun RiskOverviewScreen(
                 SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(blockedUntil))
             return
         }
-        if (now - lastPositionRestAttempt < OVERVIEW_REST_MIN_INTERVAL_MS) {
-            positionsStatus = "Position REST sync runs every five minutes; live prices continue over WebSocket."
+        if (now - lastPositionRestAttempt < 60_000L) {
+            positionsStatus = "Position REST sync is limited to once per minute; live prices continue over WebSocket."
             return
         }
         val credentials = BinanceCredentialStore(context).read()
@@ -104,7 +100,7 @@ fun RiskOverviewScreen(
     fun refreshAccountBalance() {
         if (balanceRefreshing) return
         val now = System.currentTimeMillis()
-        if (now - lastBalanceRestAttempt < OVERVIEW_REST_MIN_INTERVAL_MS) return
+        if (now - lastBalanceRestAttempt < 60_000L) return
         val blockedUntil = positionsStore.restBlockedUntil()
         if (blockedUntil > System.currentTimeMillis()) {
             balanceStatus = "Binance REST is paused until " +
@@ -142,7 +138,7 @@ fun RiskOverviewScreen(
             refreshLivePositions()
             refreshAccountBalance()
             while (true) {
-                delay(OVERVIEW_REST_MIN_INTERVAL_MS)
+                delay(60_000L)
                 refreshLivePositions()
                 refreshAccountBalance()
             }
@@ -171,15 +167,15 @@ fun RiskOverviewScreen(
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    // Daily results come only from imported Binance records; manual entries are not used.
-    val daily = remember(importedPnl) {
-        reconcileDailyPnl(emptyList(), importedPnl, emptyList()).sortedBy { it.date }
+    val daily = remember(entries, importedPnl, trades) {
+        reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
     }
     val todayPnl = daily.lastOrNull { it.date == today }?.selectedPnl
     val netPnl = daily.sumOf { it.selectedPnl }
     val wins = trades.count { it.pnl > 0.0 }
     val closedTrades = wins + trades.count { it.pnl < 0.0 }
     val winRate = if (closedTrades > 0) wins.toDouble() / closedTrades * 100.0 else null
+    val latestBalance = entries.sortedBy { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.lastOrNull()?.closing
     val recentTrades = trades.sortedByDescending { dashboardReportDate(it.date)?.time ?: Long.MIN_VALUE }.take(5)
     val riskRemaining = if (maxDailyLoss > 0.0 && todayPnl != null) (maxDailyLoss + todayPnl).coerceIn(0.0, maxDailyLoss) else null
     val riskUsed = if (maxDailyLoss > 0.0 && todayPnl != null) (-todayPnl / maxDailyLoss).coerceIn(0.0, 1.0).toFloat() else null
@@ -284,6 +280,7 @@ fun RiskOverviewScreen(
                         Text((riskUsed * 100).toInt().toString() + "% of your daily loss limit used", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (riskUsed >= 1f) Text("Daily loss limit reached. Pause and review risk before taking another trade.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                     } else {
+                        Text("Set a daily loss limit to see your remaining budget here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -306,9 +303,10 @@ fun RiskOverviewScreen(
                     Modifier.weight(1f)
                 )
             }
-            if (winRate != null) {
+            if (winRate != null || latestBalance != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CompactOverviewMeta("Win rate", winRate.pct(1) + " · " + closedTrades + " closed")
+                    if (winRate != null) CompactOverviewMeta("Win rate", winRate.pct(1) + " · " + closedTrades + " closed")
+                    if (latestBalance != null) CompactOverviewMeta("Last recorded balance", latestBalance.usd())
                 }
             }
         }
