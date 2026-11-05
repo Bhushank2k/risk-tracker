@@ -342,22 +342,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = timeAccent.copy(alpha = 0.12f)
-                                ) {
-                                    Text(
-                                        text = "IST",
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = timeAccent
-                                    )
-                                }
                             }
                             if (stackMetadata) {
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Text(
@@ -377,7 +366,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.End
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -396,6 +385,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                             color = timeAccent
                                         )
                                     }
+                                    Spacer(Modifier.width(14.dp))
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
