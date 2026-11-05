@@ -51,20 +51,26 @@ data class BinanceStatementSyncResult(
  * Read-only account statement importer. Binance has no single endpoint for every statement type;
  * each supported endpoint is best-effort and Binance retention limits still apply.
  */
+internal fun parseBinanceStatements(raw: String?): List<BinanceStatement> {
+    val rows = JSONArray(raw ?: "[]")
+    return (0 until rows.length()).map { i ->
+        val row = rows.getJSONObject(i)
+        BinanceStatement(row.getString("id"), row.getLong("time"), row.getString("category"),
+            row.optString("asset"), row.optDouble("amount"), row.optString("status"),
+            row.optString("reference"), row.optString("details"))
+    }.sortedByDescending { it.time }
+}
+
 object BinanceStatementStore {
     private const val PREFS = "binance_account_statements_v1"
     fun load(context: Context): List<BinanceStatement> = runCatching {
-        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
-        (0 until a.length()).map { i ->
-            val o = a.getJSONObject(i)
-            BinanceStatement(o.getString("id"), o.getLong("time"), o.getString("category"),
-                o.optString("asset"), o.optDouble("amount"), o.optString("status"),
-                o.optString("reference"), o.optString("details"))
-        }.sortedByDescending { it.time }
+        parseBinanceStatements(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
     }.getOrDefault(emptyList())
 
+    @Synchronized
     fun saveMerge(context: Context, incoming: List<BinanceStatement>): Pair<Int, Int> {
-        val old = load(context)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val old = parseBinanceStatements(prefs.getString("rows", "[]"))
         val seen = old.map { it.id }.toHashSet()
         val fresh = incoming.filter { seen.add(it.id) }
         val all = (old + fresh).sortedBy { it.time }
@@ -72,7 +78,7 @@ object BinanceStatementStore {
         all.forEach { r -> a.put(JSONObject().put("id", r.id).put("time", r.time)
             .put("category", r.category).put("asset", r.asset).put("amount", r.amount)
             .put("status", r.status).put("reference", r.reference).put("details", r.details)) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("rows", a.toString())
+        prefs.edit().putString("rows", a.toString())
             .putLong("last_sync", System.currentTimeMillis()).apply()
         return fresh.size to all.size
     }
