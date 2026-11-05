@@ -80,7 +80,6 @@ fun TradeReviewScreen(
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("Trade reviews", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text("Manual lessons plus read-only Binance execution analysis.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
