@@ -822,13 +822,12 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
         HorizontalDivider()
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
-    }
         HorizontalDivider()
         Text("About Risk Tracker", style = MaterialTheme.typography.titleMedium)
         Text("Crypto futures trading tracker for daily P&L, position sizing and leverage risk.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Version " + (runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-
+    }
 }
 
 @Composable
