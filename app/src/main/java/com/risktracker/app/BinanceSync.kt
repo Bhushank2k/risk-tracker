@@ -831,6 +831,29 @@ object BinanceSyncData {
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 }
 
+/**
+ * Runs isolated, read-only checks for the two Binance account APIs. One market failing must
+ * not hide a successful connection to the other market; the returned text is safe to show
+ * in the UI and never includes credentials or signed request URLs.
+ */
+suspend fun diagnoseBinanceConnection(context: Context): String = withContext(Dispatchers.IO) {
+    BinanceRestGuard.configure(context)
+    val credentials = BinanceCredentialStore(context).read()
+        ?: return@withContext "Not connected: save both the Binance API key and secret first."
+    val api = BinanceApi(credentials.first, credentials.second)
+    val spot = runCatching { api.spotPortfolioBalance() }
+    val futures = runCatching { api.futuresAccountBalance() }
+    val spotLine = spot.fold(
+        { "Spot: OK — ${it.assetsHeld} assets found; estimated value USDT ${"%.2f".format(Locale.US, it.valueUsdt)}." },
+        { "Spot: FAILED — ${describeBinanceError(it)}" }
+    )
+    val futuresLine = futures.fold(
+        { "USDⓈ-M Futures: OK — equity USDT ${"%.2f".format(Locale.US, it.totalEquity)}." },
+        { "USDⓈ-M Futures: FAILED — ${describeBinanceError(it)}" }
+    )
+    listOf(spotLine, futuresLine).joinToString("\n")
+}
+
 object BinanceAccountSnapshotRunner {
     /** Refreshes live Spot valuation and USDⓈ-M Futures equity without changing the P&L journal. */
     suspend fun refresh(context: Context): BinanceAccountSnapshot = withContext(Dispatchers.IO) {

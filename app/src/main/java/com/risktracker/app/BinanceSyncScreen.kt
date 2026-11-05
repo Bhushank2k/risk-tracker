@@ -59,6 +59,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
     var hasSaved by remember { mutableStateOf(saved != null) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var diagnosticsBusy by remember { mutableStateOf(false) }
     var historySymbols by remember { mutableStateOf("BTCUSDT, ETHUSDT") }
     var historyMarket by remember { mutableStateOf("USDⓈ-M Futures") }
     var historyStart by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000))) }
@@ -173,6 +174,23 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                         apiKey = ""; secret = ""; hasSaved = false
                         status = "Credentials cleared and scheduled sync disabled."
                     }, modifier = Modifier.weight(1f)) { Text("Disconnect") }
+                    OutlinedButton(
+                        onClick = {
+                            diagnosticsBusy = true
+                            status = "Testing Spot and USDⓈ-M Futures read-only access…"
+                            scope.launch {
+                                try {
+                                    status = diagnoseBinanceConnection(context)
+                                } catch (e: Exception) {
+                                    status = "Connection test failed: ${describeBinanceError(e)}"
+                                } finally {
+                                    diagnosticsBusy = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy && !diagnosticsBusy
+                    ) { Text(if (diagnosticsBusy) "Testing…" else "Test connection") }
                     Button(onClick = {
                         if (credentials.read() == null) { status = "Save valid API credentials first."; return@Button }
                         busy = true
