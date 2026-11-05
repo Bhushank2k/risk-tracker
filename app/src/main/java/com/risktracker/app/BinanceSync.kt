@@ -448,12 +448,17 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val windowEnd = minOf(endTime, windowStart + windowSize - 1)
             var fromId: Long? = null
             var pages = 0
-            while (pages++ < 100) {
-                val params = mutableListOf(
-                    "symbol" to symbol, "startTime" to windowStart.toString(),
-                    "endTime" to windowEnd.toString(), "limit" to "1000"
-                )
-                fromId?.let { params += "fromId" to it.toString() }
+            var reachedWindowEnd = false
+            while (!reachedWindowEnd && pages++ < 100) {
+                // Binance rejects fromId when combined with startTime/endTime. Apply the
+                // time window on the first page, then continue by trade ID alone.
+                val params = mutableListOf("symbol" to symbol, "limit" to "1000")
+                if (fromId == null) {
+                    params += "startTime" to windowStart.toString()
+                    params += "endTime" to windowEnd.toString()
+                } else {
+                    params += "fromId" to fromId.toString()
+                }
                 val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", params)
                 if (page.length() == 0) break
                 var lastId = -1L
@@ -462,6 +467,10 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                     val id = row.optLong("id", -1)
                     lastId = maxOf(lastId, id)
                     val time = row.optLong("time")
+                    if (time > windowEnd) {
+                        reachedWindowEnd = true
+                        break
+                    }
                     if (time !in windowStart..windowEnd) continue
                     output += BinanceJournalFill(
                         id = "binance:futures:$symbol:$id", exchange = "Binance", market = "USDⓈ-M Futures", symbol = symbol,
@@ -475,7 +484,8 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                         time = time, orderId = row.optString("orderId")
                     )
                 }
-                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
+                if (reachedWindowEnd || page.length() < 1000 || lastId < 0 ||
+                    (fromId != null && lastId < fromId!!)) break
                 fromId = lastId + 1
             }
             windowStart = windowEnd + 1
