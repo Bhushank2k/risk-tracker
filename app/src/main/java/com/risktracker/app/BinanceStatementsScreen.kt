@@ -49,16 +49,13 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
             } catch (e: Exception) { status = "Export failed: ${e.message ?: "file error"}" }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedButton(onClick = onBack) { Text("Back to Binance sync") }
-        Text("Account activity", style = MaterialTheme.typography.headlineSmall)
-        Text("Read-only Binance history for deposits, withdrawals, distributions, transfers and Futures income. Records are deduplicated and kept separate from your journal and Daily P&L.", style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Recent history only", style = MaterialTheme.typography.titleMedium)
-                Text("This screen fetches a recent 7-day window for supported categories. Binance API history limits vary by statement type, so this is not a lifetime archive and does not include every Spot trade, order, fiat, Earn, or tax document.")
-                Text("For older activity, download Binance's official account data export and use the historical import tools where supported.", style = MaterialTheme.typography.bodySmall)
+                Text("Recent 7-day window for supported categories; this is not a lifetime archive.", style = MaterialTheme.typography.bodySmall)
+                
                 Button(onClick = {
                     if (BinanceCredentialStore(context).read() == null) {
                         status = "Save read-only Binance API credentials on the previous screen first."
@@ -81,14 +78,14 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                     }
                 }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Syncing statements…" else "Sync statements now") }
                 OutlinedButton(onClick = { export.launch("binance-account-statements.csv") }, enabled = rows.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Export all stored statements as CSV") }
-                Text("Daily background sync is scheduled when Binance credentials are saved.", style = MaterialTheme.typography.bodySmall)
+                
             }
         }
         val reconciliation = BinanceCapitalReconciliationEngine.reconcile(rows)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Capital reconciliation", style = MaterialTheme.typography.titleMedium)
-                Text("Net external cash flow by asset. Deposits minus withdrawals; internal transfers and trading income are kept separate.", style = MaterialTheme.typography.bodySmall)
+                Text("Deposits minus withdrawals; internal transfers and trading income stay separate.", style = MaterialTheme.typography.bodySmall)
                 if (reconciliation.assetFlows.isEmpty()) {
                     Text("No completed deposits or withdrawals found in the stored statement history.")
                 } else {

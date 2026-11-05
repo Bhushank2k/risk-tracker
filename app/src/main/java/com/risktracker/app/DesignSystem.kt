@@ -123,8 +123,8 @@ fun RiskCard(
         containerColor = MaterialTheme.colorScheme.surface
     ),
     elevation: CardElevation = CardDefaults.cardElevation(
-        defaultElevation = 1.dp,
-        pressedElevation = 3.dp
+        defaultElevation = 0.dp,
+        pressedElevation = 1.dp
     ),
     border: BorderStroke? = RiskTrackerCardBorder,
     interactionSource: MutableInteractionSource? = null,

@@ -63,24 +63,17 @@ fun TargetScreen() {
     val progress = plan.progress
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Text("Target planner", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "Plan a balance goal, see the average net profit required each day, and estimate a timeline from your own daily-profit assumption.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
 
         RiskCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("Your goal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 TargetNumberField("Starting balance (USD)", startingBalance, { startingBalance = it })
                 TargetNumberField("Target balance (USD)", targetBalance, { targetBalance = it })
                 TargetNumberField("Days to reach goal", daysText, { daysText = it }, integer = true)
                 TargetNumberField("Planned net profit per day (USD)", dailyTarget, { dailyTarget = it })
-                Text("Your entries are saved on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -96,7 +89,7 @@ fun TargetScreen() {
             }
 
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Required pace", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (requiredDaily != null) {
                         TargetMetric("Average net profit per day", money(requiredDaily))

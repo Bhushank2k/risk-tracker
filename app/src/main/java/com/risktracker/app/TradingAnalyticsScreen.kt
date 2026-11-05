@@ -120,52 +120,9 @@ fun TradingAnalyticsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("EXCHANGE PERFORMANCE", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("Trading analytics", style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold)
-                Text("Automatically calculated from saved Binance executions. No manual entries are used.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text("Binance sync", fontWeight = FontWeight.SemiBold)
-                            val syncHealthy = syncStatus.state.startsWith("Up to date")
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Icon(if (syncHealthy) Icons.Filled.CheckCircle else Icons.Filled.Warning,
-                                    contentDescription = null,
-                                    tint = if (syncHealthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(16.dp))
-                                Text(syncStatus.state, color = if (syncHealthy)
-                                    MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                        Text(
-                            if (syncStatus.lastSuccess > 0L)
-                                "Last successful sync: " + SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(syncStatus.lastSuccess))
-                            else "No successful automatic sync recorded yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text("Automatic background refresh approximately every 6 hours; opening this page also requests a refresh.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (!syncStatus.state.startsWith("Up to date") && syncStatus.detail.isNotBlank()) {
-                            Text(syncStatus.detail, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-        }
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf<Pair<String, Int?>>("Today" to 1, "7D" to 7, "30D" to 30, "90D" to 90, "All" to null)
