@@ -1,5 +1,6 @@
 package com.risktracker.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,6 +8,11 @@ import org.junit.Test
 class BinanceOpenSyncThrottleTest {
     private val now = 1_000_000_000L
     private val interval = BINANCE_OPEN_SYNC_MIN_INTERVAL_MS
+
+    @Test
+    fun appOpenSyncThrottleIsFifteenMinutes() {
+        assertEquals(15L * 60L * 1000L, interval)
+    }
 
     @Test
     fun syncsWhenNeverAttempted() {
