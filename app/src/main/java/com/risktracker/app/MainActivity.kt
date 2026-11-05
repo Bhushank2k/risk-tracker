@@ -290,12 +290,68 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                             scrolledContainerColor = Color.Transparent
                         ),
                         title = {
-                            Text(
-                                pageTitle,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
+                            var currentHeaderTime by remember { mutableStateOf(Date()) }
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    currentHeaderTime = Date()
+                                    delay(1_000)
+                                }
+                            }
+                            val headerDate = remember(currentHeaderTime) {
+                                SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(currentHeaderTime)
+                            }
+                            val headerTime = remember(currentHeaderTime) {
+                                SimpleDateFormat("h:mm:ss a", Locale.getDefault()).format(currentHeaderTime)
+                            }
+                            val headerZone = remember(currentHeaderTime) {
+                                SimpleDateFormat("z", Locale.getDefault()).format(currentHeaderTime)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = pageIcon(tab),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(23.dp)
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        pageTitle,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        headerDate,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        headerTime,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        headerZone,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     )
                 }
