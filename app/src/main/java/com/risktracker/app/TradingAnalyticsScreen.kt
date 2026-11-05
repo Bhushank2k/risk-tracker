@@ -6,6 +6,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Percent
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -128,9 +137,16 @@ fun TradingAnalyticsScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
                             Text("Binance sync", fontWeight = FontWeight.SemiBold)
-                            Text(syncStatus.state, color = if (syncStatus.state.startsWith("Up to date"))
-                                MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelMedium)
+                            val syncHealthy = syncStatus.state.startsWith("Up to date")
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Icon(if (syncHealthy) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    tint = if (syncHealthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp))
+                                Text(syncStatus.state, color = if (syncHealthy)
+                                    MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                         Text(
                             if (syncStatus.lastSuccess > 0L)
@@ -347,8 +363,19 @@ private fun AnalyticsMetric(
 ) {
     RiskCard(modifier) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                val metricIcon = when {
+                    label.contains("win", true) || label.contains("profit factor", true) -> Icons.Filled.TrendingUp
+                    label.contains("loss", true) || label.contains("drawdown", true) || label.contains("worst", true) -> Icons.Filled.TrendingDown
+                    label.contains("fee", true) || label.contains("order", true) || label.contains("volume", true) -> Icons.Filled.Receipt
+                    label.contains("daily", true) || label.contains("P&L", true) || label.contains("pair", true) -> Icons.Filled.ShowChart
+                    label.contains("balance", true) -> Icons.Filled.AccountBalanceWallet
+                    else -> Icons.Filled.Percent
+                }
+                Icon(metricIcon, contentDescription = null, tint = valueColor, modifier = Modifier.size(16.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor)
             supporting?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
