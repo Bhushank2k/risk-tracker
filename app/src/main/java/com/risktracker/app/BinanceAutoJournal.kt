@@ -277,6 +277,10 @@ object BinanceAutoJournalRunner {
         discovery.third.onSuccess { knownFutures += it; discoverySucceeded++ }
             .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
 
+        if (knownSpot.isEmpty() && knownFutures.isEmpty() && discoverySucceeded > 0) {
+            failures += "Binance returned no discoverable trade symbols. Spot trade history requires a symbol; closed Spot assets not previously imported cannot be auto-discovered from the account-balance endpoint. Add those pairs through Historical import."
+        }
+
         BinanceAutoJournalStore.rememberSymbols(context, "Spot", knownSpot)
         BinanceAutoJournalStore.rememberSymbols(context, "USDⓈ-M Futures", knownFutures)
 

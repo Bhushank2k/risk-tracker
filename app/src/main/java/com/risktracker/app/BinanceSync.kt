@@ -386,44 +386,52 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
     fun spotExecutionHistory(symbol: String, startTime: Long, endTime: Long): List<BinanceJournalFill> {
         require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Enter a valid Binance symbol, such as BTCUSDT." }
         require(startTime <= endTime) { "Start date must be before end date." }
+
+        // Spot myTrades is symbol-scoped. Start at the requested timestamp, then page by
+        // trade ID until the requested end time. Binance allows startTime without endTime
+        // for histories longer than 24 hours; sending both would impose a 24-hour limit.
+        // Sparse histories therefore need one request instead of one request per day.
         val output = mutableListOf<BinanceJournalFill>()
-        var windowStart = startTime
-        var windows = 0
-        val windowSize = 24L * 60 * 60 * 1000
-        while (windowStart <= endTime && windows++ < 4000) {
-            val windowEnd = minOf(endTime, windowStart + windowSize - 1)
-            var fromId: Long? = null
-            var pages = 0
-            while (pages++ < 100) {
-                val params = mutableListOf(
-                    "symbol" to symbol, "startTime" to windowStart.toString(),
-                    "endTime" to windowEnd.toString(), "limit" to "1000"
-                )
-                fromId?.let { params += "fromId" to it.toString() }
-                val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
-                if (page.length() == 0) break
-                var lastId = -1L
-                for (i in 0 until page.length()) {
-                    val row = page.getJSONObject(i)
-                    val id = row.optLong("id", -1)
-                    lastId = maxOf(lastId, id)
-                    val time = row.optLong("time")
-                    if (time !in windowStart..windowEnd) continue
-                    output += BinanceJournalFill(
-                        id = "binance:spot:$symbol:$id", exchange = "Binance", market = "Spot", symbol = symbol,
-                        side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
-                        quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
-                        price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
-                        quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
-                        fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
-                        feeAsset = row.optString("commissionAsset"), realizedPnl = null,
-                        time = time, orderId = row.optString("orderId")
-                    )
-                }
-                if (page.length() < 1000 || lastId < 0 || (fromId != null && lastId < fromId!!)) break
-                fromId = lastId + 1
+        var fromId: Long? = null
+        var pages = 0
+        var reachedEnd = false
+        while (!reachedEnd && pages++ < 4000) {
+            val params = mutableListOf("symbol" to symbol, "limit" to "1000")
+            if (fromId == null) {
+                params += "startTime" to startTime.toString()
+            } else {
+                params += "fromId" to fromId.toString()
             }
-            windowStart = windowEnd + 1
+
+            val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
+            if (page.length() == 0) break
+
+            var lastId = -1L
+            for (i in 0 until page.length()) {
+                val row = page.getJSONObject(i)
+                val id = row.optLong("id", -1)
+                lastId = maxOf(lastId, id)
+                val time = row.optLong("time")
+                if (time > endTime) {
+                    reachedEnd = true
+                    break
+                }
+                if (time !in startTime..endTime) continue
+                output += BinanceJournalFill(
+                    id = "binance:spot:$symbol:$id", exchange = "Binance", market = "Spot", symbol = symbol,
+                    side = if (row.optBoolean("isBuyer")) "BUY" else "SELL",
+                    quantity = row.optString("qty").toDoubleOrNull() ?: row.optDouble("qty"),
+                    price = row.optString("price").toDoubleOrNull() ?: row.optDouble("price"),
+                    quoteAmount = row.optString("quoteQty").toDoubleOrNull() ?: row.optDouble("quoteQty"),
+                    fee = row.optString("commission").toDoubleOrNull() ?: row.optDouble("commission"),
+                    feeAsset = row.optString("commissionAsset"), realizedPnl = null,
+                    time = time, orderId = row.optString("orderId")
+                )
+            }
+
+            if (reachedEnd || page.length() < 1000 || lastId < 0 ||
+                (fromId != null && lastId < fromId!!)) break
+            fromId = lastId + 1
         }
         return output.distinctBy { it.id }.sortedBy { it.time }
     }
