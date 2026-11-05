@@ -2,8 +2,11 @@ package com.risktracker.app
 
 import android.content.Context
 import android.net.Uri
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -224,8 +227,18 @@ class BinanceStatementWorker(context: Context, params: WorkerParameters) : Corou
     } catch (_: Exception) { Result.retry() }
     companion object {
         fun schedule(context: Context) {
-            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(24, TimeUnit.HOURS).build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork("binance_statement_sync", ExistingPeriodicWorkPolicy.KEEP, req)
+            // Statement downloads require a working network. UPDATE replaces older
+            // schedules that may have been created without this constraint.
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(24, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "binance_statement_sync", ExistingPeriodicWorkPolicy.UPDATE, req
+            )
         }
         fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork("binance_statement_sync")
     }
