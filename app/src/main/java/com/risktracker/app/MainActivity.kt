@@ -137,6 +137,9 @@ class MainActivity : ComponentActivity() {
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
+    var analyticsSection by remember { mutableIntStateOf(0) }
+    var riskSection by remember { mutableIntStateOf(0) }
+    var binanceSection by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var input by remember { mutableStateOf(store.loadInput()) }
@@ -302,19 +305,48 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                6, 26 -> BinanceAccountsWorkspaceScreen(
-                    onSynced = { importedPnl = BinanceSyncData.load(context) },
-                    onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }
-                )
+                6, 26 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = binanceSection, edgePadding = 12.dp) {
+                        listOf("Sync", "Live Positions", "Account Activity").forEachIndexed { index, label ->
+                            Tab(selected = binanceSection == index, onClick = { binanceSection = index }, text = { Text(label, maxLines = 1) })
+                        }
+                    }
+                    when (binanceSection) {
+                        0 -> BinanceSyncScreen(
+                            onSynced = { importedPnl = BinanceSyncData.load(context) },
+                            onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) },
+                            onNavigate = { destination -> binanceSection = when (destination) { 16 -> 1; 17 -> 2; else -> 0 } }
+                        )
+                        1 -> LiveTradesScreen()
+                        else -> BinanceStatementsScreen(onBack = { binanceSection = 0 })
+                    }
+                }
                 9 -> CryptoTaxReportScreen()
-                25 -> RiskCenterWorkspaceScreen(
-                    store = store,
-                    input = input,
-                    onInputChange = { input = it; store.saveInput(it) },
-                    trades = trades,
-                    dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
-                    dailyPnlKnown = todayReconciledPnl != null
-                )
+                25 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = riskSection, edgePadding = 12.dp) {
+                        listOf("Calculator", "Risk Gate", "Alerts", "Scenarios", "Targets").forEachIndexed { index, label ->
+                            Tab(selected = riskSection == index, onClick = { riskSection = index }, text = { Text(label, maxLines = 1) })
+                        }
+                    }
+                    when (riskSection) {
+                        0 -> CombinedTradingCalculatorScreen(
+                            input = input,
+                            accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
+                            onChange = { input = it; store.saveInput(it) }
+                        )
+                        1 -> TradeRiskGateScreen(TradeRiskSettings(
+                            maxTradeRisk = store.maxTradeRisk,
+                            maxDailyLoss = store.maxDailyLoss,
+                            dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
+                            maxTradesPerDay = 10,
+                            tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
+                            dailyPnlKnown = todayReconciledPnl != null
+                        ))
+                        2 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                        3 -> RiskScenarioLabScreen()
+                        else -> TargetScreen()
+                    }
+                }
                 14 -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
                     if (BinanceCredentialStore(context).read() != null) {
                         appScope.launch {
@@ -324,18 +356,26 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
-                20 -> AnalyticsWorkspaceScreen(
-                    trades, exchangeFills, exchangeSyncStatus, importedPnl,
-                    onSyncExchange = {
-                        if (BinanceCredentialStore(context).read() != null) {
-                            appScope.launch {
-                                runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
-                                exchangeFills = BinanceAutoJournalStore.load(context)
-                                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
-                            }
+                20 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = analyticsSection, edgePadding = 12.dp) {
+                        listOf("Performance", "P&L Calendar", "Trade Reviews").forEachIndexed { index, label ->
+                            Tab(selected = analyticsSection == index, onClick = { analyticsSection = index }, text = { Text(label, maxLines = 1) })
                         }
                     }
-                )
+                    when (analyticsSection) {
+                        0 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
+                        1 -> PnlCalendarScreen(trades, exchangeFills)
+                        else -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
+                            if (BinanceCredentialStore(context).read() != null) {
+                                appScope.launch {
+                                    runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
+                                    exchangeFills = BinanceAutoJournalStore.load(context)
+                                    exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+                                }
+                            }
+                        })
+                    }
+                }
                 21 -> DailyTradeIdeasScreen()
                 24 -> AiTradingIntelligenceScreen(trades, exchangeFills, store.maxTradeRisk, store.maxDailyLoss)
                 else -> MoreScreen(store, trades, themeMode, onThemeModeChange,
@@ -399,85 +439,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
 }
 
 /** Icon for each menu destination, keyed by the screen index used by the router. */
-
-@Composable
-private fun WorkspaceTabs(labels: List<String>, selected: Int, onSelected: (Int) -> Unit) {
-    ScrollableTabRow(selectedTabIndex = selected, edgePadding = 12.dp) {
-        labels.forEachIndexed { index, label ->
-            Tab(selected = selected == index, onClick = { onSelected(index) }, text = { Text(label, maxLines = 1) })
-        }
-    }
-}
-
-@Composable
-private fun AnalyticsWorkspaceScreen(
-    trades: List<TradeEntry>,
-    fills: List<ExchangeFill>,
-    syncStatus: BinanceSyncStatus,
-    importedPnl: List<DailyPnl>,
-    onSyncExchange: () -> Unit
-) {
-    var section by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        WorkspaceTabs(listOf("Performance", "P&L Calendar", "Trade Reviews"), section) { section = it }
-        when (section) {
-            0 -> SimplifiedTradingAnalyticsScreen(fills, syncStatus, importedDailyPnl = importedPnl)
-            1 -> PnlCalendarScreen(trades, fills)
-            else -> TradeReviewScreen(trades, fills, syncStatus, onSyncExchange = onSyncExchange)
-        }
-    }
-}
-
-@Composable
-private fun RiskCenterWorkspaceScreen(
-    store: Store,
-    input: CalcInput,
-    onInputChange: (CalcInput) -> Unit,
-    trades: List<TradeEntry>,
-    dailyPnl: Double,
-    dailyPnlKnown: Boolean
-) {
-    var section by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        WorkspaceTabs(listOf("Calculator", "Risk Gate", "Alerts", "Scenarios", "Targets"), section) { section = it }
-        when (section) {
-            0 -> CombinedTradingCalculatorScreen(
-                input = input,
-                accountEquity = null,
-                onChange = onInputChange
-            )
-            1 -> TradeRiskGateScreen(TradeRiskSettings(
-                maxTradeRisk = store.maxTradeRisk,
-                maxDailyLoss = store.maxDailyLoss,
-                dailyPnl = dailyPnl,
-                maxTradesPerDay = 10,
-                tradesTakenToday = trades.count { canonicalPnlDate(it.date) == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) },
-                dailyPnlKnown = dailyPnlKnown
-            ))
-            2 -> RiskAlertsScreen(trades, if (dailyPnlKnown) dailyPnl else null, store.maxDailyLoss)
-            3 -> RiskScenarioLabScreen()
-            else -> TargetScreen()
-        }
-    }
-}
-
-@Composable
-private fun BinanceAccountsWorkspaceScreen(
-    onSynced: () -> Unit,
-    onJournalImported: () -> Unit
-) {
-    var section by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        WorkspaceTabs(listOf("Sync", "Live Positions", "Account Activity"), section) { section = it }
-        when (section) {
-            0 -> BinanceSyncScreen(onSynced = onSynced, onJournalImported = onJournalImported, onNavigate = { destination ->
-                section = when (destination) { 16 -> 1; 17 -> 2; else -> 0 }
-            })
-            1 -> LiveTradesScreen()
-            else -> BinanceStatementsScreen(onBack = { section = 0 })
-        }
-    }
-}
 
 private fun destinationIcon(destination: Int): ImageVector = when (destination) {
     0 -> Icons.Default.Home
