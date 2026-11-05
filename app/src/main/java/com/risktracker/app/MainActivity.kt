@@ -333,10 +333,54 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         } else {
                             Color(0xFF087EA4)
                         }
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        if (stackMetadata) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = pageIcon(tab),
+                                        contentDescription = pageTitle,
+                                        tint = pageIconAccent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = pageTitle,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                                ) {
+                                    Text(
+                                        text = headerTime,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = timeAccent
+                                    )
+                                    Text(
+                                        text = headerDate,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = dateAccent
+                                    )
+                                }
+                            }
+                        } else {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -346,80 +390,56 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                     imageVector = pageIcon(tab),
                                     contentDescription = pageTitle,
                                     tint = pageIconAccent,
-                                    modifier = Modifier.size(26.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                                 Text(
                                     text = pageTitle,
                                     modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleLarge,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
-                            }
-                            if (stackMetadata) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Schedule,
+                                        contentDescription = "Current time in India",
+                                        tint = timeAccent,
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                     Text(
                                         text = headerTime,
-                                        style = MaterialTheme.typography.headlineSmall,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = timeAccent
                                     )
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DateRange,
+                                        contentDescription = "Date",
+                                        tint = dateAccent,
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                     Text(
                                         text = headerDate,
-                                        style = MaterialTheme.typography.labelLarge,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = dateAccent
+                                        color = dateAccent,
+                                        maxLines = 1
                                     )
                                 }
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Schedule,
-                                            contentDescription = "Current time in India",
-                                            tint = timeAccent,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Text(
-                                            text = headerTime,
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = timeAccent
-                                        )
-                                    }
-                                    Spacer(Modifier.width(14.dp))
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.DateRange,
-                                            contentDescription = "Date",
-                                            tint = dateAccent,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Text(
-                                            text = headerDate,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Medium,
-                                            color = dateAccent
-                                        )
-                                    }
-                                }
                             }
-                        }
-                    }
+                        }                    }
                 }
             }
         },
