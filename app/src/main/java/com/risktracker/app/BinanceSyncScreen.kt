@@ -59,7 +59,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
     var hasSaved by remember { mutableStateOf(saved != null) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var diagnosticsBusy by remember { mutableStateOf(false) }
     var historySymbols by remember { mutableStateOf("BTCUSDT, ETHUSDT") }
     var historyMarket by remember { mutableStateOf("USDⓈ-M Futures") }
     var historyStart by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000))) }
@@ -72,7 +71,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
 
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
-    var accountSnapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
     var pendingImportYear by remember { mutableStateOf(2026) }
@@ -155,7 +153,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     try {
                         if (secret.isNotBlank()) credentials.save(apiKey, secret)
                         else if (!hasSaved) error("Enter the API secret.")
-                        else if (credentials.read()?.first != apiKey.trim()) error("Enter the API secret again to save a changed API key.")
                         BinanceDailyWorker.schedule(context)
                         BinanceStatementWorker.schedule(context)
                         BinanceJournalWorker.schedule(context)
@@ -174,75 +171,22 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                         apiKey = ""; secret = ""; hasSaved = false
                         status = "Credentials cleared and scheduled sync disabled."
                     }, modifier = Modifier.weight(1f)) { Text("Disconnect") }
-                    OutlinedButton(
-                        onClick = {
-                            diagnosticsBusy = true
-                            status = "Testing Spot and USDⓈ-M Futures read-only access…"
-                            scope.launch {
-                                try {
-                                    status = diagnoseBinanceConnection(context)
-                                } catch (e: Exception) {
-                                    status = "Connection test failed: ${describeBinanceError(e)}"
-                                } finally {
-                                    diagnosticsBusy = false
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = !busy && !diagnosticsBusy
-                    ) { Text(if (diagnosticsBusy) "Testing…" else "Test connection") }
                     Button(onClick = {
                         if (credentials.read() == null) { status = "Save valid API credentials first."; return@Button }
                         busy = true
-                        status = "Refreshing Binance account balances…"
+                        status = "Syncing Spot and Futures history…"
                         scope.launch {
                             try {
-                                // Fetch and display the lightweight account snapshot first. Full Spot
-                                // FIFO history can involve many paginated requests, so it must not
-                                // block the first useful result from appearing on screen.
-                                val snapshotResult = runCatching {
-                                    BinanceAccountSnapshotRunner.refresh(context)
-                                }
-                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
-                                if (snapshotResult.isSuccess) {
-                                    onSynced()
-                                    status = "Balances refreshed. Loading complete Spot and Futures P&L history…"
-                                } else {
-                                    status = "Balances unavailable: ${describeBinanceError(snapshotResult.exceptionOrNull()!!)}. Continuing with P&L history…"
-                                }
-
                                 BinanceSyncRunner.sync(context)
                                 rows = BinanceSyncData.load(context)
                                 lastSync = BinanceSyncData.lastSync(context)
-                                BinanceAutoJournalRunner.sync(context)
-                                val journalStatus = BinanceAutoJournalStore.syncStatus(context)
-                                onJournalImported()
-                                status = if (journalStatus.state == "Sync failed" || journalStatus.state == "Partial sync") {
-                                    "Account balances and P&L refreshed. Trade journal: ${journalStatus.detail}"
-                                } else {
-                                    "Sync completed: balances refreshed; ${journalStatus.fillsFetched} trade fills fetched, ${journalStatus.fillsInserted} new fills added."
-                                }
+                                onSynced()
+                                status = "Sync completed. Imported P&L is visible on Daily P&L."
                             } catch (e: Exception) {
-                                // Preserve and show the last successful account snapshot if a later
-                                // historical request fails; never clear previously saved P&L.
-                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
-                                status = "Sync failed: " + describeBinanceError(e)
+                                status = "Sync failed: " + (e.message ?: "check credentials and API permissions")
                             } finally { busy = false }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !busy) { Text(if (busy) "Syncing…" else "Sync now") }
-                }
-            }
-        }
-        accountSnapshot?.let { snapshot ->
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Last fetched Binance balances", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Spot value: USDT ${String.format(Locale.US, "%.2f", snapshot.spot.valueUsdt)}")
-                    Text("Spot assets held: ${snapshot.spot.assetsHeld} · Unpriced: ${snapshot.spot.unpricedAssets}")
-                    Text("Futures equity: USDT ${String.format(Locale.US, "%.2f", snapshot.futures.totalEquity)}")
-                    Text("Futures available: USDT ${String.format(Locale.US, "%.2f", snapshot.futures.availableBalance)}")
-                    Text("Updated: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(snapshot.savedAt))}",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -697,11 +641,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 }
             }
         }
-        if (status.isNotBlank()) {
-            val hasSyncProblem = status.contains("failed", true) || status.contains("error", true) ||
-                status.contains("could not", true) || status.contains("partial sync", true)
-            Text(status, color = if (hasSyncProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.bodySmall)
+        if (status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true) || status.startsWith("Imported")) {
+            Text(status, color = if (status.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
     }

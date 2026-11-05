@@ -23,8 +23,7 @@ internal object BinanceRestGuard {
             ?.getLong("blocked_until", 0L) ?: 0L
         blockedUntil = maxOf(blockedUntil, saved)
         if (now < blockedUntil) {
-            val resume = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(java.util.Date(blockedUntil))
-            throw IllegalStateException("Binance paused requests after a rate limit. Sync can resume after $resume (this phone's time). Live prices can continue.")
+            throw IllegalStateException("Binance REST is paused after a rate-limit ban until $blockedUntil. Live WebSocket prices can continue.")
         }
         val wait = (nextAllowedAt - now).coerceAtLeast(0L)
         if (wait > 0L) {

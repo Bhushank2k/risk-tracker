@@ -10,11 +10,8 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -41,13 +38,7 @@ object TradeIdeaNotifications {
     }
 
     fun schedule(context: Context) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(constraints)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .build()
+        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(15, TimeUnit.MINUTES).build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
         )

@@ -128,11 +128,7 @@ fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnaly
     val losses = orders.filter { it < 0.0 }
     val grossProfit = wins.sum()
     val grossLoss = -losses.sum()
-    // Realized P&L above is Futures-only, so only Futures fees belong in this net.
-    // Negative commissions are rebates and must reduce total fees rather than disappear.
-    val feeByAsset = fills.filter {
-        it.market == "USDⓈ-M Futures" && it.fee.isFinite() && it.fee != 0.0
-    }
+    val feeByAsset = fills.filter { it.fee.isFinite() && it.fee > 0.0 }
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" }.uppercase(Locale.ROOT) }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
     val stableFees = feeByAsset.filterKeys { it in setOf("USDT", "USDC") }.values.sum()

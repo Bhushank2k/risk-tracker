@@ -119,10 +119,7 @@ fun TradingAnalyticsScreen(
         }.toSet()
         buildPerformanceSnapshot(
             pnlValues = reconciledDaily.map { it.selectedPnl },
-            // Drawdown walks balances in order, so they must be sorted by date, not by entry order.
-            closingBalances = dailyEntries.filter { canonicalPnlDate(it.date) in visibleDates }
-                .sortedBy { canonicalPnlDate(it.date) ?: "" }
-                .map { it.balance },
+            closingBalances = dailyEntries.filter { canonicalPnlDate(it.date) in visibleDates }.map { it.balance },
             tradeCount = manualTrades.size
         )
     }

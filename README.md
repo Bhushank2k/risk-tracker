@@ -37,5 +37,6 @@ Use a Binance API key with read-only permissions only. The app does not request 
 - [Binance sync, coverage and data-trust caveats](docs/binance-sync-and-coverage.md)
 - [Product roadmap and usability/reliability plan](docs/roadmap.md)
 - [Design decisions](docs/design-notes.md)
+- [Google Sheets sync (experimental / unsupported)](docs/sheets-sync.md)
 
 Older backup bundles remain importable. When an older bundle does not contain trade plans or review notes, importing it leaves the existing plans and reviews unchanged. Import validation, audit, and pre-import recovery behavior are retained.

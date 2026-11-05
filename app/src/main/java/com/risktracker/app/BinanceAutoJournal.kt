@@ -52,62 +52,46 @@ data class BinanceJournalSyncStatus(
     val windowEnd: Long = 0L
 )
 
-/**
- * Approximate matching is only safe when reconciling one CSV-imported row with one API row.
- * Distinct API trade IDs always represent distinct executions, even when a single order
- * produces identical partial fills within the same second.
- */
-internal fun areEquivalentCsvAndApiFills(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
-    val aIsCsv = a.id.contains(":csv:")
-    val bIsCsv = b.id.contains(":csv:")
-    if (aIsCsv == bIsCsv) return false
-    if (a.exchange != b.exchange || a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
-    if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
-    return kotlin.math.abs(a.time - b.time) <= 1_000L &&
-        kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
-        kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
-}
-
-internal fun parseBinanceJournalFills(raw: String?): List<BinanceJournalFill> {
-    val rows = JSONArray(raw ?: "[]")
-    return (0 until rows.length()).map { i ->
-        val row = rows.getJSONObject(i)
-        BinanceJournalFill(
-            id = row.getString("id"), exchange = row.optString("exchange", "Binance"),
-            market = row.optString("market", "Spot"), symbol = row.optString("symbol"),
-            side = row.optString("side"), quantity = row.optDouble("quantity"),
-            price = row.optDouble("price"), quoteAmount = row.optDouble("quoteAmount"),
-            fee = row.optDouble("fee"), feeAsset = row.optString("feeAsset"),
-            realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
-            time = row.optLong("time"), orderId = row.optString("orderId")
-        )
-    }.distinctBy { it.id }.sortedByDescending { it.time }
-}
-
 object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
 
-    fun load(context: Context): List<BinanceJournalFill> = runCatching {
-        parseBinanceJournalFills(
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]")
-        )
-    }.getOrDefault(emptyList())
+    fun load(context: Context): List<BinanceJournalFill> = try {
+        val rows = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
+        (0 until rows.length()).map { i ->
+            val row = rows.getJSONObject(i)
+            BinanceJournalFill(
+                id = row.getString("id"), exchange = row.optString("exchange", "Binance"),
+                market = row.optString("market", "Spot"), symbol = row.optString("symbol"),
+                side = row.optString("side"), quantity = row.optDouble("quantity"),
+                price = row.optDouble("price"), quoteAmount = row.optDouble("quoteAmount"),
+                fee = row.optDouble("fee"), feeAsset = row.optString("feeAsset"),
+                realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
+                time = row.optLong("time"), orderId = row.optString("orderId")
+            )
+        }.distinctBy { it.id }.sortedByDescending { it.time }
+    } catch (_: Exception) { emptyList() }
 
     /** Merge is idempotent: exchange + market + symbol + exchange trade ID is the primary key. */
-    @Synchronized
     fun merge(context: Context, incoming: List<BinanceJournalFill>): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val storedRaw = prefs.getString(KEY, "[]")
-        val all = parseBinanceJournalFills(storedRaw).associateBy { it.id }.toMutableMap()
+        val all = load(context).associateBy { it.id }.toMutableMap()
         var inserted = 0
+        fun sameExecution(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
+            if (a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
+            if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
+            val timeTolerance = 1_000L
+            return kotlin.math.abs(a.time - b.time) <= timeTolerance &&
+                kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+                kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+        }
         incoming.forEach { fill ->
             val existingById = all[fill.id]
             if (existingById != null) {
                 all[fill.id] = fill
                 return@forEach
             }
-            val equivalent = all.values.firstOrNull { areEquivalentCsvAndApiFills(it, fill) }
+            val equivalent = all.values.firstOrNull { sameExecution(it, fill) }
             if (equivalent == null) {
                 all[fill.id] = fill
                 inserted++
@@ -229,7 +213,7 @@ internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, 
 }
 
 /** Minimum gap between syncs started by opening a screen. Each sync makes several signed API calls. */
-const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 15L * 60 * 1000
+const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 5L * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_OVERLAP_MS = 60_000L
 
@@ -281,7 +265,6 @@ object BinanceAutoJournalRunner {
             detail = "Discovering Binance activity and refreshing known symbols."
         ))
 
-        try {
         val api = BinanceApi(credentials.first, credentials.second)
         val fallbackStart = (attemptedAt - BINANCE_SYMBOL_SYNC_LOOKBACK_MS).coerceAtLeast(0L)
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
@@ -315,9 +298,9 @@ object BinanceAutoJournalRunner {
         val spotBatch = selectBinanceSymbolBatch(knownSpot, BinanceAutoJournalStore.symbolCursor(context, "Spot"))
         val futuresBatch = selectBinanceSymbolBatch(knownFutures, BinanceAutoJournalStore.symbolCursor(context, "USDⓈ-M Futures"))
         val coverageLimited = spotBatch.first.size < knownSpot.size || futuresBatch.first.size < knownFutures.size
-        // Coverage limits are not failures: the symbols in this batch synced correctly, and the rest
-        // rotate into later runs. Counting them as failures made every run "Partial" and retried.
-        val coverageNote: String? = if (coverageLimited) "This run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols; the rest rotate into later syncs." else null
+        if (coverageLimited) {
+            failures += "Known symbols exceed the 100-per-market sync batch; this run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols. Remaining symbols rotate into later syncs."
+        }
 
         data class SymbolResult(
             val market: String,
@@ -385,7 +368,7 @@ object BinanceAutoJournalRunner {
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Up to date (7-day window)" -> "Incremental sync completed. Known symbols were refreshed from their last successful checkpoint with a one-minute overlap; first-time symbols retain the rolling 7-day window. Older closed Spot pairs may require Historical import." + (coverageNote?.let { " $it" } ?: "")
+            "Up to date (7-day window)" -> "Incremental sync completed. Known symbols were refreshed from their last successful checkpoint with a one-minute overlap; first-time symbols retain the rolling 7-day window. Older closed Spot pairs may require Historical import."
             "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Successful symbols were checkpointed; failed symbols will retry from their previous checkpoint."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."
@@ -404,17 +387,6 @@ object BinanceAutoJournalRunner {
             windowEnd = attemptedAt
         ))
         inserted
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            // Never leave the status stuck on "Syncing" after an unexpected failure.
-            BinanceAutoJournalStore.recordSyncStatus(context, previous.copy(
-                lastAttempt = attemptedAt,
-                state = "Sync failed",
-                detail = "Sync stopped: ${describeBinanceError(error)}. Check connectivity and read-only API permissions."
-            ))
-            throw error
-        }
         }
     }
 }
@@ -427,10 +399,7 @@ class BinanceJournalWorker(context: Context, params: WorkerParameters) : Corouti
             val state = BinanceAutoJournalStore.syncStatus(applicationContext).state
             if (state == "Sync failed" || state == "Partial sync") Result.retry() else Result.success()
         }
-    } catch (error: Exception) {
-        android.util.Log.w("BinanceJournalWorker", "Journal sync failed: " + describeBinanceError(error))
-        Result.retry()
-    }
+    } catch (_: Exception) { Result.retry() }
 
     companion object {
         fun schedule(context: Context) {

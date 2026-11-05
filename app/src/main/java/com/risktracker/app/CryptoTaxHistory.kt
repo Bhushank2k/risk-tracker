@@ -33,8 +33,7 @@ data class HistoricalCryptoTrade(
 ) {
     /** Indian financial year start (e.g. 2025 represents FY 2025-26). */
     val year: Int get() {
-        // Indian financial years start on 1 April IST, so the year must be read in IST, not UTC.
-        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"), Locale.US).apply { timeInMillis = timestamp }
+        val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US).apply { timeInMillis = timestamp }
         val y = calendar.get(java.util.Calendar.YEAR)
         return if (calendar.get(java.util.Calendar.MONTH) >= java.util.Calendar.APRIL) y else y - 1
     }
