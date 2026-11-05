@@ -449,7 +449,6 @@ fun DailyTradeIdeasScreen() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("Trading ideas", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
