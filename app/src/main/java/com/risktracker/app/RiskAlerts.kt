@@ -115,7 +115,6 @@ fun RiskAlertsScreen(entries: List<PnlEntry>, trades: List<TradeEntry>, dailyPnl
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Risk alerts", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("In-app checks based on data saved on this device. These are advisory, not exchange-enforced controls, and they do not place or block orders.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Card(Modifier.fillMaxWidth()) {

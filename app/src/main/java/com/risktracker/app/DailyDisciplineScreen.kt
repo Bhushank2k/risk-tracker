@@ -44,7 +44,6 @@ fun DailyDisciplineScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Daily discipline", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
                 "A practical session workflow built from your existing records. This is guidance, not an exchange trading control.",
                 style = MaterialTheme.typography.bodySmall,

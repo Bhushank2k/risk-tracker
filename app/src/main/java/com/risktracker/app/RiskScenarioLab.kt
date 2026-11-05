@@ -33,7 +33,6 @@ fun RiskScenarioLabScreen() {
     var risk by remember { mutableStateOf("1") }
     val summary = calculateLossScenarios(equity.toDoubleOrNull() ?: Double.NaN, risk.toDoubleOrNull() ?: Double.NaN)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Risk Scenario Lab", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Stress-test a losing streak before trading. These deterministic scenarios assume each loss equals the selected fraction of current equity.")
         OutlinedTextField(equity, { equity = it }, label = { Text("Starting equity (USD)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
         OutlinedTextField(risk, { risk = it }, label = { Text("Risk lost per trade (%)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
