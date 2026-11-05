@@ -1,8 +1,11 @@
 package com.risktracker.app
 
 import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -400,9 +403,17 @@ class BinanceJournalWorker(context: Context, params: WorkerParameters) : Corouti
 
     companion object {
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<BinanceJournalWorker>(6, TimeUnit.HOURS).build()
+            // Run when any validated network is available, including Wi-Fi. WorkManager
+            // will defer the job while offline and resume it when connectivity returns.
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = PeriodicWorkRequestBuilder<BinanceJournalWorker>(6, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "binance_auto_trade_journal", ExistingPeriodicWorkPolicy.KEEP, request
+                "binance_auto_trade_journal", ExistingPeriodicWorkPolicy.UPDATE, request
             )
         }
         fun cancel(context: Context) =
