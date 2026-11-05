@@ -856,17 +856,14 @@ object BinanceSyncRunner {
         val credentials = BinanceCredentialStore(context).read()
             ?: error("Save Binance read-only API credentials first.")
         val api = BinanceApi(credentials.first, credentials.second)
-        // Account valuation, Spot FIFO history, and Futures income history are independent.
+        // Account balances are refreshed explicitly by the screen before this historical
+        // import starts, so users can see a useful result without waiting for full FIFO history.
+        // Keep the two history sources independent and only merge after both are complete:
+        // persisting one side of a failed/partial P&L calculation would be misleading.
         val (spot, futures) = coroutineScope {
-            // A balance-snapshot failure (for example a key without Futures read access) must not
-            // cancel the P&L history, which is the part the journal depends on.
-            val snapshot = async { runCatching { BinanceAccountSnapshotRunner.refresh(context) } }
             val spotHistory = async(Dispatchers.IO) { api.spotDailyPnl() }
             val futuresHistory = async(Dispatchers.IO) { api.futuresDailyPnl() }
-            val dailySpot = spotHistory.await()
-            val dailyFutures = futuresHistory.await()
-            snapshot.await()
-            dailySpot to dailyFutures
+            spotHistory.await() to futuresHistory.await()
         }
         BinanceSyncData.merge(context, spot, futures)
     }
