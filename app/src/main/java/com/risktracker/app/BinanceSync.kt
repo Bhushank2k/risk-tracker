@@ -387,10 +387,10 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Enter a valid Binance symbol, such as BTCUSDT." }
         require(startTime <= endTime) { "Start date must be before end date." }
 
-        // Spot myTrades is symbol-scoped. Query the requested time range directly instead
-        // of issuing one request for every calendar day (including days with no trades).
-        // Continue with fromId only when Binance fills a page; this keeps sparse histories
-        // to one request while retaining complete pagination for busy symbols.
+        // Spot myTrades is symbol-scoped. Start at the requested timestamp, then page by
+        // trade ID until the requested end time. Binance allows startTime without endTime
+        // for histories longer than 24 hours; sending both would impose a 24-hour limit.
+        // Sparse histories therefore need one request instead of one request per day.
         val output = mutableListOf<BinanceJournalFill>()
         var fromId: Long? = null
         var pages = 0
@@ -399,7 +399,6 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val params = mutableListOf("symbol" to symbol, "limit" to "1000")
             if (fromId == null) {
                 params += "startTime" to startTime.toString()
-                params += "endTime" to endTime.toString()
             } else {
                 params += "fromId" to fromId.toString()
             }
