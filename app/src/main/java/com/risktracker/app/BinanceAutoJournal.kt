@@ -297,10 +297,13 @@ object BinanceAutoJournalRunner {
 
         val tasks = spotBatch.first.map { "Spot" to it } + futuresBatch.first.map { "USDⓈ-M Futures" to it }
         val limiter = Semaphore(MAX_PARALLEL_SYMBOLS)
+        val progressLock = Any()
+        var completedSymbols = 0
+        var fetchedSoFar = 0
         val results = coroutineScope {
             tasks.map { (market, symbol) ->
                 async {
-                    limiter.withPermit {
+                    val result = limiter.withPermit {
                         val lastSuccess = BinanceAutoJournalStore.symbolLastSync(context, market, symbol)
                         // One-minute overlap catches delayed records and API boundary effects.
                         val start = binanceSymbolSyncStart(lastSuccess, attemptedAt)
@@ -315,6 +318,20 @@ object BinanceAutoJournalRunner {
                             SymbolResult(market, symbol, emptyList(), start, error.message ?: "request failed")
                         }
                     }
+                    // Persist live progress so the UI can distinguish a slow fetch from a stalled one.
+                    synchronized(progressLock) {
+                        completedSymbols++
+                        fetchedSoFar += result.fills.size
+                        val current = BinanceAutoJournalStore.syncStatus(context)
+                        BinanceAutoJournalStore.recordSyncStatus(context, current.copy(
+                            state = "Syncing",
+                            detail = "Fetching Binance history: ${completedSymbols}/${tasks.size} symbols checked; ${fetchedSoFar} fills received. Failed symbols will be retried.",
+                            symbolsAttempted = completedSymbols,
+                            fillsFetched = fetchedSoFar,
+                            windowEnd = attemptedAt
+                        ))
+                    }
+                    result
                 }
             }.awaitAll()
         }
