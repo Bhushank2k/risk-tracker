@@ -45,12 +45,15 @@ fun reconcileDailyPnl(
     imported: List<BinanceDailyResult>,
     trades: List<TradeEntry>
 ): List<ReconciledDailyPnl> {
+    // Multiple imported/manual rows can legitimately share a calendar date. Aggregate
+    // within each source; the source-precedence rule below remains non-additive across sources.
     val manualByDate = entries.mapNotNull { row ->
-        canonicalPnlDate(row.date)?.let { it to row.pnl }
-    }.toMap()
+        if (!row.pnl.isFinite()) null else canonicalPnlDate(row.date)?.let { it to row.pnl }
+    }.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.sum() }
     val binanceByDate = imported.mapNotNull { row ->
-        canonicalPnlDate(row.date)?.let { it to row.total }
-    }.toMap()
+        val total = row.total
+        if (!total.isFinite()) null else canonicalPnlDate(row.date)?.let { it to total }
+    }.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.sum() }
     val journalByDate = trades.mapNotNull { trade ->
         val pnl = trade.pnl
         if (!pnl.isFinite()) null else canonicalPnlDate(trade.date)?.let { it to pnl }
