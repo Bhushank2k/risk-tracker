@@ -4,7 +4,7 @@ Risk Tracker is a native Android companion for **honest, auditable crypto-future
 
 ## Features
 
-- Daily P&L from imported Binance records, with source-aware reconciliation.
+- Daily P&L with source-aware reconciliation and a manual balance ledger.
 - Separate manual trade journal and Binance-imported execution/position journals.
 - Read-only Binance sync, sync health, historical CSV import, audit and recovery.
 - Per-trade analytics, daily performance insights and behavioral review.

@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, master, "fix/**", "feat/**", "feat-*", "ui/**", "docs/**", "build/**"]
+    branches: [main, master, fix/android-only-trade-journal]
   pull_request:
   workflow_dispatch:
 

@@ -3,6 +3,8 @@ package com.risktracker.app
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
@@ -14,6 +16,47 @@ data class PnlEntry(val date: String, val balance: Double, val pnl: Double, val 
     val closing: Double get() = balance + pnl
 }
 
+data class PnlStats(
+    val totalWin: Double,
+    val totalLoss: Double,
+    val net: Double,
+    val winDays: Int,
+    val lossDays: Int,
+    val winRate: Double,
+    val currentBalance: Double
+)
+
+/**
+ * Finds the recorded daily result for a specific local calendar date.
+ * Daily P&L entries have historically used d/M/yyyy; ISO dates are also accepted
+ * for imported or restored records. Missing today's record must not trigger a
+ * stale daily profit/loss warning.
+ */
+fun pnlEntryForDate(entries: List<PnlEntry>, date: Date = Date()): PnlEntry? {
+    val dateKeys = listOf("d/M/yyyy", "dd/MM/yyyy", "yyyy-MM-dd")
+        .map { SimpleDateFormat(it, Locale.US).format(date) }
+        .toSet()
+    return entries.lastOrNull { it.date.trim() in dateKeys }
+}
+
+fun computeStats(entries: List<PnlEntry>): PnlStats {
+    val win = entries.filter { it.pnl > 0 }.sumOf { it.pnl }
+    val loss = entries.filter { it.pnl < 0 }.sumOf { it.pnl }
+    val wd = entries.count { it.pnl > 0 }
+    val ld = entries.count { it.pnl < 0 }
+    val traded = wd + ld
+    return PnlStats(
+        totalWin = win,
+        totalLoss = loss,
+        net = win + loss,
+        winDays = wd,
+        lossDays = ld,
+        winRate = if (traded > 0) wd * 100.0 / traded else 0.0,
+        currentBalance = entries.lastOrNull()?.closing ?: 0.0
+    )
+}
+
+// ---------- Position calculator ----------
 
 data class CalcInput(
     val balance: Double = 50.0,
@@ -229,6 +272,23 @@ class Store(context: Context) {
         get() = prefs.getString("theme_mode", "System") ?: "System"
         set(v) = prefs.edit().putString("theme_mode", v).apply()
 
+    fun loadEntries(): List<PnlEntry> {
+        val raw = prefs.getString("entries", null) ?: return emptyList()
+        val arr = JSONArray(raw)
+        return (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            PnlEntry(o.getString("date"), o.getDouble("balance"), o.getDouble("pnl"), o.optString("notes", ""), o.optInt("disciplineScore", 0))
+        }
+    }
+
+    fun saveEntries(list: List<PnlEntry>) {
+        val arr = JSONArray()
+        list.forEach {
+            arr.put(JSONObject().put("date", it.date).put("balance", it.balance).put("pnl", it.pnl).put("notes", it.notes).put("disciplineScore", it.disciplineScore))
+        }
+        prefs.edit().putString("entries", arr.toString()).apply()
+    }
+
     fun loadTrades(): List<TradeEntry> {
         val raw = prefs.getString("trade_journal_v1", null) ?: return emptyList()
         return try {
@@ -271,6 +331,8 @@ class Store(context: Context) {
 
     fun exportBackup(): String {
         val root = JSONObject().put("format", "risk-tracker-backup-v1")
+        val daily = JSONArray()
+        loadEntries().forEach { daily.put(JSONObject().put("date",it.date).put("balance",it.balance).put("pnl",it.pnl).put("notes",it.notes).put("disciplineScore",it.disciplineScore)) }
         val journal = JSONArray()
         loadTrades().forEach { t -> journal.put(JSONObject().put("id",t.id).put("date",t.date).put("symbol",t.symbol).put("side",t.side).put("entry",t.entry).put("exit",t.exit).put("quantity",t.quantity).put("fees",t.fees).put("notes",t.notes).put("strategy",t.strategy).put("mistake",t.mistake).put("riskUsd",t.riskUsd).put("screenshotUri",t.screenshotUri)) }
         root.put("tradePlans", JSONArray(TradePlanStore(appContext).exportJson()))
@@ -280,13 +342,14 @@ class Store(context: Context) {
             binanceDaily.put(JSONObject().put("date", row.date).put("spotPnl", row.spotPnl).put("futuresPnl", row.futuresPnl))
         }
         root.put("binanceDailyPnl", binanceDaily)
-        return root.put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
+        return root.put("dailyEntries",daily).put("trades",journal).put("maxDailyLoss",maxDailyLoss).put("maxTradeRisk",maxTradeRisk).put("dailyProfitTarget",dailyProfitTarget).toString(2)
     }
 
-    /** Restores everything except the retired manual balance ledger; any "dailyEntries" in the file are ignored. */
-    fun importBackup(raw: String): List<TradeEntry> {
+    fun importBackup(raw: String): Pair<List<PnlEntry>, List<TradeEntry>> {
         val root = JSONObject(raw)
         require(root.optString("format") == "risk-tracker-backup-v1") { "Unsupported backup format." }
+        val a = root.getJSONArray("dailyEntries")
+        val daily = (0 until a.length()).map { i -> a.getJSONObject(i).let { PnlEntry(it.getString("date"),it.getDouble("balance"),it.getDouble("pnl"),it.optString("notes",""),it.optInt("disciplineScore",0)) } }
         val b = root.getJSONArray("trades")
         val journal = (0 until b.length()).map { i -> b.getJSONObject(i).let { o -> TradeEntry(o.getString("id"),o.getString("date"),o.getString("symbol"),o.getString("side"),o.getDouble("entry"),o.getDouble("exit"),o.getDouble("quantity"),o.optDouble("fees",0.0),o.optString("notes",""),o.optString("strategy",""),o.optString("mistake",""),o.optDouble("riskUsd",0.0),o.optString("screenshotUri","")) } }
         val importedBinance = if (root.has("binanceDailyPnl")) {
@@ -300,12 +363,12 @@ class Store(context: Context) {
                 }
             }
         } else null
-        saveTrades(journal)
+        saveEntries(daily); saveTrades(emptyList())
         if (importedBinance != null) BinanceSyncData.replaceAll(appContext, importedBinance)
         if (root.has("tradePlans")) TradePlanStore(appContext).importJson(root.getJSONArray("tradePlans").toString())
         if (root.has("tradeReviews")) TradeReviewStore(appContext).importJson(root.getJSONArray("tradeReviews").toString())
         maxDailyLoss = root.optDouble("maxDailyLoss",maxDailyLoss); maxTradeRisk = root.optDouble("maxTradeRisk",maxTradeRisk); dailyProfitTarget = root.optDouble("dailyProfitTarget",dailyProfitTarget)
-        return journal
+        return daily to emptyList()
     }
     fun loadInput(): CalcInput {
         val d = CalcInput()
@@ -333,7 +396,25 @@ class Store(context: Context) {
     }
 }
 
+fun entriesToCsv(list: List<PnlEntry>, inrRate: Double): String {
+    val sb = StringBuilder("Sr,Date,Balance,DailyPNL,WL%,INR,INR PNL,INR Closing,DisciplineScore,Notes\n")
+    fun textCell(value: String): String = "\"" + value.replace("\"", "\"\"") + "\""
+    list.forEachIndexed { idx, e ->
+        val inr = e.balance * inrRate
+        val inrPnl = e.pnl * inrRate
+        sb.append(idx + 1).append(',').append(textCell(e.date)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.balance)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.pnl)).append(',')
+            .append(String.format(Locale.US, "%.2f", e.wlPercent)).append("%,")
+            .append(inr.toLong()).append(',').append(inrPnl.toLong()).append(',')
+            .append((inr + inrPnl).toLong()).append(',').append(e.disciplineScore).append(',')
+            .append(textCell(e.notes)).append('\n')
+    }
+    return sb.toString()
+}
 const val INR_RATE = 94.74
 
 /** USD->INR rate; replaced by the sheet's rate (cell G3) on every sync. */
 var inrRate = INR_RATE
+
+/** The 21 days already in the Google Sheet (Daily_PNL tab, 6 Jun - 26 Jun 2026). */

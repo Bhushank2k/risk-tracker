@@ -18,7 +18,6 @@ import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.Executors
 
 data class BinanceStatement(
     val id: String,
@@ -89,9 +88,6 @@ object BinanceStatementStore {
 
 class BinanceStatementApi(private val apiKey: String, private val secret: String) {
     private fun signedGet(base: String, path: String, params: List<Pair<String, String>>): JSONArray {
-        // Every Binance REST call goes through the shared circuit breaker and pacer,
-        // including statement history, so a ban cannot be extended by this path.
-        BinanceRestGuard.beforeRequest()
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
@@ -103,7 +99,6 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         try {
             val status = conn.responseCode
             val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
-            BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val msg = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
                 throw IllegalStateException("$path: Binance API error ($status): $msg")
@@ -129,8 +124,8 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
     }
 
     fun fetchAvailableStatements(): BinanceStatementFetchResult {
-        val rows = java.util.Collections.synchronizedList(mutableListOf<BinanceStatement>())
-        val failedCategories = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val rows = mutableListOf<BinanceStatement>()
+        val failedCategories = mutableListOf<String>()
         val attemptedCategories = mutableListOf<String>()
         val start = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
         val end = System.currentTimeMillis()
@@ -148,56 +143,27 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         }
         val timeParams = listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "1000")
         attemptedCategories += "Deposits"
+        bestEffort(rows, failedCategories, "Deposits", "https://api.binance.com", "/sapi/v1/capital/deposit/hisrec", timeParams) { o ->
+            map("Deposits", o, listOf("insertTime"), "coin", "amount", idKey = "txId", detailKeys = listOf("network", "address", "txId"))
+        }
         attemptedCategories += "Withdrawals"
+        bestEffort(rows, failedCategories, "Withdrawals", "https://api.binance.com", "/sapi/v1/capital/withdraw/history", timeParams) { o ->
+            map("Withdrawals", o, listOf("applyTime"), "coin", "amount", idKey = "id", detailKeys = listOf("network", "address", "txId", "transactionFee"))
+        }
         attemptedCategories += "Distribution"
+        bestEffort(rows, failedCategories, "Distribution", "https://api.binance.com", "/sapi/v1/asset/assetDividend",
+            listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "500")) { o ->
+            map("Distribution", o, listOf("divTime"), "asset", "amount", idKey = "tranId", detailKeys = listOf("enInfo", "info"))
+        }
         attemptedCategories += "Futures income"
+        bestEffort(rows, failedCategories, "Futures income", "https://fapi.binance.com", "/fapi/v1/income",
+            listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "1000")) { o ->
+            map("Futures income", o, listOf("time"), "asset", "income", idKey = "tranId", detailKeys = listOf("incomeType", "symbol", "tradeId"))
+        }
         attemptedCategories += "Universal transfer"
-        val executor = Executors.newFixedThreadPool(4)
-        try {
-            val requests = listOf(
-                executor.submit {
-                    bestEffort(rows, failedCategories, "Deposits", "https://api.binance.com",
-                        "/sapi/v1/capital/deposit/hisrec", timeParams) { o ->
-                        map("Deposits", o, listOf("insertTime"), "coin", "amount",
-                            idKey = "txId", detailKeys = listOf("network", "address", "txId"))
-                    }
-                },
-                executor.submit {
-                    bestEffort(rows, failedCategories, "Withdrawals", "https://api.binance.com",
-                        "/sapi/v1/capital/withdraw/history", timeParams) { o ->
-                        map("Withdrawals", o, listOf("applyTime"), "coin", "amount",
-                            idKey = "id", detailKeys = listOf("network", "address", "txId", "transactionFee"))
-                    }
-                },
-                executor.submit {
-                    bestEffort(rows, failedCategories, "Distribution", "https://api.binance.com",
-                        "/sapi/v1/asset/assetDividend",
-                        listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "500")) { o ->
-                        map("Distribution", o, listOf("divTime"), "asset", "amount",
-                            idKey = "tranId", detailKeys = listOf("enInfo", "info"))
-                    }
-                },
-                executor.submit {
-                    bestEffort(rows, failedCategories, "Futures income", "https://fapi.binance.com",
-                        "/fapi/v1/income",
-                        listOf("startTime" to start.toString(), "endTime" to end.toString(), "limit" to "1000")) { o ->
-                        map("Futures income", o, listOf("time"), "asset", "income",
-                            idKey = "tranId", detailKeys = listOf("incomeType", "symbol", "tradeId"))
-                    }
-                },
-                executor.submit {
-                    bestEffort(rows, failedCategories, "Universal transfer", "https://api.binance.com",
-                        "/sapi/v1/asset/transfer",
-                        listOf("type" to "MAIN_UMFUTURE", "startTime" to start.toString(),
-                            "endTime" to end.toString(), "current" to "1", "size" to "100")) { o ->
-                        map("Universal transfer", o, listOf("timestamp"), "asset", "amount",
-                            idKey = "tranId", detailKeys = listOf("type", "from", "to"))
-                    }
-                }
-            )
-            requests.forEach { it.get() }
-        } finally {
-            executor.shutdown()
+        bestEffort(rows, failedCategories, "Universal transfer", "https://api.binance.com", "/sapi/v1/asset/transfer",
+            listOf("type" to "MAIN_UMFUTURE", "startTime" to start.toString(), "endTime" to end.toString(), "current" to "1", "size" to "100")) { o ->
+            map("Universal transfer", o, listOf("timestamp"), "asset", "amount", idKey = "tranId", detailKeys = listOf("type", "from", "to"))
         }
         return BinanceStatementFetchResult(rows.distinctBy { it.id }, failedCategories.distinct(), attemptedCategories)
     }
@@ -205,7 +171,6 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
 
 object BinanceStatementSyncRunner {
     suspend fun sync(context: Context): BinanceStatementSyncResult = withContext(Dispatchers.IO) {
-        BinanceRestGuard.configure(context)
         val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
         val fetch = BinanceStatementApi(credentials.first, credentials.second).fetchAvailableStatements()
         val saved = BinanceStatementStore.saveMerge(context, fetch.records)

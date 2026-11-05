@@ -127,7 +127,6 @@ internal object BinanceMarketScanner {
     }.getOrNull()
 
     private fun get(path: String): String {
-        BinanceRestGuard.beforeRequest()
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.connectTimeout = 12000
         c.readTimeout = 16000
@@ -136,7 +135,6 @@ internal object BinanceMarketScanner {
             val code = c.responseCode
             val stream = if (code in 200..299) c.inputStream else c.errorStream
             val body = stream.bufferedReader().use { it.readText() }
-            BinanceRestGuard.recordResponse(code, body, c.getHeaderField("Retry-After"))
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
@@ -220,8 +218,7 @@ internal object BinanceMarketScanner {
         MarketMicrostructure(spread, imbalance, fundingTask.await(), oiTask.await())
     }
 
-    suspend fun scan(context: android.content.Context, progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
-        BinanceRestGuard.configure(context)
+    suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
         progress("Loading active USDT perpetual contracts…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -238,13 +235,10 @@ internal object BinanceMarketScanner {
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
         }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        // Keep scans bounded: use REST for historical snapshots, WebSockets for live prices.
-        val scanCandidates = candidates.take(12)
-        val microstructureSymbols = scanCandidates.take(4).map { it.symbol }.toSet()
-        val gate = Semaphore(2)
-        progress("Checking the top " + scanCandidates.size + " liquid USDT perpetual pairs (rate-limited REST snapshot)…")
+        val gate = Semaphore(4)
+        progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
         coroutineScope {
-            scanCandidates.map { ticker -> async {
+            candidates.map { ticker -> async {
                 gate.withPermit {
                     runCatching {
                         coroutineScope {
@@ -252,10 +246,7 @@ internal object BinanceMarketScanner {
                             val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 200) }
                             val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 200) }
                             val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 90) }
-                            val microTask = async {
-                                if (ticker.symbol in microstructureSymbols) microstructure(ticker.symbol)
-                                else MarketMicrostructure(null, null, null, null)
-                            }
+                            val microTask = async { microstructure(ticker.symbol) }
                             evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
                         }
                     }.getOrNull()
@@ -396,7 +387,7 @@ fun DailyTradeIdeasScreen() {
         status = "Connecting to Binance public market data…"
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan(context) { status = it }
+                val freshIdeas = BinanceMarketScanner.scan { status = it }
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
                 ideas = freshIdeas
@@ -645,122 +636,6 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
     return geometryValid && !warningBlocksEntry
 }
 
-private data class EntryGuidance(
-    val score: Int,
-    val grade: String,
-    val action: String,
-    val trigger: String,
-    val invalidation: String,
-    val checks: List<Pair<String, Boolean?>>
-)
-
-private fun biasSupportsSide(bias: String, side: String): Boolean {
-    val value = bias.lowercase(Locale.US)
-    val tokens = if (side == "LONG") listOf("bull", "up", "long", "positive")
-        else listOf("bear", "down", "short", "negative")
-    return tokens.any { value.contains(it) }
-}
-
-/** Rule-based entry coaching; it describes conditions and never promises a perfect fill. */
-private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
-    val longSide = idea.side == "LONG"
-    val trend4h = biasSupportsSide(idea.bias4h, idea.side)
-    val trend1h = biasSupportsSide(idea.bias1h, idea.side)
-    val trend5m = biasSupportsSide(idea.bias5m, idea.side)
-    val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
-    val volumeOk = idea.volumeRatio >= 1.15
-    val spreadOk = idea.spreadBps?.let { it in 0.0..10.0 } == true
-    val riskDistance = abs(idea.entry - idea.stop)
-    val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    val rewardOk = rr >= 1.5
-    val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
-        (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
-        (if (volumeOk) 15 else 0) + (if (spreadOk) 10 else 0) +
-        (if (rewardOk) 15 else 0)
-    val grade = when {
-        score >= 80 -> "Strong confluence"
-        score >= 65 -> "Good, but verify"
-        score >= 45 -> "Mixed conditions"
-        else -> "Weak confluence"
-    }
-    val zoneHalfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
-    val zoneLow = idea.entry - zoneHalfWidth
-    val zoneHigh = idea.entry + zoneHalfWidth
-    val currentInZone = idea.last in zoneLow..zoneHigh
-    val tooFar = abs(idea.last - idea.entry) > maxOf(idea.entry * 0.003, riskDistance * 0.50)
-    val action = when {
-        idea.side !in listOf("LONG", "SHORT") || !tradeIdeaRiskValid(idea) ->
-            "Skip this setup: direction or stop/target geometry is not valid."
-        idea.entryTriggered && tooFar ->
-            "The trigger has fired, but price is now outside the planned entry area. Do not chase; wait for a fresh setup."
-        idea.entryTriggered && score >= 65 ->
-            "Trigger detected. Check the completed candle and execution spread; only consider the plan while price remains near the entry zone."
-        idea.entryTriggered ->
-            "Trigger detected, but confluence is weak. Wait for another confirmation candle or skip."
-        currentInZone ->
-            "Price is in the entry area. Wait for a clear rejection and a close back in the trade direction; do not enter on a touch alone."
-        tooFar ->
-            "Price is extended from the planned entry. Wait for a pullback into the zone; avoid chasing."
-        else ->
-            "Wait for price to approach the planned entry zone, then require a directional candle close."
-    }
-    val trigger = if (longSide)
-        "LONG: let price retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
-    else
-        "SHORT: let price retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
-    val invalidation = if (longSide)
-        "Cancel the long if price closes below the retest support / stop level before entry."
-    else
-        "Cancel the short if price closes above the retest resistance / stop level before entry."
-    return EntryGuidance(score, grade, action, trigger, invalidation, listOf(
-        "4H trend aligned" to trend4h,
-        "1H trend aligned" to trend1h,
-        "5M trigger trend aligned" to trend5m,
-        ("RSI not stretched (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
-        ("Volume at least 1.15x average (" + "%.2f".format(Locale.US, idea.volumeRatio) + "x)") to volumeOk,
-        "Spread at or below 10 bps" to idea.spreadBps?.let { it in 0.0..10.0 },
-        ("Target 1 offers at least 1.5R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
-    ))
-}
-
-@Composable
-private fun EntryGuidancePanel(idea: TradeIdea) {
-    val guidance = remember(idea) { buildEntryGuidance(idea) }
-    val zoneHalfWidth = maxOf(idea.entry * 0.00075, abs(idea.entry - idea.stop) * 0.10)
-    val zoneLow = idea.entry - zoneHalfWidth
-    val zoneHigh = idea.entry + zoneHalfWidth
-    RiskCard(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-    ) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
-                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                    fontWeight = FontWeight.SemiBold)
-            }
-            Text("Planned entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-            Text(guidance.action, style = MaterialTheme.typography.bodySmall)
-            Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
-            Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            HorizontalDivider()
-            Text("Entry quality checklist", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            guidance.checks.forEach { (label, passed) ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (passed == true) "✓" else "○",
-                        color = if (passed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall)
-                    Text(label + if (passed == null) " · unavailable" else if (passed) " · pass" else " · wait",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Text("Rule-based confluence score, not a win probability. No entry is guaranteed; use the completed candle, limit price, and your own risk rules.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     if (tracked) return TradeIdeaStage.TRACKING
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea)) return TradeIdeaStage.DO_NOT_ENTER
@@ -787,20 +662,15 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
     var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
-    DisposableEffect(idea.symbol, trackedEntry != null) {
-        if (trackedEntry == null) {
-            livePrice = idea.last
-            onDispose { }
+    LaunchedEffect(idea.symbol, trackedEntry) {
+        if (trackedEntry != null) {
+            while (true) {
+                val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+                if (quote != null) livePrice = quote
+                delay(15_000)
+            }
         } else {
-            val stream = BinanceMarkPriceStream(
-                symbols = listOf(idea.symbol),
-                onMarkPrice = { symbol, price ->
-                    if (symbol.equals(idea.symbol, ignoreCase = true)) livePrice = price
-                },
-                onStatus = {}
-            )
-            stream.start()
-            onDispose { stream.close() }
+            livePrice = idea.last
         }
     }
     val stage = tradeIdeaStage(idea, trackedEntry != null)
@@ -862,9 +732,6 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (idea.side == "LONG" || idea.side == "SHORT") {
-                EntryGuidancePanel(idea)
-            }
             if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry", idea.entry.usd(6), Modifier.weight(1f))
@@ -907,7 +774,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
                 ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
-                ScannerMetric("Live price source", "Binance Futures · live WebSocket")
+                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
                 Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
                 LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)
@@ -923,8 +790,8 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Risk checks passed. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
-                        // Use the latest scanner/stream snapshot instead of making another REST quote call.
-                        val entry = livePrice.takeIf { it > 0.0 } ?: idea.last
+                        val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+                            ?: livePrice.takeIf { it > 0.0 } ?: idea.last
                         trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
                         livePrice = entry
                         trackedEntry = entry
@@ -933,6 +800,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
+                Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -1092,6 +960,7 @@ private fun TradeSessionTimingCard() {
                 }
             }
             HorizontalDivider()
+            Text("Use 5M/15M for scalps, 15M/1H for intraday setups, and 4H trend context for swing ideas. The scanner still requires its own price/volume confirmation before an entry.", style = MaterialTheme.typography.bodySmall)
             Text("These are approximate activity windows, not guaranteed entry times. UK/US daylight-saving changes shift session alignment; crypto trades 24/7.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

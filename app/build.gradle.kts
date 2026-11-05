@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.risktracker.app"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
     }
@@ -46,7 +46,6 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
 
     testImplementation("junit:junit:4.13.2")
     // Use the real JSON implementation in local JVM tests (Android stubs throw "method not mocked").

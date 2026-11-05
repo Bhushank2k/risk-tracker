@@ -67,31 +67,33 @@ fun LedgerAuditScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("No saved import report for $year", fontWeight = FontWeight.SemiBold)
+                    Text("Import a Binance USDⓈ-M Futures income CSV from Binance data to populate coverage and duplicate-row metadata.")
                 }
             }
         } else {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Import coverage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    MetricRow("First activity", report.firstActivityDate.ifBlank { "—" })
-                    MetricRow("Last activity", report.lastActivityDate.ifBlank { "—" })
-                    MetricRow("Days with activity", report.daily.size.toString())
-                    MetricRow("Rows included", report.includedRows.toString())
-                    MetricRow("Rows ignored", report.ignoredRows.toString())
-                    MetricRow("Duplicate rows", report.duplicateRows.toString())
-                    MetricRow("Imported Futures total", importedTotal.usd())
+                    AuditRow("First activity", report.firstActivityDate.ifBlank { "—" })
+                    AuditRow("Last activity", report.lastActivityDate.ifBlank { "—" })
+                    AuditRow("Days with activity", report.daily.size.toString())
+                    AuditRow("Rows included", report.includedRows.toString())
+                    AuditRow("Rows ignored", report.ignoredRows.toString())
+                    AuditRow("Duplicate rows", report.duplicateRows.toString())
+                    AuditRow("Imported Futures total", importedTotal.usd())
                 }
             }
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Rows by income type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (report.rowsByType.isEmpty()) Text("No income-type breakdown was saved.")
-                    report.rowsByType.toSortedMap().forEach { (type, count) -> MetricRow(type, count.toString()) }
+                    report.rowsByType.toSortedMap().forEach { (type, count) -> AuditRow(type, count.toString()) }
                 }
             }
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Optional source-total reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Enter the independently verified total from your complete Binance statement. This value is stored with the existing year reconciliation settings.")
                     OutlinedTextField(
                         value = sourceTotalText,
                         onValueChange = { sourceTotalText = it },
@@ -132,3 +134,10 @@ fun LedgerAuditScreen() {
     }
 }
 
+@Composable
+private fun AuditRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(value, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+    }
+}
