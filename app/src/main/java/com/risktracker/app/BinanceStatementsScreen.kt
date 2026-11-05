@@ -44,7 +44,8 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) {
             try {
-                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(BinanceStatementStore.csv(context)) }
+                val output = context.contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Could not open the selected file.")
+                output.bufferedWriter().use { it.write(BinanceStatementStore.csv(context)) }
                 status = "Statement CSV exported."
             } catch (e: Exception) { status = "Export failed: ${e.message ?: "file error"}" }
         }
