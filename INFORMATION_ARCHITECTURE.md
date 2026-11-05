@@ -16,6 +16,24 @@ Use one authoritative screen for each kind of information. Other screens may sho
 | Ledger Audit | Historical import coverage, duplicate counts and source reconciliation | Imported totals | Daily P&L and journal estimates |
 | Risk tools | User inputs, limits, scenarios and calculated risk | Relevant account equity where available | Duplicated portfolio dashboards |
 
+## Navigation structure
+
+Primary bottom navigation remains limited to four frequent destinations:
+- Overview
+- Journal
+- Analytics
+- Ideas
+
+The Explore sheet groups all secondary destinations without deleting or renumbering routes:
+- Trading: Journal, live positions/orders, post-trade reviews.
+- Performance: Trading Analytics and P&L Calendar.
+- Ideas & Risk Tools: Daily Trade Ideas, position calculator, Trade Risk Gate, risk alerts, scenario lab and target planner.
+- Connections & Account: Binance Sync/imports, sync health and account activity/statements.
+- Records & Reports: Crypto Tax Report and Ledger Audit.
+- App: Settings and About.
+
+The Overview remains in the bottom navigation rather than being duplicated in Explore. Grouping destinations does not merge their underlying workflows or data sources.
+
 ## Duplication rules
 
 1. Overview is the compact portfolio snapshot; Analytics is the detailed performance workspace.

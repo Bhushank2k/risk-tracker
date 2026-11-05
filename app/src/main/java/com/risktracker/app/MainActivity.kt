@@ -200,35 +200,36 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.ShowChart, Icons.Filled.Lightbulb)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
+    // Secondary destinations stay available, but are grouped by the task they support.
+    // Keep route IDs unchanged: these values are consumed by the screen router below.
     val menuGroups = listOf(
-        "HOME" to listOf(
-            "Overview" to 0,
-            "Trade Journal" to 1
+        "TRADING" to listOf(
+            "Trade Journal" to 1,
+            "Live positions & orders" to 16,
+            "Post-trade reviews" to 14
         ),
-        "MARKET OPPORTUNITIES" to listOf(
-            "Daily Trade Ideas" to 21
-        ),
-        "ANALYTICS" to listOf(
+        "PERFORMANCE" to listOf(
             "Trading Analytics" to 20,
-            "P&L Calendar" to 23,
-            "Post-trade reviews" to 14,
-            "Ledger audit" to 15
+            "P&L Calendar" to 23
         ),
-        "RISK MANAGEMENT" to listOf(
+        "IDEAS & RISK TOOLS" to listOf(
+            "Daily Trade Ideas" to 21,
             "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
             "Risk Scenario Lab" to 13,
             "Target Planner" to 22
         ),
-        "BINANCE & DATA" to listOf(
-            "Binance Sync" to 6,
+        "CONNECTIONS & ACCOUNT" to listOf(
+            "Binance Sync & imports" to 6,
             "Sync health" to 18,
-            "Live positions & orders" to 16,
-            "Account activity" to 17
+            "Account activity & statements" to 17
         ),
-        "REPORTS & APP" to listOf(
+        "RECORDS & REPORTS" to listOf(
             "Crypto tax report" to 9,
+            "Ledger audit" to 15
+        ),
+        "APP" to listOf(
             "Settings" to 7,
             "About Risk Tracker" to 5
         )
@@ -259,14 +260,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> "P&L Calendar"
                 else -> "More"
             }
-            val quickAction = when (tab) {
-                0 -> "Risk" to 11
-                1 -> "Analytics" to 20
-                20 -> "Calendar" to 23
-                21 -> "Targets" to 22
-                16 -> "Risk" to 11
-                else -> null
-            }
+
             TopAppBar(
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -283,19 +277,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     }
                 },
                 actions = {
-                    quickAction?.let { (label, destination) ->
-                        TextButton(onClick = { tab = destination }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                        }
-                    }
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Filled.Apps, contentDescription = "Explore all destinations")
+                        Icon(Icons.Filled.Menu, contentDescription = "Explore all destinations")
                     }
                 }
             )
         },
         bottomBar = {
-            val navShape = RoundedCornerShape(24.dp)
             NavigationBar(
                 modifier = Modifier.fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
