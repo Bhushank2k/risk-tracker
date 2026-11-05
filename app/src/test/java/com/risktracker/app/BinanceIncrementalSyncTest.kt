@@ -18,10 +18,13 @@ class BinanceIncrementalSyncTest {
     }
 
     @Test
-    fun staleCheckpointIsBoundedBySevenDayRecoveryWindow() {
+    fun staleCheckpointResumesFromLastSuccessInsteadOfSkippingGap() {
         val now = 1_800_000_000_000L
-        assertEquals(now - BINANCE_SYMBOL_SYNC_LOOKBACK_MS,
-            binanceSymbolSyncStart(now - 30 * 24 * 60 * 60 * 1000L, now))
+        val checkpoint = now - 30L * 24 * 60 * 60 * 1000
+        assertEquals(
+            checkpoint - BINANCE_SYMBOL_SYNC_OVERLAP_MS,
+            binanceSymbolSyncStart(checkpoint, now)
+        )
     }
 
     @Test
