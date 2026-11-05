@@ -17,19 +17,9 @@ import androidx.compose.ui.unit.dp
 fun TradeJournalScreen(exchangeFills: List<BinanceJournalFill>) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 88.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Trade journal", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    "Trades are imported automatically from your connected Binance account.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
         item { BinancePositionJournalSection(exchangeFills) }
     }
 }

@@ -27,14 +27,14 @@ import androidx.compose.animation.animateContentSize
  * and primitives so surfaces, spacing and motion stay consistent everywhere.
  */
 object RiskTrackerDesign {
-    val pagePadding = 18.dp
-    val sectionGap = 18.dp
-    val cardGap = 12.dp
-    val cardPadding = 16.dp
-    val compactCardPadding = 12.dp
+    val pagePadding = 16.dp
+    val sectionGap = 12.dp
+    val cardGap = 10.dp
+    val cardPadding = 14.dp
+    val compactCardPadding = 10.dp
     val pageTitleSize = 22.dp
     val navigationIconSize = 24.dp
-    val cardRadius = 18.dp
+    val cardRadius = 16.dp
 
     val canvasDark = Color(0xFF111418)
     val surfaceDark = Color(0xFF1B2026)
@@ -70,10 +70,10 @@ fun lossColor(): Color = if (isDarkTheme()) RiskTrackerDesign.lossOnDark else Ri
 
 val RiskTrackerShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(24.dp)
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(22.dp)
 )
 
 val RiskTrackerTypography = Typography()
