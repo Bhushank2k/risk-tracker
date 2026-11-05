@@ -390,7 +390,7 @@ fun RiskOverviewScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Portfolio performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Daily realized results · latest 14 recorded days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Cumulative recorded P&L · latest 14 recorded days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val values = daily.takeLast(14).map { it.selectedPnl }
                     if (values.size >= 2) {
@@ -489,29 +489,71 @@ private fun SimpleMetricCard(
 
 @Composable
 private fun SimplePnlChart(values: List<Double>, modifier: Modifier = Modifier) {
-    val positiveColor = profitColor()
-    val negativeColor = lossColor()
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    // Show cumulative recorded P&L, not account equity: this is derived only
+    // from the daily results already available to the Overview screen.
+    val cumulative = values.runningFold(0.0) { total, value -> total + value }.drop(1)
+    val lineColor = MaterialTheme.colorScheme.primary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
     Canvas(modifier) {
-        val minValue = minOf(0.0, values.minOrNull() ?: 0.0)
-        val maxValue = maxOf(0.0, values.maxOrNull() ?: 0.0)
-        val range = (maxValue - minValue).takeIf { it > 0.0 } ?: 1.0
-        val zeroY = size.height * (maxValue / range).toFloat()
-        drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, zeroY), androidx.compose.ui.geometry.Offset(size.width, zeroY), strokeWidth = 1.dp.toPx())
-        val slot = size.width / values.size
-        val barWidth = (slot * 0.52f).coerceAtLeast(3.dp.toPx())
-        values.forEachIndexed { index, value ->
-            val x = index * slot + (slot - barWidth) / 2f
-            val y = size.height * ((maxValue - value) / range).toFloat()
-            val top = minOf(y, zeroY)
-            val height = kotlin.math.abs(zeroY - y).coerceAtLeast(2.dp.toPx())
-            drawRoundRect(
-                color = if (value >= 0.0) positiveColor else negativeColor,
-                topLeft = androidx.compose.ui.geometry.Offset(x, top),
-                size = androidx.compose.ui.geometry.Size(barWidth, height),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        if (cumulative.isEmpty()) return@Canvas
+
+        val low = minOf(0.0, cumulative.minOrNull() ?: 0.0)
+        val high = maxOf(0.0, cumulative.maxOrNull() ?: 0.0)
+        val rawRange = high - low
+        val padding = (rawRange * 0.12).coerceAtLeast(1.0)
+        val minValue = low - padding
+        val maxValue = high + padding
+        val range = (maxValue - minValue).coerceAtLeast(1.0)
+        fun yFor(value: Double): Float =
+            size.height * (1f - ((value - minValue) / range).toFloat())
+
+        // Quiet horizontal guides; the zero line is slightly stronger.
+        for (index in 0..3) {
+            val value = minValue + range * index / 3.0
+            val y = yFor(value)
+            drawLine(
+                color = if (kotlin.math.abs(value) < range / 1000.0) lineColor.copy(alpha = 0.55f) else gridColor,
+                start = androidx.compose.ui.geometry.Offset(0f, y),
+                end = androidx.compose.ui.geometry.Offset(size.width, y),
+                strokeWidth = if (kotlin.math.abs(value) < range / 1000.0) 1.4.dp.toPx() else 0.7.dp.toPx()
             )
         }
+
+        val points = cumulative.mapIndexed { index, value ->
+            androidx.compose.ui.geometry.Offset(
+                if (cumulative.size == 1) size.width / 2f else size.width * index / (cumulative.size - 1).toFloat(),
+                yFor(value)
+            )
+        }
+        val curve = androidx.compose.ui.graphics.Path().apply {
+            moveTo(points.first().x, points.first().y)
+            for (index in 1 until points.size) {
+                val previous = points[index - 1]
+                val current = points[index]
+                val midX = (previous.x + current.x) / 2f
+                quadraticTo(midX, previous.y, current.x, current.y)
+            }
+        }
+        val zeroY = yFor(0.0)
+        val area = androidx.compose.ui.graphics.Path().apply {
+            addPath(curve)
+            lineTo(points.last().x, zeroY)
+            lineTo(points.first().x, zeroY)
+            close()
+        }
+        drawPath(area, lineColor.copy(alpha = 0.12f))
+        drawPath(
+            path = curve,
+            color = lineColor,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.8.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+        val last = points.last()
+        drawCircle(lineColor.copy(alpha = 0.18f), radius = 6.dp.toPx(), center = last)
+        drawCircle(lineColor, radius = 3.dp.toPx(), center = last)
     }
 }
 
