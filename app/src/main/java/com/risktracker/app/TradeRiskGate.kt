@@ -77,7 +77,7 @@ fun evaluateTradeRisk(
     }
     if (estimatedFees >= riskBudget) {
         return TradeRiskEvaluation(false, 0.0, estimatedFees, null, emptyList(),
-            listOf("Estimated fees meet or exceed the entire risk budget; no position size can be calculated within this fee assumption."))
+            listOf("Estimated fees meet or exceed the entire risk budget; no safe position size is available."))
     }
     val quantity = (riskBudget - estimatedFees) / distance
     val plannedRisk = quantity * distance + estimatedFees
@@ -142,97 +142,87 @@ fun TradeRiskGateScreen(settings: TradeRiskSettings) {
     val context = LocalContext.current
     val store = remember { TradePlanStore(context.applicationContext) }
     var plans by remember { mutableStateOf(store.load()) }
-    var symbol by remember { mutableStateOf("") }
+    var symbol by remember { mutableStateOf("BTCUSDT") }
     var side by remember { mutableStateOf("Long") }
-    var balance by remember { mutableStateOf("") }
-    var risk by remember { mutableStateOf("") }
-    var entry by remember { mutableStateOf("") }
-    var stop by remember { mutableStateOf("") }
-    var target by remember { mutableStateOf("") }
-    var fees by remember { mutableStateOf("") }
-    var pendingDelete by remember { mutableStateOf<TradePlan?>(null) }
+    var balance by remember { mutableStateOf("1000") }
+    var risk by remember { mutableStateOf("1") }
+    var entry by remember { mutableStateOf("100") }
+    var stop by remember { mutableStateOf("98") }
+    var target by remember { mutableStateOf("104") }
+    var fees by remember { mutableStateOf("0.5") }
     val parsedTarget = target.trim().takeIf { it.isNotEmpty() }?.let { it.toDoubleOrNull() ?: Double.NaN }
-    val evaluation = evaluateTradeRisk(side, balance.toDoubleOrNull() ?: Double.NaN, risk.toDoubleOrNull() ?: Double.NaN, entry.toDoubleOrNull() ?: Double.NaN, stop.toDoubleOrNull() ?: Double.NaN, parsedTarget, fees.toDoubleOrNull() ?: Double.NaN, settings)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(RiskTrackerDesign.pagePadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text("Trade Risk Gate", style = MaterialTheme.typography.headlineMedium)
-            Text("Advisory check, not approval.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Text("Compare a proposed plan with configured limits. This tool does not approve, place, or modify exchange orders.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val evaluation = evaluateTradeRisk(side, balance.toDoubleOrNull() ?: Double.NaN,
+        risk.toDoubleOrNull() ?: Double.NaN, entry.toDoubleOrNull() ?: Double.NaN,
+        stop.toDoubleOrNull() ?: Double.NaN, parsedTarget, fees.toDoubleOrNull() ?: Double.NaN, settings)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Trade Risk Gate", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Check a proposed trade against your rules before entry. This screen does not place orders.")
+        OutlinedTextField(symbol, { symbol = it.uppercase(Locale.ROOT) }, label = { Text("Symbol") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = side == "Long", onClick = { side = "Long" }, label = { Text("Long") })
+            FilterChip(selected = side == "Short", onClick = { side = "Short" }, label = { Text("Short") })
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Trade setup", style = MaterialTheme.typography.titleLarge)
-            QuietFormField("Instrument", symbol, { symbol = it.uppercase(Locale.ROOT) }, helper = "For your saved reference only.")
-            Text("Direction", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = side == "Long", onClick = { side = "Long" }, label = { Text("Long") })
-                FilterChip(selected = side == "Short", onClick = { side = "Short" }, label = { Text("Short") })
-            }
-            QuietFormField("Account balance", balance, { balance = it }, unit = "USDT", helper = "Enter the balance used for this estimate.")
-            QuietFormField("Risk per trade", risk, { risk = it }, unit = "%", helper = "Configured amount at risk; not a loss guarantee.")
-            QuietFormField("Entry price", entry, { entry = it }, unit = "USDT")
-            val invalidStop = entry.toDoubleOrNull() != null && stop.toDoubleOrNull() != null && ((side == "Long" && stop.toDouble() >= entry.toDouble()) || (side == "Short" && stop.toDouble() <= entry.toDouble()))
-            QuietFormField("Stop price", stop, { stop = it }, unit = "USDT", error = if (invalidStop) "Stop must be below entry for a long and above entry for a short." else null)
-            QuietFormField("Target price (optional)", target, { target = it }, unit = "USDT", helper = "Leave blank to mark reward/risk as Not evaluated.")
-            QuietFormField("Estimated total fees", fees, { fees = it }, unit = "USDT", helper = "Manual estimate. Funding, slippage and contract multipliers are excluded.")
-        }
+        RiskGateField("Account equity (USD)", balance) { balance = it }
+        RiskGateField("Risk per trade (%)", risk) { risk = it }
+        RiskGateField("Entry price", entry) { entry = it }
+        RiskGateField("Stop-loss price", stop) { stop = it }
+        RiskGateField("Take-profit price (optional)", target) { target = it }
+        RiskGateField("Estimated total fees", fees) { fees = it }
         RiskCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(RiskTrackerDesign.cardPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Advisory result", style = MaterialTheme.typography.titleLarge)
-                Text("A rule comparison, not a trade approval or safety guarantee.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (evaluation.errors.isNotEmpty()) {
-                    SeverityChip("INPUT REVIEW REQUIRED", RiskSeverity.CAUTION)
-                    evaluation.errors.forEach { Text("• " + it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-                } else {
-                    KpiValue("Indicative size · estimate", "%.6f".format(Locale.US, evaluation.quantity), supportingText = "Units; contract multiplier not applied.")
-                    KpiValue("Estimated risk at stop", "%.2f USDT".format(Locale.US, evaluation.plannedRisk), supportingText = "Includes the entered fee estimate.")
-                    Text("Rule checks", style = MaterialTheme.typography.titleMedium)
-                    evaluation.checks.forEach { check ->
-                        val notEvaluated = check.title == "Risk/reward" && target.isBlank()
-                        val review = !check.passed && !notEvaluated
-                        val status = if (notEvaluated) "Not evaluated" else if (review) "Review required" else "Passed"
-                        val severity = if (notEvaluated) RiskSeverity.NEUTRAL else if (review) RiskSeverity.CAUTION else RiskSeverity.POSITIVE
-                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Text(check.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                                SeverityChip(status, severity)
-                            }
-                            Text(check.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Pre-trade assessment", style = MaterialTheme.typography.titleMedium)
+                evaluation.errors.forEach { Text("• " + it, color = MaterialTheme.colorScheme.error) }
+                if (evaluation.errors.isEmpty()) {
+                    Text("Suggested quantity: " + "%.6f".format(Locale.US, evaluation.quantity))
+                    Text("Estimated risk at stop: " + "%.2f".format(Locale.US, evaluation.plannedRisk))
+                    Text("Risk/reward: " + (evaluation.riskReward?.let { "%.2f".format(Locale.US, it) } ?: "Not set"))
+                    evaluation.checks.forEach { c ->
+                        Text((if (c.passed) "✓ " else "⚠ ") + c.title + ": " + c.detail,
+                            color = if (c.passed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                     }
-                    SeverityChip(if (evaluation.ready) "Configured checks passed" else "Review required", RiskSeverity.INFORMATION.takeIf { evaluation.ready } ?: RiskSeverity.CAUTION)
-                    val reasons = evaluation.checks.filterNot { it.passed }.joinToString { it.title }.ifBlank { "No configured rule breaches detected; unmodelled market and execution risks remain." }
-                    Text("Reasons: " + reasons, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (evaluation.ready) "All configured checks passed" else "Review failed checks before proceeding",
+                        fontWeight = FontWeight.Bold, color = if (evaluation.ready) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 }
-                OutlinedButton(onClick = {
-                    if (evaluation.valid && symbol.isNotBlank()) {
-                        val plan = TradePlan(UUID.randomUUID().toString(), SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()), symbol.trim().uppercase(Locale.ROOT), side, balance.toDouble(), risk.toDouble(), entry.toDouble(), stop.toDouble(), parsedTarget, fees.toDouble(), evaluation.quantity, evaluation.plannedRisk, evaluation.riskReward, status = if (evaluation.ready) "CHECKS_PASSED" else "REVIEW_REQUIRED")
-                        plans = listOf(plan) + plans
-                        store.save(plans)
-                    }
-                }, enabled = evaluation.valid && symbol.isNotBlank(), modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Save plan") }
+                Button(onClick = {
+                    val plan = TradePlan(UUID.randomUUID().toString(),
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
+                        symbol.trim().uppercase(Locale.ROOT), side, balance.toDouble(), risk.toDouble(),
+                        entry.toDouble(), stop.toDouble(), parsedTarget, fees.toDouble(),
+                        evaluation.quantity, evaluation.plannedRisk, evaluation.riskReward,
+                        status = if (evaluation.ready) "CHECKS_PASSED" else "REVIEW_REQUIRED")
+                    plans = listOf(plan) + plans
+                    store.save(plans)
+                }, enabled = evaluation.valid && symbol.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save trade plan") }
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Saved plans", style = MaterialTheme.typography.titleLarge)
-            if (plans.isEmpty()) Text("No saved plans. Enter a setup above and save it to retain its assumptions and advisory result.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            plans.forEach { plan ->
-                RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(RiskTrackerDesign.cardPadding), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Text(plan.symbol + " · " + plan.side, style = MaterialTheme.typography.titleMedium)
-                            SeverityChip(if (plan.status == "CHECKS_PASSED") "Passed when saved" else "Review required", if (plan.status == "CHECKS_PASSED") RiskSeverity.INFORMATION else RiskSeverity.CAUTION)
-                        }
-                        Text(plan.createdAt, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Balance " + plan.balance + " USDT · Risk " + plan.riskPercent + "% · Entry " + plan.entry + " · Stop " + plan.stopLoss, style = MaterialTheme.typography.bodySmall)
-                        Text("Target " + (plan.target?.toString() ?: "Not set") + " · Fee assumption " + plan.estimatedFees + " USDT · Size " + "%.6f".format(Locale.US, plan.plannedQuantity), style = MaterialTheme.typography.bodySmall)
-                        Text("Estimate excludes funding, slippage and contract multipliers. Saved status is historical, not a current check.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        TextButton(onClick = { pendingDelete = plan }) { Text("Delete plan", color = MaterialTheme.colorScheme.error) }
-                    }
+        Text("Saved plans", style = MaterialTheme.typography.titleMedium)
+        if (plans.isEmpty()) Text("No saved plans yet.", style = MaterialTheme.typography.bodySmall)
+        plans.forEach { p ->
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(p.symbol + " · " + p.side, fontWeight = FontWeight.Bold)
+                    Text(p.createdAt + " · Risk " + "%.2f".format(Locale.US, p.plannedRisk) + " · Qty " + "%.6f".format(Locale.US, p.plannedQuantity))
+                    Text(
+                        when (p.status) {
+                            "CHECKS_PASSED" -> "Status: all configured checks passed when saved"
+                            "REVIEW_REQUIRED" -> "Status: warnings present when saved — review before trading"
+                            else -> "Status: " + p.status.replace('_', ' ').lowercase(Locale.US)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (p.status == "CHECKS_PASSED") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                    Text("Entry " + p.entry + " · Stop " + p.stopLoss + " · Target " + (p.target?.toString() ?: "—"))
+                    OutlinedButton(onClick = { plans = plans.filterNot { it.id == p.id }; store.save(plans) }) { Text("Delete") }
                 }
             }
         }
+        Text("Estimates may exclude contract multipliers, slippage, funding, exchange-specific fees and liquidation rules.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    pendingDelete?.let { plan ->
-        QuietConfirmationDialog(title = "Delete saved plan?", affectedData = "the saved " + plan.symbol + " " + plan.side + " plan created " + plan.createdAt, confirmLabel = "Delete plan", destructive = true, onConfirm = { plans = plans.filterNot { it.id == plan.id }; store.save(plans); pendingDelete = null }, onDismiss = { pendingDelete = null })
-    }
+}
+
+@Composable
+private fun RiskGateField(label: String, value: String, onValue: (String) -> Unit) {
+    OutlinedTextField(value, onValue, label = { Text(label) }, modifier = Modifier.fillMaxWidth(),
+        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
 }

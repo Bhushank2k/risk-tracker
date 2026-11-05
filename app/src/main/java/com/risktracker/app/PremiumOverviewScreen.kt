@@ -180,7 +180,6 @@ fun RiskOverviewScreen(
     }
     val todayPnl = daily.lastOrNull { it.date == today }?.selectedPnl
     val netPnl = daily.sumOf { it.selectedPnl }
-    val weekPnl = daily.takeLast(7).takeIf { it.isNotEmpty() }?.sumOf { it.selectedPnl }
     val wins = trades.count { it.pnl > 0.0 }
     val closedTrades = wins + trades.count { it.pnl < 0.0 }
     val winRate = if (closedTrades > 0) wins.toDouble() / closedTrades * 100.0 else null
@@ -195,30 +194,12 @@ fun RiskOverviewScreen(
         contentPadding = PaddingValues(horizontal = RiskTrackerDesign.pagePadding, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(RiskTrackerDesign.cardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Net P&L · latest 7 recorded days", style = MaterialTheme.typography.titleMedium)
-                        SeverityChip("RECORDED", RiskSeverity.INFORMATION)
-                    }
-                    KpiValue(
-                        label = "Net P&L after available source reconciliation",
-                        value = weekPnl?.let { (if (it > 0.0) "+" else "") + it.usd() } ?: "Incomplete",
-                        valueColor = when { weekPnl == null -> MaterialTheme.colorScheme.onSurface; weekPnl > 0.0 -> profitColor(); weekPnl < 0.0 -> lossColor(); else -> MaterialTheme.colorScheme.onSurface },
-                        supportingText = "Latest recorded dates only. Missing history is not represented as zero."
-                    )
-                    TextButton(onClick = { onNavigate(6) }) { Text("Data sources") }
-                }
-            }
-        }
-
         // Portfolio-first hero: actual account equity and today's recorded result.
         item {
             RiskCard(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
             ) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
@@ -231,7 +212,7 @@ fun RiskOverviewScreen(
                             Text(
                                 snapshot?.let { "Spot " + it.spot.valueUsdt.usd() + " · Futures " + it.futures.totalEquity.usd() } ?: "Connect read-only Binance credentials to load live equity",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
                             )
                         }
                     }
