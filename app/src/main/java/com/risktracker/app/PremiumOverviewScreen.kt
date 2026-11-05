@@ -8,6 +8,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -214,7 +221,10 @@ fun RiskOverviewScreen(
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("TOTAL ACCOUNT EQUITY", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(16.dp))
+    Text("TOTAL ACCOUNT EQUITY", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+}
                             Text(accountEquity?.usd() ?: "Not connected", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                             Text(
                                 snapshot?.let { "Spot " + it.spot.valueUsdt.usd() + " · Futures " + it.futures.totalEquity.usd() } ?: "Connect read-only Binance credentials to load live equity",
@@ -226,7 +236,10 @@ fun RiskOverviewScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Today's recorded P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+    Icon(if ((todayPnl ?: 0.0) >= 0.0) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown, contentDescription = null, modifier = Modifier.size(14.dp))
+    Text("Today's recorded P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+}
                             Text(
                                 todayPnl?.let { (if (it > 0.0) "+" else "") + it.usd() } ?: "—",
                                 style = MaterialTheme.typography.titleLarge,
@@ -240,7 +253,10 @@ fun RiskOverviewScreen(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Live unrealized P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+    Icon(Icons.Filled.ShowChart, contentDescription = null, modifier = Modifier.size(14.dp))
+    Text("Live unrealized P&L", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+}
                             Row(
                                 modifier = Modifier.clickable(
                                     onClick = { onNavigate(16) },
@@ -260,8 +276,15 @@ fun RiskOverviewScreen(
 
                         }
                     }
-                    if (balanceStatus.startsWith("Refresh failed") || balanceStatus.contains("418")) {
-                        Text(balanceStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    if (balanceStatus.isNotBlank()) {
+                        val balanceFailed = balanceStatus.startsWith("Refresh failed") || balanceStatus.contains("418")
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(if (balanceFailed) Icons.Filled.Error else Icons.Filled.CheckCircle, contentDescription = null,
+                                tint = if (balanceFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(14.dp))
+                            Text(balanceStatus, style = MaterialTheme.typography.labelSmall,
+                                color = if (balanceFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                        }
                     }
                 }
             }
@@ -294,13 +317,15 @@ fun RiskOverviewScreen(
                     (if (netPnl > 0.0) "+" else "") + netPnl.usd(),
                     daily.size.toString() + " recorded days",
                     Modifier.weight(1f),
-                    if (netPnl >= 0.0) profitColor() else lossColor()
+                    if (netPnl >= 0.0) profitColor() else lossColor(),
+                    Icons.Filled.ShowChart
                 )
                 SimpleMetricCard(
                     "Open positions",
                     livePositions.size.toString(),
                     if (positionsStatus.contains("failed") || positionsStatus.contains("418")) "Cached · live prices" else "Futures · live prices",
-                    Modifier.weight(1f)
+                    Modifier.weight(1f),
+                    icon = Icons.Filled.AccountBalanceWallet
                 )
             }
             if (winRate != null || latestBalance != null) {
@@ -458,10 +483,17 @@ private fun SimpleHeroStat(label: String, value: String) {
 }
 
 @Composable
-private fun SimpleMetricCard(label: String, value: String, detail: String, modifier: Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
+private fun SimpleMetricCard(
+    label: String, value: String, detail: String, modifier: Modifier,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    icon: ImageVector
+) {
     RiskCard(modifier, shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
             Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
