@@ -136,13 +136,13 @@ fun CryptoTaxReportScreen() {
     val yearTrades = trades.filter { it.year == year }
     val yearSummary = summaries.firstOrNull { it.year == year }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Crypto tax reports · India", style = MaterialTheme.typography.headlineSmall)
-        Text("Historical Binance trade ledger from 2019 onward, grouped by Indian financial year (1 April–31 March). Imported realized P&L is not automatically the taxable VDA income under Indian law. Reports are review aids, not tax-filing advice; verify records, date-specific INR values and tax treatment with a qualified Indian tax professional.", style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text("India · Financial year 1 April–31 March", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Review aid only — imported realized P&L is not automatically taxable VDA income. Verify historical INR values and tax treatment with a qualified Indian tax professional.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Import historical trades", style = MaterialTheme.typography.titleMedium)
-                Text("Choose a Binance CSV export or ZIP containing CSV files. Importing merges records and skips duplicate IDs; it does not overwrite existing Daily P&L or manual trade journal data.", style = MaterialTheme.typography.bodySmall)
+                Text("Imports merge by record ID; existing Daily P&L and journal records remain unchanged.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = { importPicker.launch(arrayOf("text/*", "application/zip", "application/octet-stream", "application/vnd.ms-excel")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Importing…" else "Import Binance CSV / ZIP")
                 }
@@ -164,7 +164,7 @@ fun CryptoTaxReportScreen() {
                 Text("Year-wise summary", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(selectedYear, { selectedYear = it.filter(Char::isDigit).take(4) }, label = { Text("Financial year start year (e.g. 2025 = FY 2025-26)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(rateText, { rateText = it }, label = { Text("INR per USDT / quote currency (manual estimate)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("This rate is a single user-entered estimate for summary display. It is not a date-specific historical FX calculation.")
+                Text("Single manual estimate; not historical date-specific FX.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (yearSummary != null) {
                     Text("Transactions: ${yearSummary.trades}")
                     Text("Imported realized P&L: ₹${yearSummary.realizedPnlInr.num(2)}", color = pnlColor(yearSummary.realizedPnlInr))
