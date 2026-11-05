@@ -513,7 +513,7 @@ fun BinanceSyncHealthScreen() {
                 status = BinanceAutoJournalStore.syncStatus(context)
                 fillCount = BinanceAutoJournalStore.load(context).size
             } catch (e: Exception) {
-                operationError = e.message ?: "Sync failed unexpectedly. Check connectivity and API permissions."
+                operationError = "Sync failed: " + describeBinanceError(e)
                 status = BinanceAutoJournalStore.syncStatus(context)
             } finally {
                 loading = false

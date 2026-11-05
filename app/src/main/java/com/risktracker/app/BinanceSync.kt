@@ -172,9 +172,30 @@ class BinanceCredentialStore(context: Context) {
 }
 
 class BinanceApi(private val apiKey: String, private val secret: String) {
+    @Volatile private var serverOffsetMs: Long? = null
+
+    /**
+     * Difference between Binance's clock and this device's clock, measured once per sync.
+     * Signed requests are rejected when the device clock is more than the recvWindow off,
+     * which fails on every network. A failed measurement counts as zero.
+     */
+    @Synchronized
+    private fun serverTimeOffset(): Long {
+        serverOffsetMs?.let { return it }
+        val measured = runCatching {
+            val before = System.currentTimeMillis()
+            val serverTime = publicGet("https://api.binance.com/api/v3/time").optLong("serverTime", 0L)
+            val after = System.currentTimeMillis()
+            if (serverTime > 0L) serverTime - (before + after) / 2 else 0L
+        }.getOrDefault(0L)
+        serverOffsetMs = measured
+        return measured
+    }
+
     private fun signedRequest(base: String, path: String, params: List<Pair<String, String>>): String {
         BinanceRestGuard.beforeRequest()
-        val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
+        val timestamp = System.currentTimeMillis() + serverTimeOffset()
+        val all = params + ("timestamp" to timestamp.toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (k, v) -> "${k}=${URLEncoder.encode(v, "UTF-8")}" }
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
@@ -186,12 +207,12 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.setRequestProperty("X-MBX-APIKEY", apiKey)
         try {
             val status = conn.responseCode
-            val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-            val body = stream.bufferedReader().use { it.readText() }
+            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
-                val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")
-                throw IllegalStateException("Binance API error ($status): $message")
+                val message = (binanceMessage(body) ?: "no message returned").trimEnd('.', ' ')
+                val hint = if (isBinanceTimestampError(message)) " Check that the phone's date and time are set automatically." else ""
+                throw IllegalStateException("Binance API error ($status): $message.$hint")
             }
             return body
         } finally { conn.disconnect() }
@@ -686,9 +707,9 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.readTimeout = 20000
         try {
             val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market prices."))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + (binanceMessage(body) ?: "could not load market prices"))
             return JSONArray(body)
         } finally { conn.disconnect() }
     }
@@ -699,9 +720,9 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         conn.connectTimeout = 15000; conn.readTimeout = 20000
         try {
             val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
-            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + runCatching { JSONObject(body).optString("msg") }.getOrDefault("Could not load Binance market symbols."))
+            if (status !in 200..299) throw IllegalStateException("Binance HTTP $status: " + (binanceMessage(body) ?: "could not load market symbols"))
             return JSONObject(body)
         } finally { conn.disconnect() }
     }
@@ -832,7 +853,11 @@ class BinanceDailyWorker(context: Context, params: WorkerParameters) : Coroutine
     override suspend fun doWork(): Result = try {
         if (BinanceCredentialStore(applicationContext).read() == null) Result.success()
         else { BinanceSyncRunner.sync(applicationContext); Result.success() }
-    } catch (_: Exception) { Result.retry() }
+    } catch (e: Exception) {
+        // Retry with backoff, but leave a trace so background failures can be diagnosed.
+        android.util.Log.w("BinanceDailyWorker", "Background sync failed: " + describeBinanceError(e))
+        Result.retry()
+    }
 
     companion object {
         fun schedule(context: Context) {

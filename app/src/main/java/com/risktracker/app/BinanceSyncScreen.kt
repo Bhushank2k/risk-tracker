@@ -192,7 +192,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                     "Sync completed: balances refreshed; ${journalStatus.fillsFetched} trade fills fetched, ${journalStatus.fillsInserted} new fills added."
                                 }
                             } catch (e: Exception) {
-                                status = "Sync failed: " + (e.message ?: "check credentials and API permissions")
+                                status = "Sync failed: " + describeBinanceError(e)
                             } finally { busy = false }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !busy) { Text(if (busy) "Syncing…" else "Sync now") }
