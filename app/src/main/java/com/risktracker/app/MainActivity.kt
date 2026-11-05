@@ -121,35 +121,7 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(store.themeMode) }
             val dark = when (themeMode) { "Light" -> false; "Dark" -> true; else -> isSystemInDarkTheme() }
             val ctx = LocalContext.current
-            val scheme = if (dark) {
-                darkColorScheme(
-                    primary = RiskTrackerDesign.accent,
-                    onPrimary = Color(0xFF06271A),
-                    secondary = Color(0xFF929DAA),
-                    background = RiskTrackerDesign.canvasDark,
-                    surface = RiskTrackerDesign.surfaceDark,
-                    surfaceVariant = RiskTrackerDesign.raisedDark,
-                    outline = RiskTrackerDesign.borderDark,
-                    outlineVariant = RiskTrackerDesign.borderDark,
-                    primaryContainer = Color(0xFF183D2E),
-                    onPrimaryContainer = Color(0xFFD6F8E7),
-                    error = RiskTrackerDesign.danger
-                )
-            } else {
-                lightColorScheme(
-                    primary = Color(0xFF16865D),
-                    onPrimary = Color.White,
-                    secondary = Color(0xFF52616B),
-                    background = Color(0xFFF5F7F6),
-                    surface = Color(0xFFFFFFFF),
-                    surfaceVariant = Color(0xFFE9EFEC),
-                    outline = Color(0xFFD6DEDA),
-                    outlineVariant = Color(0xFFD6DEDA),
-                    primaryContainer = Color(0xFFDDF4E8),
-                    onPrimaryContainer = Color(0xFF123D2C),
-                    error = Color(0xFFD34B55)
-                )
-            }
+            val scheme = if (dark) RiskTrackerDarkColors else RiskTrackerLightColors
             MaterialTheme(colorScheme = scheme, shapes = RiskTrackerShapes, typography = RiskTrackerTypography) {
                 Surface(Modifier.fillMaxSize()) { App(store, themeMode, onThemeModeChange = { themeMode = it; store.themeMode = it }) }
             }
