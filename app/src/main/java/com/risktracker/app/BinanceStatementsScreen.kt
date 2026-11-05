@@ -81,7 +81,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                     }
                 }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Syncing statements…" else "Sync statements now") }
                 OutlinedButton(onClick = { export.launch("binance-account-statements.csv") }, enabled = rows.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Export all stored statements as CSV") }
-                Text("Daily background sync is scheduled when Binance credentials are saved.", style = MaterialTheme.typography.bodySmall)
+                Text("Weekly background sync is scheduled when Binance credentials are saved. Use Sync statements now for an immediate refresh.", style = MaterialTheme.typography.bodySmall)
             }
         }
         val reconciliation = BinanceCapitalReconciliationEngine.reconcile(rows)
