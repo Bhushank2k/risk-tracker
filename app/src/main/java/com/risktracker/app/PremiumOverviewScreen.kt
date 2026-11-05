@@ -200,7 +200,7 @@ fun RiskOverviewScreen(
                 Column(Modifier.fillMaxWidth().padding(RiskTrackerDesign.cardPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Net P&L · latest 7 recorded days", style = MaterialTheme.typography.titleMedium)
-                        SeverityChip("RECONCILED", RiskSeverity.INFORMATION)
+                        SeverityChip("RECORDED", RiskSeverity.INFORMATION)
                     }
                     KpiValue(
                         label = "Net P&L after available source reconciliation",
