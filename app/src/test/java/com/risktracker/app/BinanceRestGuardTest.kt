@@ -1,6 +1,8 @@
 package com.risktracker.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -18,5 +20,14 @@ class BinanceRestGuardTest {
         val now = 1_700_000_000_000L
         BinanceRestGuard.recordResponse(429, "Too many requests", retryAfterSeconds = "30", now = now)
         assertEquals(now + 30_000L, BinanceRestGuard.blockedUntilMillis())
+    }
+
+    @Test
+    fun pausedRequestsExplainWhenSyncCanResume() {
+        val now = 1_700_000_000_000L
+        BinanceRestGuard.recordResponse(429, "Too many requests", retryAfterSeconds = "60", now = now)
+        val error = runCatching { BinanceRestGuard.beforeRequest(now) }.exceptionOrNull()
+        assertTrue(error?.message?.contains("Sync can resume after") == true)
+        assertFalse(error?.message?.contains("1700") == true)
     }
 }
