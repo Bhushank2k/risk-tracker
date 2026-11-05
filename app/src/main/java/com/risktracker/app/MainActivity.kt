@@ -137,6 +137,9 @@ class MainActivity : ComponentActivity() {
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
+    var analyticsSection by remember { mutableIntStateOf(0) }
+    var riskSection by remember { mutableIntStateOf(0) }
+    var binanceSection by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var input by remember { mutableStateOf(store.loadInput()) }
@@ -183,24 +186,16 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Daily Trade Ideas" to 21
         ),
         "ANALYTICS" to listOf(
-            "Trading Analytics" to 20,
-            "P&L Calendar" to 23,
-            "Post-trade reviews" to 14
+            "Analytics workspace" to 20
         ),
         "AI INTELLIGENCE" to listOf(
             "AI Trading Intelligence" to 24
         ),
         "RISK MANAGEMENT" to listOf(
-            "Position & leverage calculator" to 2,
-            "Trade Risk Gate" to 11,
-            "Risk alerts" to 19,
-            "Risk Scenario Lab" to 13,
-            "Target Planner" to 22
+            "Risk Center" to 25
         ),
         "BINANCE & DATA" to listOf(
-            "Binance Sync" to 6,
-            "Live positions & orders" to 16,
-            "Account activity" to 17,
+            "Binance & Accounts" to 26
         ),
         "REPORTS & APP" to listOf(
             "Crypto tax report" to 9,
@@ -215,7 +210,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 0 to "Overview",
                 1 to "Trade Journal",
                 2 to "Position & Leverage Calculator",
-                6 to "Binance Sync",
+                6 to "Binance & Accounts",
+                25 to "Risk Center",
+                26 to "Binance & Accounts",
                 7 to "Settings",
                 9 to "Crypto Tax Report",
                 11 to "Trade Risk Gate",
@@ -224,7 +221,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 to "Live Positions & Orders",
                 17 to "Account Activity",
                 19 to "Risk Alerts",
-                20 to "Trading Analytics",
+                20 to "Analytics",
                 21 to "Daily Trade Ideas",
                 22 to "Target Planner",
                 23 to "P&L Calendar",
@@ -232,11 +229,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             )
             val pageTitle = pageTitles[tab] ?: "More"
             val quickAction = when (tab) {
-                0 -> "Risk" to 11
+                0 -> "Risk" to 25
                 1 -> "Analytics" to 20
-                20 -> "Calendar" to 23
-                21 -> "Targets" to 22
-                16 -> "Risk" to 11
+                20 -> "Calendar" to 20
+                21 -> "Targets" to 25
+                16 -> "Risk" to 25
                 else -> null
             }
             TopAppBar(
@@ -251,7 +248,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 },
                 actions = {
                     quickAction?.let { (label, destination) ->
-                        TextButton(onClick = { tab = destination }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        TextButton(onClick = {
+                            when (tab) {
+                                20 -> { analyticsSection = 1; tab = 20 }
+                                21 -> { riskSection = 4; tab = 25 }
+                                else -> tab = destination
+                            }
+                        }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                         }
                     }
@@ -308,17 +311,48 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
+                6, 26 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = binanceSection, edgePadding = 12.dp) {
+                        listOf("Sync", "Live Positions", "Account Activity").forEachIndexed { index, label ->
+                            Tab(selected = binanceSection == index, onClick = { binanceSection = index }, text = { Text(label, maxLines = 1) })
+                        }
+                    }
+                    when (binanceSection) {
+                        0 -> BinanceSyncScreen(
+                            onSynced = { importedPnl = BinanceSyncData.load(context) },
+                            onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) },
+                            onNavigate = { destination -> binanceSection = when (destination) { 16 -> 1; 17 -> 2; else -> 0 } }
+                        )
+                        1 -> LiveTradesScreen()
+                        else -> BinanceStatementsScreen(onBack = { binanceSection = 0 })
+                    }
+                }
                 9 -> CryptoTaxReportScreen()
-                11 -> TradeRiskGateScreen(TradeRiskSettings(
-                    maxTradeRisk = store.maxTradeRisk,
-                    maxDailyLoss = store.maxDailyLoss,
-                    dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
-                    maxTradesPerDay = 10,
-                    tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
-                    dailyPnlKnown = todayReconciledPnl != null
-                ))
-                13 -> RiskScenarioLabScreen()
+                25 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = riskSection, edgePadding = 12.dp) {
+                        listOf("Calculator", "Risk Gate", "Alerts", "Scenarios", "Targets").forEachIndexed { index, label ->
+                            Tab(selected = riskSection == index, onClick = { riskSection = index }, text = { Text(label, maxLines = 1) })
+                        }
+                    }
+                    when (riskSection) {
+                        0 -> CombinedTradingCalculatorScreen(
+                            input = input,
+                            accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
+                            onChange = { input = it; store.saveInput(it) }
+                        )
+                        1 -> TradeRiskGateScreen(TradeRiskSettings(
+                            maxTradeRisk = store.maxTradeRisk,
+                            maxDailyLoss = store.maxDailyLoss,
+                            dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
+                            maxTradesPerDay = 10,
+                            tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
+                            dailyPnlKnown = todayReconciledPnl != null
+                        ))
+                        2 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
+                        3 -> RiskScenarioLabScreen()
+                        else -> TargetScreen()
+                    }
+                }
                 14 -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
                     if (BinanceCredentialStore(context).read() != null) {
                         appScope.launch {
@@ -331,7 +365,26 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 19 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
+                20 -> Column(Modifier.fillMaxSize()) {
+                    ScrollableTabRow(selectedTabIndex = analyticsSection, edgePadding = 12.dp) {
+                        listOf("Performance", "P&L Calendar", "Trade Reviews").forEachIndexed { index, label ->
+                            Tab(selected = analyticsSection == index, onClick = { analyticsSection = index }, text = { Text(label, maxLines = 1) })
+                        }
+                    }
+                    when (analyticsSection) {
+                        0 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
+                        1 -> PnlCalendarScreen(trades, exchangeFills)
+                        else -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
+                            if (BinanceCredentialStore(context).read() != null) {
+                                appScope.launch {
+                                    runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
+                                    exchangeFills = BinanceAutoJournalStore.load(context)
+                                    exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+                                }
+                            }
+                        })
+                    }
+                }
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
