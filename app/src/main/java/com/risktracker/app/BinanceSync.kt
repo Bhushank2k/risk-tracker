@@ -329,19 +329,24 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val b = balances.getJSONObject(i)
             val asset = b.optString("asset")
             if (asset.isNotBlank() && (b.optString("free").toDoubleOrNull() ?: 0.0) + (b.optString("locked").toDoubleOrNull() ?: 0.0) > 0.0 && asset !in setOf("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI")) asset else null
-        }.distinct().take(100)
+        }.distinct()
         // Use exchangeInfo to find quote pairs for held assets. Only symbols with a supported USDT quote are queried.
         val info = publicGet("https://api.binance.com/api/v3/exchangeInfo")
         val tradable = mutableListOf<String>()
+        val baseBySymbol = mutableMapOf<String, String>()
         val allSymbols = info.optJSONArray("symbols") ?: JSONArray()
         for (i in 0 until allSymbols.length()) {
             val s = allSymbols.getJSONObject(i)
+            baseBySymbol[s.optString("symbol")] = s.optString("baseAsset")
             if (s.optString("status") == "TRADING" && s.optString("quoteAsset") in setOf("USDT", "USDC") && s.optString("baseAsset") in symbols) tradable += s.optString("symbol")
         }
         // Fetch independent symbols with a small fixed pool; FIFO processing below stays chronological.
         val executor = Executors.newFixedThreadPool(8)
         try {
-            val requests = tradable.take(80).map { symbol ->
+            // Stop loudly rather than sync part of the history: a partial Spot history gives
+            // wrong cost basis and realized P&L with no warning.
+            check(tradable.size <= 80) { "Spot history covers ${tradable.size} held pairs, more than the 80 this sync can fetch safely. Sync stopped so P&L is not partial." }
+            val requests = tradable.map { symbol ->
                 executor.submit<List<JSONObject>> {
                     val symbolFills = mutableListOf<JSONObject>()
                     // Page upward from the first trade. Without fromId Binance returns only the
@@ -363,6 +368,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                             if (page.length() < 1000 || lastId < 0) more = false else cursor = lastId + 1
                         }
                     }
+                    check(!more) { "Spot history for $symbol has more than 100000 trades. Sync stopped so P&L is not partial." }
                     symbolFills
                 }
             }
@@ -402,7 +408,8 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 daily[day] = (daily[day] ?: 0.0) + realized - fee
             }
             // Deduct base-asset commission on buys by reducing received quantity.
-            if (isBuy && commissionAsset == symbol.removeSuffix("USDT") && queue.isNotEmpty()) queue.last().qty = maxOf(0.0, queue.last().qty - commission)
+            // The base asset comes from exchangeInfo: stripping "USDT" leaves USDC pairs unchanged.
+            if (isBuy && commissionAsset == (baseBySymbol[symbol] ?: symbol.removeSuffix("USDT")) && queue.isNotEmpty()) queue.last().qty = maxOf(0.0, queue.last().qty - commission)
         }
         return daily
     }
@@ -774,6 +781,7 @@ object BinanceSyncData {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = parseBinanceDailyResults(prefs.getString("daily", "[]")).associateBy { it.date }.toMutableMap()
         val yearPrefix = "$year-"
+        require(daily.keys.all { it.startsWith(yearPrefix) }) { "Futures data contains days outside $year." }
         merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
             val previous = merged.getValue(day)
             merged[day] = previous.copy(futuresPnl = daily[day] ?: 0.0)

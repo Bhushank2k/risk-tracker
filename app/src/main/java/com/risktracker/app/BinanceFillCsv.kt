@@ -39,6 +39,7 @@ object BinanceFillCsvImporter {
             "Expected Binance trade columns for date/time, symbol/pair, side, price and quantity/executed."
         }
         val seen = mutableSetOf<String>()
+        val occurrences = mutableMapOf<String, Int>()
         val fills = mutableListOf<BinanceJournalFill>()
         var duplicates = 0
         var ignored = 0
@@ -70,8 +71,13 @@ object BinanceFillCsvImporter {
             }
             val realized = number(cell(realizedIndex))
             val fingerprintInput = listOf(market, symbol, rawTime, side, price.toString(), qty.toString(), quote.toString(), feeRaw, cell(realizedIndex), cell(orderIndex)).joinToString("|")
+            // Identical rows are separate partial fills when they repeat within one file. Numbering
+            // each repeat keeps them, while the same numbered row from another export still
+            // matches by id and is stored once.
+            val occurrence = (occurrences[fingerprintInput] ?: 0) + 1
+            occurrences[fingerprintInput] = occurrence
             val fingerprint = MessageDigest.getInstance("SHA-256")
-                .digest(fingerprintInput.toByteArray(Charsets.UTF_8))
+                .digest("$fingerprintInput#$occurrence".toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }
             if (!seen.add(fingerprint)) { duplicates++; return@forEachIndexed }
             fills += BinanceJournalFill(

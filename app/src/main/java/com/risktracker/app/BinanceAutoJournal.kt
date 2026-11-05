@@ -281,6 +281,7 @@ object BinanceAutoJournalRunner {
             detail = "Discovering Binance activity and refreshing known symbols."
         ))
 
+        try {
         val api = BinanceApi(credentials.first, credentials.second)
         val fallbackStart = (attemptedAt - BINANCE_SYMBOL_SYNC_LOOKBACK_MS).coerceAtLeast(0L)
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
@@ -314,9 +315,9 @@ object BinanceAutoJournalRunner {
         val spotBatch = selectBinanceSymbolBatch(knownSpot, BinanceAutoJournalStore.symbolCursor(context, "Spot"))
         val futuresBatch = selectBinanceSymbolBatch(knownFutures, BinanceAutoJournalStore.symbolCursor(context, "USDⓈ-M Futures"))
         val coverageLimited = spotBatch.first.size < knownSpot.size || futuresBatch.first.size < knownFutures.size
-        if (coverageLimited) {
-            failures += "Known symbols exceed the 100-per-market sync batch; this run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols. Remaining symbols rotate into later syncs."
-        }
+        // Coverage limits are not failures: the symbols in this batch synced correctly, and the rest
+        // rotate into later runs. Counting them as failures made every run "Partial" and retried.
+        val coverageNote: String? = if (coverageLimited) "This run covered ${spotBatch.first.size}/${knownSpot.size} Spot and ${futuresBatch.first.size}/${knownFutures.size} Futures symbols; the rest rotate into later syncs." else null
 
         data class SymbolResult(
             val market: String,
@@ -384,7 +385,7 @@ object BinanceAutoJournalRunner {
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Up to date (7-day window)" -> "Incremental sync completed. Known symbols were refreshed from their last successful checkpoint with a one-minute overlap; first-time symbols retain the rolling 7-day window. Older closed Spot pairs may require Historical import."
+            "Up to date (7-day window)" -> "Incremental sync completed. Known symbols were refreshed from their last successful checkpoint with a one-minute overlap; first-time symbols retain the rolling 7-day window. Older closed Spot pairs may require Historical import." + (coverageNote?.let { " $it" } ?: "")
             "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Successful symbols were checkpointed; failed symbols will retry from their previous checkpoint."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."
@@ -403,6 +404,17 @@ object BinanceAutoJournalRunner {
             windowEnd = attemptedAt
         ))
         inserted
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Never leave the status stuck on "Syncing" after an unexpected failure.
+            BinanceAutoJournalStore.recordSyncStatus(context, previous.copy(
+                lastAttempt = attemptedAt,
+                state = "Sync failed",
+                detail = "Sync stopped: ${describeBinanceError(error)}. Check connectivity and read-only API permissions."
+            ))
+            throw error
+        }
         }
     }
 }
@@ -415,7 +427,10 @@ class BinanceJournalWorker(context: Context, params: WorkerParameters) : Corouti
             val state = BinanceAutoJournalStore.syncStatus(applicationContext).state
             if (state == "Sync failed" || state == "Partial sync") Result.retry() else Result.success()
         }
-    } catch (_: Exception) { Result.retry() }
+    } catch (error: Exception) {
+        android.util.Log.w("BinanceJournalWorker", "Journal sync failed: " + describeBinanceError(error))
+        Result.retry()
+    }
 
     companion object {
         fun schedule(context: Context) {

@@ -40,7 +40,7 @@ object BinanceIncomeCsvImporter {
             .filter { it.isNotBlank() }
         require(lines.size >= 2) { "The CSV must contain a header and at least one data row." }
         val headers = splitCsvLine(lines.first()).map { it.trim().removePrefix("\uFEFF").lowercase(Locale.US) }
-        val timeIndex = headers.firstIndexOfAny("time", "timestamp", "date", "transaction time")
+        val timeIndex = headers.firstIndexOfAny("time", "timestamp", "date", "date(utc)", "transaction time")
         val typeIndex = headers.firstIndexOfAny("incometype", "income type", "type")
         val amountIndex = headers.firstIndexOfAny("income", "amount", "change")
         require(timeIndex >= 0 && typeIndex >= 0 && amountIndex >= 0) {
