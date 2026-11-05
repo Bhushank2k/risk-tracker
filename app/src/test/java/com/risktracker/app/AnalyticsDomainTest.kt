@@ -36,4 +36,16 @@ class AnalyticsDomainTest {
     private fun fill(id: String, side: String, pnl: Double, fee: Double, asset: String, order: String) =
         BinanceJournalFill(id, "Binance", "USDⓈ-M Futures", "BTCUSDT", side,
             1.0, 100.0, 100.0, fee, asset, pnl, 1_700_000_000_000L, order)
+
+    @Test fun ignoresSpotFeesAndCountsFuturesFeeRebates() {
+        val fills = listOf(
+            fill("1", "SELL", 10.0, 0.2, "USDT", "futures-order"),
+            fill("2", "BUY", 0.0, 0.5, "USDT", "spot-order").copy(market = "Spot"),
+            fill("3", "BUY", 0.0, -0.05, "USDT", "rebate-order")
+        )
+        val result = summarizeExchangeOrders(fills)
+        assertEquals(0.15, result.knownStableFees, 0.0001)
+        assertEquals(9.85, result.netAfterKnownStableFees, 0.0001)
+    }
+
 }
