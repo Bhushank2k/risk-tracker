@@ -229,11 +229,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             )
             val pageTitle = pageTitles[tab] ?: "More"
             val quickAction = when (tab) {
-                0 -> "Risk" to 11
+                0 -> "Risk" to 25
                 1 -> "Analytics" to 20
-                20 -> "Calendar" to 23
-                21 -> "Targets" to 22
-                16 -> "Risk" to 11
+                20 -> "Calendar" to 20
+                21 -> "Targets" to 25
+                16 -> "Risk" to 25
                 else -> null
             }
             TopAppBar(
