@@ -248,7 +248,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 },
                 actions = {
                     quickAction?.let { (label, destination) ->
-                        TextButton(onClick = { tab = destination }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        TextButton(onClick = {
+                            when (tab) {
+                                20 -> { analyticsSection = 1; tab = 20 }
+                                21 -> { riskSection = 4; tab = 25 }
+                                else -> tab = destination
+                            }
+                        }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                         }
                     }
