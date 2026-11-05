@@ -266,31 +266,58 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 else -> "More"
             }
 
-            TopAppBar(
-                modifier = Modifier.fillMaxWidth(),
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background
-                ),
-                title = {
-                    Text(
-                        pageTitle,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+            val barShape = RoundedCornerShape(22.dp)
+            Box(
+                Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = barShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f)
+                    ),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 1.dp
+                ) {
+                    TopAppBar(
+                        modifier = Modifier.fillMaxWidth(),
+                        windowInsets = WindowInsets(0.dp),
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        ),
+                        title = {
+                            Text(
+                                pageTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
                     )
                 }
-            )
+            }
         },
         bottomBar = {
-            NavigationBar(
-                modifier = Modifier.fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp,
-                windowInsets = WindowInsets.navigationBars
+            Box(
+                Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
+                val navShape = RoundedCornerShape(26.dp)
+                NavigationBar(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(navShape)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f), navShape),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets(0.dp)
+                ) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
@@ -308,6 +335,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         )
                     )
                 }
+            }
             }
         }
     ) { pad ->
