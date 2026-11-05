@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FactCheck
@@ -473,10 +475,20 @@ fun BinanceSyncHealthScreen() {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Sync health", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val syncHealthy = status.state.startsWith("Up to date")
+                        val syncFailed = status.state.contains("failed", true) || status.state.contains("error", true)
                         Icon(
-                            if (status.state.startsWith("Up to date")) Icons.Default.Refresh else Icons.Default.Warning,
+                            when {
+                                syncHealthy -> Icons.Filled.CheckCircle
+                                syncFailed -> Icons.Filled.Error
+                                else -> Icons.Default.Warning
+                            },
                             contentDescription = null,
-                            tint = if (status.state.startsWith("Up to date")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            tint = when {
+                                syncHealthy -> MaterialTheme.colorScheme.primary
+                                syncFailed -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.tertiary
+                            }
                         )
                         Text(status.state, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     }
