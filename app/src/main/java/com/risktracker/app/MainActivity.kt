@@ -199,15 +199,12 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "BINANCE & DATA" to listOf(
             "Binance Sync" to 6,
-            "Sync health" to 18,
             "Live positions & orders" to 16,
             "Account activity" to 17,
-            "Ledger audit" to 15
         ),
         "REPORTS & APP" to listOf(
             "Crypto tax report" to 9,
             "Settings" to 7,
-            "About Risk Tracker" to 5
         )
     )
 
@@ -218,17 +215,14 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 0 to "Overview",
                 1 to "Trade Journal",
                 2 to "Position & Leverage Calculator",
-                5 to "About Risk Tracker",
                 6 to "Binance Sync",
                 7 to "Settings",
                 9 to "Crypto Tax Report",
                 11 to "Trade Risk Gate",
                 13 to "Risk Scenario Lab",
                 14 to "Post-Trade Reviews",
-                15 to "Ledger Audit",
                 16 to "Live Positions & Orders",
                 17 to "Account Activity",
-                18 to "Sync Health",
                 19 to "Risk Alerts",
                 20 to "Trading Analytics",
                 21 to "Daily Trade Ideas",
@@ -314,7 +308,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         store.saveInput(it)
                     }
                 )
-                5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
                 11 -> TradeRiskGateScreen(TradeRiskSettings(
@@ -335,10 +328,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
-                15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
-                18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 20 -> SimplifiedTradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, importedDailyPnl = importedPnl)
                 21 -> DailyTradeIdeasScreen()
@@ -410,17 +401,14 @@ private fun destinationIcon(destination: Int): ImageVector = when (destination) 
     0 -> Icons.Default.Home
     1 -> Icons.Default.ReceiptLong
     2 -> Icons.Default.Calculate
-    5 -> Icons.Default.Info
     6 -> Icons.Default.Sync
     7 -> Icons.Default.Settings
     9 -> Icons.Default.Description
     11 -> Icons.Default.Shield
     13 -> Icons.Default.Science
     14 -> Icons.Default.RateReview
-    15 -> Icons.Default.FactCheck
     16 -> Icons.Default.Timeline
     17 -> Icons.Default.History
-    18 -> Icons.Default.HealthAndSafety
     19 -> Icons.Default.Notifications
     20 -> Icons.Default.ShowChart
     21 -> Icons.Default.Lightbulb
@@ -835,6 +823,12 @@ fun MoreScreen(store: Store, trades: List<TradeEntry>, themeMode: String, onThem
         Text("Appearance", style = MaterialTheme.typography.titleMedium)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf("System", "Light", "Dark").forEachIndexed { index, mode -> SegmentedButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) }, shape = SegmentedButtonDefaults.itemShape(index, 3)) { Text(mode) } } }
     }
+        HorizontalDivider()
+        Text("About Risk Tracker", style = MaterialTheme.typography.titleMedium)
+        Text("Crypto futures trading tracker for daily P&L, position sizing and leverage risk.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Version " + (runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Not financial advice. Futures trading carries a high risk of loss. Verify every number against your exchange.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+
 }
 
 @Composable
