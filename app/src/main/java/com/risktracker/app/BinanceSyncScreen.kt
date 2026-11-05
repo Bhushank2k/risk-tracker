@@ -71,6 +71,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
 
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(BinanceSyncData.load(context)) }
+    var accountSnapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var lastSync by remember { mutableStateOf(BinanceSyncData.lastSync(context)) }
     var selectedYear by remember { mutableStateOf(2026) }
     var pendingImportYear by remember { mutableStateOf(2026) }
@@ -180,13 +181,34 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                 BinanceSyncRunner.sync(context)
                                 rows = BinanceSyncData.load(context)
                                 lastSync = BinanceSyncData.lastSync(context)
+                                accountSnapshot = BinanceAccountSnapshotStore(context).load()
                                 onSynced()
-                                status = "Sync completed. Imported P&L is visible on Daily P&L."
+                                BinanceAutoJournalRunner.sync(context)
+                                val journalStatus = BinanceAutoJournalStore.syncStatus(context)
+                                onJournalImported()
+                                status = if (journalStatus.state == "Sync failed" || journalStatus.state == "Partial sync") {
+                                    "Account balances and P&L refreshed. Trade journal: ${journalStatus.detail}"
+                                } else {
+                                    "Sync completed: balances refreshed; ${journalStatus.fillsFetched} trade fills fetched, ${journalStatus.fillsInserted} new fills added."
+                                }
                             } catch (e: Exception) {
                                 status = "Sync failed: " + (e.message ?: "check credentials and API permissions")
                             } finally { busy = false }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !busy) { Text(if (busy) "Syncing…" else "Sync now") }
+                }
+            }
+        }
+        accountSnapshot?.let { snapshot ->
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Last fetched Binance balances", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Spot value: USDT ${String.format(Locale.US, "%.2f", snapshot.spot.valueUsdt)}")
+                    Text("Spot assets held: ${snapshot.spot.assetsHeld} · Unpriced: ${snapshot.spot.unpricedAssets}")
+                    Text("Futures equity: USDT ${String.format(Locale.US, "%.2f", snapshot.futures.totalEquity)}")
+                    Text("Futures available: USDT ${String.format(Locale.US, "%.2f", snapshot.futures.availableBalance)}")
+                    Text("Updated: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(snapshot.savedAt))}",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -641,8 +663,11 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 }
             }
         }
-        if (status.contains("failed", true) || status.contains("error", true) || status.contains("could not", true) || status.startsWith("Imported")) {
-            Text(status, color = if (status.startsWith("Imported")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (status.isNotBlank()) {
+            val hasSyncProblem = status.contains("failed", true) || status.contains("error", true) ||
+                status.contains("could not", true) || status.contains("partial sync", true)
+            Text(status, color = if (hasSyncProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
     }
