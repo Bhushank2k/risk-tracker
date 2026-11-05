@@ -394,8 +394,9 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         val output = mutableListOf<BinanceJournalFill>()
         var fromId: Long? = null
         var pages = 0
-        var reachedEnd = false
-        while (!reachedEnd && pages++ < 4000) {
+        var paginationComplete = false
+        while (!paginationComplete && pages < 4000) {
+            pages++
             val params = mutableListOf("symbol" to symbol, "limit" to "1000")
             if (fromId == null) {
                 params += "startTime" to startTime.toString()
@@ -404,7 +405,10 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             }
 
             val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", params)
-            if (page.length() == 0) break
+            if (page.length() == 0) {
+                paginationComplete = true
+                break
+            }
 
             var lastId = -1L
             for (i in 0 until page.length()) {
@@ -413,7 +417,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 lastId = maxOf(lastId, id)
                 val time = row.optLong("time")
                 if (time > endTime) {
-                    reachedEnd = true
+                    paginationComplete = true
                     break
                 }
                 if (time !in startTime..endTime) continue
@@ -429,9 +433,18 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 )
             }
 
-            if (reachedEnd || page.length() < 1000 || lastId < 0 ||
-                (fromId != null && lastId < fromId!!)) break
+            if (paginationComplete) break
+            if (page.length() < 1000) {
+                paginationComplete = true
+                break
+            }
+            if (lastId < 0 || (fromId != null && lastId < fromId!!)) {
+                throw IllegalStateException("Binance Spot history returned an invalid trade-ID cursor for $symbol; checkpoint was not advanced.")
+            }
             fromId = lastId + 1
+        }
+        if (!paginationComplete) {
+            throw IllegalStateException("Binance Spot history reached the 4,000-page safety limit for $symbol; incomplete history was not checkpointed and will retry.")
         }
         return output.distinctBy { it.id }.sortedBy { it.time }
     }
@@ -444,12 +457,14 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         var windowStart = startTime
         var windows = 0
         val windowSize = 7L * 24 * 60 * 60 * 1000
-        while (windowStart <= endTime && windows++ < 600) {
+        while (windowStart <= endTime && windows < 600) {
+            windows++
             val windowEnd = minOf(endTime, windowStart + windowSize - 1)
             var fromId: Long? = null
             var pages = 0
-            var reachedWindowEnd = false
-            while (!reachedWindowEnd && pages++ < 100) {
+            var windowComplete = false
+            while (!windowComplete && pages < 100) {
+                pages++
                 // Binance rejects fromId when combined with startTime/endTime. Apply the
                 // time window on the first page, then continue by trade ID alone.
                 val params = mutableListOf("symbol" to symbol, "limit" to "1000")
@@ -460,7 +475,10 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                     params += "fromId" to fromId.toString()
                 }
                 val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/userTrades", params)
-                if (page.length() == 0) break
+                if (page.length() == 0) {
+                    windowComplete = true
+                    break
+                }
                 var lastId = -1L
                 for (i in 0 until page.length()) {
                     val row = page.getJSONObject(i)
@@ -468,7 +486,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                     lastId = maxOf(lastId, id)
                     val time = row.optLong("time")
                     if (time > windowEnd) {
-                        reachedWindowEnd = true
+                        windowComplete = true
                         break
                     }
                     if (time !in windowStart..windowEnd) continue
@@ -484,11 +502,23 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                         time = time, orderId = row.optString("orderId")
                     )
                 }
-                if (reachedWindowEnd || page.length() < 1000 || lastId < 0 ||
-                    (fromId != null && lastId < fromId!!)) break
+                if (windowComplete) break
+                if (page.length() < 1000) {
+                    windowComplete = true
+                    break
+                }
+                if (lastId < 0 || (fromId != null && lastId < fromId!!)) {
+                    throw IllegalStateException("Binance Futures history returned an invalid trade-ID cursor for $symbol; checkpoint was not advanced.")
+                }
                 fromId = lastId + 1
             }
+            if (!windowComplete) {
+                throw IllegalStateException("Binance Futures history reached the 100-page safety limit for $symbol; incomplete history was not checkpointed and will retry.")
+            }
             windowStart = windowEnd + 1
+        }
+        if (windowStart <= endTime) {
+            throw IllegalStateException("Binance Futures history exceeded the 600-window safety limit for $symbol; incomplete history was not checkpointed and will retry.")
         }
         return output.distinctBy { it.id }.sortedBy { it.time }
     }

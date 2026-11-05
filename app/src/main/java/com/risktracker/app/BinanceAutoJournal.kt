@@ -10,7 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -212,11 +214,13 @@ const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 5L * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_OVERLAP_MS = 60_000L
 
-/** Incremental cursor start with a bounded recovery window and a small duplicate-safe overlap. */
+/** First-time symbols use a seven-day window; existing symbols resume from their
+ * last successful checkpoint with a small duplicate-safe overlap, even after long gaps.
+ */
 internal fun binanceSymbolSyncStart(lastSuccess: Long, end: Long): Long {
     val fallback = (end - BINANCE_SYMBOL_SYNC_LOOKBACK_MS).coerceAtLeast(0L)
     if (lastSuccess <= 0L || lastSuccess > end) return fallback
-    return maxOf(fallback, lastSuccess - BINANCE_SYMBOL_SYNC_OVERLAP_MS)
+    return (lastSuccess - BINANCE_SYMBOL_SYNC_OVERLAP_MS).coerceAtLeast(0L)
 }
 
 /**
@@ -232,8 +236,12 @@ fun shouldSyncOnOpen(lastAttemptMillis: Long, nowMillis: Long): Boolean {
 
 object BinanceAutoJournalRunner {
     private const val MAX_PARALLEL_SYMBOLS = 8
+    // A worker, app-open trigger, and manual refresh can overlap. Serialize the
+    // read/merge/checkpoint transaction so concurrent syncs cannot overwrite fills.
+    private val syncMutex = Mutex()
 
-    suspend fun sync(context: Context): Int = withContext(Dispatchers.IO) {
+    suspend fun sync(context: Context): Int = syncMutex.withLock {
+        withContext(Dispatchers.IO) {
         BinanceRestGuard.configure(context)
         val attemptedAt = System.currentTimeMillis()
         val previous = BinanceAutoJournalStore.syncStatus(context)
@@ -376,6 +384,7 @@ object BinanceAutoJournalRunner {
             windowEnd = attemptedAt
         ))
         inserted
+        }
     }
 }
 
