@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Sync
@@ -63,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -282,30 +284,46 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     tonalElevation = 0.dp,
                     shadowElevation = 1.dp
                 ) {
-                    TopAppBar(
-                        modifier = Modifier.fillMaxWidth(),
-                        windowInsets = WindowInsets(0.dp),
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            scrolledContainerColor = Color.Transparent
-                        ),
-                        title = {
-                            var currentHeaderTime by remember { mutableStateOf(Date()) }
-                            LaunchedEffect(Unit) {
-                                while (true) {
-                                    currentHeaderTime = Date()
-                                    delay(1_000)
-                                }
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+                        val stackMetadata = maxWidth < 340.dp || fontScale >= 1.25f
+                        var currentHeaderTime by remember { mutableStateOf(Date()) }
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                currentHeaderTime = Date()
+                                delay(60_000)
                             }
-                            val headerDate = remember(currentHeaderTime) {
-                                SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(currentHeaderTime)
-                            }
-                            val headerTime = remember(currentHeaderTime) {
-                                SimpleDateFormat("h:mm:ss a", Locale.getDefault()).format(currentHeaderTime)
-                            }
-                            val headerZone = remember(currentHeaderTime) {
-                                SimpleDateFormat("z", Locale.getDefault()).format(currentHeaderTime)
-                            }
+                        }
+                        val indiaTimeZone = remember {
+                            java.util.TimeZone.getTimeZone("Asia/Kolkata")
+                        }
+                        val headerTime = remember(currentHeaderTime) {
+                            SimpleDateFormat("HH:mm", Locale.ENGLISH).apply {
+                                timeZone = indiaTimeZone
+                            }.format(currentHeaderTime)
+                        }
+                        val headerDate = remember(currentHeaderTime) {
+                            SimpleDateFormat("EEE, dd MMM", Locale.ENGLISH).apply {
+                                timeZone = indiaTimeZone
+                            }.format(currentHeaderTime)
+                        }
+                        val timeAccent = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+                            Color(0xFF65CFF0)
+                        } else {
+                            Color(0xFF087EA4)
+                        }
+                        val dateAccent = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+                            Color(0xFFEBC477)
+                        } else {
+                            Color(0xFF946200)
+                        }
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -313,47 +331,92 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                             ) {
                                 Icon(
                                     imageVector = pageIcon(tab),
-                                    contentDescription = null,
+                                    contentDescription = pageTitle,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(23.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
-                                Column(
+                                Text(
+                                    text = pageTitle,
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.Center
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = timeAccent.copy(alpha = 0.12f)
                                 ) {
                                     Text(
-                                        pageTitle,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        headerDate,
+                                        text = "IST",
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
-                                    )
-                                }
-                                Column(
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        headerTime,
-                                        style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        headerZone,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
+                                        color = timeAccent
                                     )
                                 }
                             }
+                            if (stackMetadata) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = headerTime,
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = timeAccent
+                                    )
+                                    Text(
+                                        text = headerDate,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        color = dateAccent
+                                    )
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Schedule,
+                                            contentDescription = "Current time in India",
+                                            tint = timeAccent,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            text = headerTime,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = timeAccent
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DateRange,
+                                            contentDescription = "Date",
+                                            tint = dateAccent,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            text = headerDate,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Medium,
+                                            color = dateAccent
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    )
+                    }
                 }
             }
         },
