@@ -229,7 +229,7 @@ internal fun selectBinanceSymbolBatch(symbols: Collection<String>, offset: Int, 
 }
 
 /** Minimum gap between syncs started by opening a screen. Each sync makes several signed API calls. */
-const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 5L * 60 * 1000
+const val BINANCE_OPEN_SYNC_MIN_INTERVAL_MS = 15L * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
 const val BINANCE_SYMBOL_SYNC_OVERLAP_MS = 60_000L
 

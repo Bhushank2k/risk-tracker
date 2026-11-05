@@ -153,20 +153,33 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         if (BinanceCredentialStore(context).read() != null) {
-            // One-time upgrade migration: previously installed daily and statement jobs
+            // One-time upgrade migration: previously installed daily and journal jobs
             // may still have been enqueued without CONNECTED network constraints. UPDATE
             // them once after upgrading, rather than resetting periodic work on every app open.
             val schedulePrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
             if (!schedulePrefs.getBoolean("binance_connected_network_v1", false)) {
                 BinanceDailyWorker.schedule(context)
-                BinanceStatementWorker.schedule(context)
                 BinanceJournalWorker.schedule(context)
                 schedulePrefs.edit().putBoolean("binance_connected_network_v1", true).apply()
             }
-            runCatching {
-                withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
-                exchangeFills = BinanceAutoJournalStore.load(context)
-                exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+            // App startup and the analytics destination share the same throttle.
+            // This avoids duplicating a costly journal fetch when periodic work or a
+            // recent manual refresh has already completed.
+            val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
+            if (shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
+                runCatching {
+                    withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
+                    exchangeFills = BinanceAutoJournalStore.load(context)
+                    exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
+                }
+            }
+            // Statement history changes much less often than fills. Move the periodic
+            // fetch to a weekly cadence while keeping the manual "Sync statements now"
+            // action available on the Account Activity screen.
+            val statementPrefs = context.getSharedPreferences("worker_schedule_migrations_v1", android.content.Context.MODE_PRIVATE)
+            if (!statementPrefs.getBoolean("binance_statement_weekly_v2", false)) {
+                BinanceStatementWorker.schedule(context)
+                statementPrefs.edit().putBoolean("binance_statement_weekly_v2", true).apply()
             }
         }
     }

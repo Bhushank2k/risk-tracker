@@ -248,7 +248,7 @@ class BinanceStatementWorker(context: Context, params: WorkerParameters) : Corou
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
-            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(24, TimeUnit.HOURS)
+            val req = PeriodicWorkRequestBuilder<BinanceStatementWorker>(7, TimeUnit.DAYS)
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
