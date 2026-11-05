@@ -123,27 +123,31 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val scheme = if (dark) {
                 darkColorScheme(
-                    primary = Color(0xFF7DE2B8),
+                    primary = RiskTrackerDesign.accent,
                     onPrimary = Color(0xFF06271A),
-                    secondary = Color(0xFF91C9FF),
-                    background = Color(0xFF0B1110),
-                    surface = Color(0xFF111A18),
-                    surfaceVariant = Color(0xFF202B28),
+                    secondary = Color(0xFF929DAA),
+                    background = RiskTrackerDesign.canvasDark,
+                    surface = RiskTrackerDesign.surfaceDark,
+                    surfaceVariant = RiskTrackerDesign.raisedDark,
+                    outline = RiskTrackerDesign.borderDark,
+                    outlineVariant = RiskTrackerDesign.borderDark,
                     primaryContainer = Color(0xFF183D2E),
                     onPrimaryContainer = Color(0xFFD6F8E7),
-                    error = Color(0xFFFF7B78)
+                    error = RiskTrackerDesign.danger
                 )
             } else {
                 lightColorScheme(
-                    primary = Color(0xFF087F5B),
+                    primary = Color(0xFF16865D),
                     onPrimary = Color.White,
-                    secondary = Color(0xFF285F8F),
-                    background = Color(0xFFF5F8F6),
+                    secondary = Color(0xFF52616B),
+                    background = Color(0xFFF5F7F6),
                     surface = Color(0xFFFFFFFF),
-                    surfaceVariant = Color(0xFFE8EFEB),
-                    primaryContainer = Color(0xFFD6F8E7),
+                    surfaceVariant = Color(0xFFE9EFEC),
+                    outline = Color(0xFFD6DEDA),
+                    outlineVariant = Color(0xFFD6DEDA),
+                    primaryContainer = Color(0xFFDDF4E8),
                     onPrimaryContainer = Color(0xFF123D2C),
-                    error = Color(0xFFB3261E)
+                    error = Color(0xFFD34B55)
                 )
             }
             MaterialTheme(colorScheme = scheme, shapes = RiskTrackerShapes, typography = RiskTrackerTypography) {
@@ -264,10 +268,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 else -> null
             }
             TopAppBar(
-                modifier = Modifier.height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 ),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -285,7 +289,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "All destinations")
+                        Icon(Icons.Filled.Apps, contentDescription = "Explore all destinations")
                     }
                 }
             )
@@ -293,11 +297,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         bottomBar = {
             val navShape = RoundedCornerShape(24.dp)
             NavigationBar(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp).clip(navShape)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f), navShape),
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 3.dp,
+                modifier = Modifier.fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface, tonalElevation = 0.dp,
                 windowInsets = WindowInsets.navigationBars
             ) {
                 titles.forEachIndexed { i, title ->
@@ -383,13 +387,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     if (menuExpanded) {
         ModalBottomSheet(
             onDismissRequest = { menuExpanded = false },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
-                    .padding(bottom = 18.dp),
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp)
+                    .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Explore Risk Tracker", style = MaterialTheme.typography.titleLarge,
