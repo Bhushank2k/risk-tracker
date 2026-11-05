@@ -63,9 +63,18 @@ class BinanceMarkPriceStream(
     @Volatile private var socket: WebSocket? = null
     @Volatile private var stopped = false
     @Volatile private var retryDelayMs = 5_000L
+    @Volatile private var lastMessageAtMs = 0L
+    @Volatile private var staleReported = false
 
     fun start() {
         if (streams.isEmpty()) { onStatus("No open positions to subscribe to"); return }
+        scheduler.scheduleAtFixedRate({
+            val lastMessage = lastMessageAtMs
+            if (!stopped && lastMessage > 0L && System.currentTimeMillis() - lastMessage > 15_000L && !staleReported) {
+                staleReported = true
+                onStatus("Stale mark prices · no update for 15 seconds")
+            }
+        }, 5L, 5L, TimeUnit.SECONDS)
         connect()
     }
 
@@ -75,7 +84,9 @@ class BinanceMarkPriceStream(
         socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 retryDelayMs = 5_000L
-                onStatus("Live mark-price WebSocket connected")
+                lastMessageAtMs = 0L
+                staleReported = false
+                onStatus("Connected · waiting for mark-price updates")
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 runCatching {
@@ -84,7 +95,13 @@ class BinanceMarkPriceStream(
                     if (data.optString("e") != "markPriceUpdate") return
                     val symbol = data.optString("s")
                     val price = data.optString("p").toDoubleOrNull() ?: return
-                    if (symbol.isNotBlank() && price > 0.0 && price.isFinite()) onMarkPrice(symbol, price)
+                    if (symbol.isNotBlank() && price > 0.0 && price.isFinite()) {
+                        val wasWaitingOrStale = lastMessageAtMs == 0L || staleReported
+                        lastMessageAtMs = System.currentTimeMillis()
+                        staleReported = false
+                        onMarkPrice(symbol, price)
+                        if (wasWaitingOrStale) onStatus("Live mark prices updating")
+                    }
                 }
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -126,3 +143,12 @@ fun BinanceLiveTrade.withMarkPrice(markPrice: Double): BinanceLiveTrade {
 /** Extract Binance's IP ban expiry timestamp from its HTTP 418 message. */
 fun binanceBanExpiry(message: String): Long? =
     Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE).find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
+
+
+/** Applies one symbol update to the latest full position list without replacing other symbols' prices. */
+fun List<BinanceLiveTrade>.withStreamedMarkPrice(symbol: String, price: Double): List<BinanceLiveTrade> =
+    map { position ->
+        if (position.market == "USDⓈ-M Futures" && position.symbol.equals(symbol, ignoreCase = true)) {
+            position.withMarkPrice(price)
+        } else position
+    }
