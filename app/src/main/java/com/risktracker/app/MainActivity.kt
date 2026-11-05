@@ -267,24 +267,71 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
 
             TopAppBar(
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(72.dp),
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background
                 ),
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(pageIcon(tab), contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text(pageTitle, fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(40.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    pageIcon(tab),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
+                        ) {
+                            Text(
+                                "RISK TRACKER",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 1.15.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                pageTitle,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1
+                            )
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Explore all destinations")
+                    Surface(
+                        shape = RoundedCornerShape(13.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Menu,
+                                contentDescription = "Explore all destinations",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
+                    Spacer(Modifier.width(8.dp))
                 }
             )
         },
