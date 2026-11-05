@@ -43,14 +43,10 @@ fun LedgerAuditScreen() {
     } else null
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Text("Ledger audit", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "Review historical Binance Futures import coverage and totals separately from estimated journal P&L. A matching total does not prove the export is complete.",
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Text("Futures import coverage · matching totals do not prove export completeness.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { yearMenuExpanded = true }) { Text("Year: $year ▾") }
             DropdownMenu(expanded = yearMenuExpanded, onDismissRequest = { yearMenuExpanded = false }) {
