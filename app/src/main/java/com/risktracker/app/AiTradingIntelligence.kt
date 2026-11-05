@@ -241,7 +241,16 @@ fun AiTradingIntelligenceScreen(
             }
             TextButton(onClick = { showKeyDialog = true }) { Text(if (hasKey) "Update" else "Add key") }
         }
-        if (hasKey) TextButton(onClick = { keyStore.clear(); hasKey = false; report = null; reportKind = null }) {
+        if (hasKey) TextButton(onClick = {
+            keyStore.clear()
+            context.getSharedPreferences(AI_PREFS, Context.MODE_PRIVATE).edit()
+                .remove("last_report").remove("last_report_kind").remove("last_report_at").apply()
+            hasKey = false
+            report = null
+            reportKind = null
+            consent = false
+            error = null
+        }) {
             Text("Remove API key and saved AI report", color = MaterialTheme.colorScheme.error)
         }
         Text("Choose an analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
