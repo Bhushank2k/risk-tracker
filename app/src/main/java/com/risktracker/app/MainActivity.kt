@@ -611,15 +611,12 @@ fun LiveTradesScreen() {
             refresh()
         }
     }
+    val currentLiveTrades by rememberUpdatedState(liveTrades)
     DisposableEffect(streamSymbols) {
         val stream = BinanceMarkPriceStream(
             symbols = streamSymbols,
             onMarkPrice = { symbol, price ->
-                liveTrades = liveTrades.map { trade ->
-                    if (trade.market == "USDⓈ-M Futures" && trade.symbol.equals(symbol, ignoreCase = true)) {
-                        trade.withMarkPrice(price)
-                    } else trade
-                }
+                liveTrades = currentLiveTrades.withStreamedMarkPrice(symbol, price)
             },
             onStatus = {}
         )
