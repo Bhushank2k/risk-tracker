@@ -97,7 +97,9 @@ fun buildAiTradingContext(
 ): JSONObject {
     val sorted = trades.filter { it.pnl.isFinite() && it.entry.isFinite() && it.exit.isFinite() && it.quantity.isFinite() }
         .sortedBy { it.date }
-    val calendar = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    // Pin the week to Monday. Locales such as en-US start weeks on Sunday, which would move
+    // the Monday to the following day and push the weekly window into the future.
+    val calendar = Calendar.getInstance().apply { firstDayOfWeek = Calendar.MONDAY; timeInMillis = nowMillis }
     calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
     calendar.set(Calendar.HOUR_OF_DAY, 0); calendar.set(Calendar.MINUTE, 0)
     calendar.set(Calendar.SECOND, 0); calendar.set(Calendar.MILLISECOND, 0)

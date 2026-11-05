@@ -344,13 +344,14 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
             val requests = tradable.take(80).map { symbol ->
                 executor.submit<List<JSONObject>> {
                     val symbolFills = mutableListOf<JSONObject>()
-                    var cursor: Long? = null
+                    // Page upward from the first trade. Without fromId Binance returns only the
+                    // newest trades, and jumping from them would skip every older fill.
+                    var cursor = 0L
                     var more = true
                     var pages = 0
                     while (more && pages < 100) {
                         pages++
-                        val p = mutableListOf("symbol" to symbol, "limit" to "1000")
-                        if (cursor != null) p += "fromId" to cursor.toString()
+                        val p = mutableListOf("symbol" to symbol, "limit" to "1000", "fromId" to cursor.toString())
                         val page = signedGetArray("https://api.binance.com", "/api/v3/myTrades", p)
                         if (page.length() == 0) {
                             more = false
@@ -849,7 +850,9 @@ object BinanceSyncRunner {
         val api = BinanceApi(credentials.first, credentials.second)
         // Account valuation, Spot FIFO history, and Futures income history are independent.
         val (spot, futures) = coroutineScope {
-            val snapshot = async { BinanceAccountSnapshotRunner.refresh(context) }
+            // A balance-snapshot failure (for example a key without Futures read access) must not
+            // cancel the P&L history, which is the part the journal depends on.
+            val snapshot = async { runCatching { BinanceAccountSnapshotRunner.refresh(context) } }
             val spotHistory = async(Dispatchers.IO) { api.spotDailyPnl() }
             val futuresHistory = async(Dispatchers.IO) { api.futuresDailyPnl() }
             val dailySpot = spotHistory.await()

@@ -111,7 +111,7 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         conn.setRequestProperty("X-MBX-APIKEY", apiKey)
         try {
             val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
+            val body = readBinanceBody(if (status in 200..299) conn.inputStream else conn.errorStream)
             BinanceRestGuard.recordResponse(status, body, conn.getHeaderField("Retry-After"))
             if (status !in 200..299) {
                 val msg = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $status")

@@ -45,7 +45,7 @@ fun CryptoTaxReportScreen() {
     var showSpotEstimate by remember { mutableStateOf(SPOT_ESTIMATE_DEFAULT_ENABLED) }
     var selectedYear by remember {
         mutableStateOf(run {
-            val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), Locale.US)
+            val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"), Locale.US)
             val year = now.get(java.util.Calendar.YEAR)
             (if (now.get(java.util.Calendar.MONTH) >= java.util.Calendar.APRIL) year else year - 1).toString()
         })
@@ -74,7 +74,7 @@ fun CryptoTaxReportScreen() {
                 appendLine("Financial year (start year),Transactions,Exchange-reported realized P&L (INR),Fees (INR),Sell proceeds (INR),Buy value (INR),Rows missing realized P&L")
                 summaries.forEach { s -> appendLine("${s.year},${s.trades},${s.realizedPnlInr},${s.feesInr},${s.proceedsInr},${s.costBasisInr},${s.missingPnlRecords}") }
             }
-            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
+            (context.contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Could not write to the selected file.")).bufferedWriter().use { it.write(csv) }
             status = "Year-wise CSV report exported. Review missing P&L rows before relying on totals."
         } catch (e: Exception) { status = "Export failed: " + (e.message ?: "invalid INR rate") }
     }
