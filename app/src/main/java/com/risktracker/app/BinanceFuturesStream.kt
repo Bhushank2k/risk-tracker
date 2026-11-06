@@ -167,7 +167,8 @@ internal object BinanceFuturesStream {
         }
 
         // Partial-depth streams are identified by their b/a arrays, not by event type.
-        if (data.has("b") && data.has("a") && data.optJSONArray("b") != null) {
+        if ((data.optJSONArray("b") != null && data.optJSONArray("a") != null) ||
+            (data.optJSONArray("bids") != null && data.optJSONArray("asks") != null)) {
             updateDepth(symbol, data, now)
         }
     }
