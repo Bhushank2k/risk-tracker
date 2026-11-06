@@ -34,15 +34,13 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
- * One-time, silent brand intro. The dashboard remains in MainActivity and is
- * launched only after this lightweight visual sequence has completed.
+ * Silent brand intro shown on every cold app launch. The dashboard remains in
+ * MainActivity and is launched only after this lightweight visual sequence completes.
  */
 class IntroActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val preferences = getSharedPreferences("risk_tracker_onboarding", MODE_PRIVATE)
-        val alreadySeen = preferences.getBoolean("premium_intro_seen_v1", false)
         val animationsEnabled = runCatching {
             Settings.Global.getFloat(
                 contentResolver,
@@ -51,8 +49,7 @@ class IntroActivity : ComponentActivity() {
             ) > 0f
         }.getOrDefault(true)
 
-        if (alreadySeen || !animationsEnabled) {
-            preferences.edit().putBoolean("premium_intro_seen_v1", true).apply()
+        if (!animationsEnabled) {
             openDashboard()
             return
         }
@@ -62,7 +59,6 @@ class IntroActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 PremiumIntroScreen {
-                    preferences.edit().putBoolean("premium_intro_seen_v1", true).apply()
                     openDashboard()
                 }
             }
