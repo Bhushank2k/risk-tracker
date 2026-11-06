@@ -121,10 +121,21 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
+    @Volatile private var restBlockedUntilMs = 0L
+
+    private class BinanceRateLimitException(message: String) : IllegalStateException(message)
+
+    private fun ensureRestAllowed() {
+        val remaining = restBlockedUntilMs - System.currentTimeMillis()
+        if (remaining > 0L) throw BinanceRateLimitException(
+            "Binance REST is paused after a rate-limit response. Retry in about " + ((remaining / 1000L) + 1L) + "s; live WebSocket data remains preferred."
+        )
+    }
 
     fun latestPrice(symbol: String): Double? = BinanceFuturesStream.latestTicker(symbol)?.first
 
     private fun get(path: String): String {
+        ensureRestAllowed()
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.connectTimeout = 12000
         c.readTimeout = 16000
@@ -135,6 +146,13 @@ internal object BinanceMarketScanner {
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
+                if (code == 418 || code == 429) {
+                    val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
+                    val pauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
+                        ?: if (code == 418) 15L * 60_000L else 60_000L
+                    restBlockedUntilMs = maxOf(restBlockedUntilMs, System.currentTimeMillis() + pauseMs)
+                    throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+                }
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
             }
             body
@@ -224,8 +242,10 @@ internal object BinanceMarketScanner {
                 evaluate(live, h4, h1, m15, m5, micro)?.let { results.add(it) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: BinanceRateLimitException) {
+                throw e
             } catch (_: Exception) {
-                // An incomplete symbol is skipped; never fan out retries after a rate-limit response.
+                // Skip incomplete symbols; never fan out retries after a rate-limit response.
             }
             progress("WebSocket live · bootstrapped ${index + 1}/${candidates.size} pairs…")
         }
