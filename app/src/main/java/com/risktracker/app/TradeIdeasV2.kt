@@ -112,7 +112,7 @@ internal object TradeIdeasV2 {
         // Funding is expressed as a fraction (0.001 = 0.1%). Missing funding is disclosed,
         // but does not by itself invalidate otherwise complete public market data.
         val fundingOkay = funding == null || !funding.isFinite() ||
-            if (longBias) funding <= 0.001 else funding >= -0.001
+            (if (longBias) funding <= 0.001 else funding >= -0.001)
         val triggered = breakoutIndex >= 0 && retestTouched && retestHeld &&
             fiveMinuteConfirmed && retestVolume >= 1.2 &&
             notOverboughtOrOversold && notOverextended && fundingOkay
@@ -217,8 +217,8 @@ internal object TradeIdeasV2 {
             val executionConfirmed = executionBars.isNotEmpty() &&
                 retest.closeTime - executionBars.last().closeTime <= 10 * 60_000L &&
                 executionFast != null && executionSlow != null &&
-                if (long) executionBars.last().close > executionFast && executionFast > executionSlow
-                else executionBars.last().close < executionFast && executionFast < executionSlow
+                (if (long) executionBars.last().close > executionFast && executionFast > executionSlow
+                else executionBars.last().close < executionFast && executionFast < executionSlow)
             if (!touched || !held || !executionConfirmed) { i++; continue }
             val entry = retest.close
             val stop = if (long) min(retest.low, m15[i].low) - atr * 0.20
