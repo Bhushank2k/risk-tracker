@@ -122,10 +122,7 @@ internal object TradeIdeaCache {
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
 
-    fun latestPrice(symbol: String): Double? = runCatching {
-        val row = JSONObject(get("/fapi/v1/ticker/price?symbol=" + symbol))
-        row.optString("price").toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }
-    }.getOrNull()
+    fun latestPrice(symbol: String): Double? = BinanceFuturesStream.latestTicker(symbol)?.first
 
     private fun get(path: String): String {
         val c = URL(BASE + path).openConnection() as HttpURLConnection
@@ -183,49 +180,12 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    private suspend fun microstructure(symbol: String): MarketMicrostructure = coroutineScope {
-        val bookTask = async(Dispatchers.IO) {
-            runCatching { JSONObject(get("/fapi/v1/depth?symbol=$symbol&limit=20")) }.getOrNull()
-        }
-        val fundingTask = async(Dispatchers.IO) {
-            runCatching {
-                JSONObject(get("/fapi/v1/premiumIndex?symbol=$symbol"))
-                    .optString("lastFundingRate").toDoubleOrNull()
-            }.getOrNull()
-        }
-        val oiTask = async(Dispatchers.IO) {
-            runCatching {
-                val rows = JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
-                if (rows.length() < 2) null else {
-                    val old = rows.getJSONObject(0).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                    val latest = rows.getJSONObject(rows.length() - 1).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                    if (old <= 0.0) null else (latest / old - 1.0) * 100.0
-                }
-            }.getOrNull()
-        }
-        val bookData = bookTask.await()
-        val bids = bookData?.optJSONArray("bids") ?: JSONArray()
-        val asks = bookData?.optJSONArray("asks") ?: JSONArray()
-        val bid = bids.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
-        val ask = asks.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
-        val spread = if (bid > 0.0 && ask > bid) ((ask - bid) / ((ask + bid) / 2.0)) * 10_000.0 else null
-        fun notional(rows: JSONArray): Double = (0 until rows.length()).sumOf { i ->
-            val row = rows.optJSONArray(i) ?: return@sumOf 0.0
-            (row.optString(0).toDoubleOrNull() ?: 0.0) * (row.optString(1).toDoubleOrNull() ?: 0.0)
-        }
-        val bidValue = notional(bids)
-        val askValue = notional(asks)
-        val imbalance = if (bidValue + askValue <= 0.0) null else (bidValue - askValue) / (bidValue + askValue)
-        MarketMicrostructure(spread, imbalance, fundingTask.await(), oiTask.await())
-    }
-
     suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
-        progress("Loading active USDT perpetual contracts…")
+        progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
         }.map { it.optString("symbol") }.toSet()
-        progress("Ranking eligible contracts by 24-hour traded value…")
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
         val candidates = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
@@ -234,26 +194,42 @@ internal object BinanceMarketScanner {
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }
+        }.sortedByDescending { it.quoteVolume }.take(20)
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        val gate = Semaphore(4)
-        progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
-        coroutineScope {
-            candidates.map { ticker -> async {
-                gate.withPermit {
-                    runCatching {
-                        coroutineScope {
-                            val h4Task = async(Dispatchers.IO) { candles(ticker.symbol, "4h", 260) }
-                            val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 260) }
-                            val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 500) }
-                            val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 120) }
-                            val microTask = async { microstructure(ticker.symbol) }
-                            evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
-                        }
-                    }.getOrNull()
-                }
-            } }.awaitAll().filterNotNull().sortedByDescending { it.score }
+
+        // One multiplexed market socket plus one high-frequency public socket for the selected universe.
+        BinanceFuturesStream.start(candidates.map { it.symbol })
+        delay(2_000)
+        progress("WebSocket connected · warming live prices, book and funding; loading candle history for top 20 pairs…")
+        val results = mutableListOf<TradeIdea>()
+        for ((index, ticker) in candidates.withIndex()) {
+            coroutineContext.ensureActive()
+            try {
+                // Serial, paced REST bootstrap only. All ongoing prices, klines, depth and funding are streamed.
+                delay(250)
+                val h4 = candles(ticker.symbol, "4h", 260)
+                delay(250)
+                val h1 = candles(ticker.symbol, "1h", 260)
+                delay(250)
+                val m15 = candles(ticker.symbol, "15m", 500)
+                delay(250)
+                val m5 = candles(ticker.symbol, "5m", 120)
+                val micro = BinanceFuturesStream.microstructure(ticker.symbol)
+                val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
+                val live = ticker.copy(
+                    last = liveTicker?.first ?: ticker.last,
+                    quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
+                    changePct = liveTicker?.third ?: ticker.changePct
+                )
+                evaluate(live, h4, h1, m15, m5, micro)?.let { results.add(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // An incomplete symbol is skipped; never fan out retries after a rate-limit response.
+            }
+            progress("WebSocket live · bootstrapped ${index + 1}/${candidates.size} pairs…")
         }
+        results.sortedByDescending { it.score }
     }
 
     private fun evaluate(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): TradeIdea? {
