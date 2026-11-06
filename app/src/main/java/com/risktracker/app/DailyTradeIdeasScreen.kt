@@ -319,9 +319,6 @@ fun DailyTradeIdeasScreen() {
     var equityInput by remember { mutableStateOf("") }
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
-    var aiEnabled by remember { mutableStateOf(TradeIdeaAiSettings.isEnabled(context)) }
-    var aiEndpoint by remember { mutableStateOf(TradeIdeaAiSettings.endpoint(context)) }
-    var aiAccessToken by remember { mutableStateOf(TradeIdeaAiSettings.accessToken(context)) }
     val scope = rememberCoroutineScope()
     fun enableTradeAlerts() {
         TradeIdeaNotifications.setEnabled(context, true)
@@ -401,50 +398,6 @@ fun DailyTradeIdeasScreen() {
     } ?: "Not scanned yet"
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Optional AI explanations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("AI is called only when you request an explanation for an individual setup. It never changes scanner signals or price levels.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = aiEnabled, onCheckedChange = {
-                            aiEnabled = it
-                            TradeIdeaAiSettings.setEnabled(context, it)
-                        })
-                    }
-                    OutlinedTextField(
-                        value = aiEndpoint,
-                        onValueChange = { aiEndpoint = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Your AI backend URL") },
-                        placeholder = { Text("https://your-worker.workers.dev/analyze") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                    )
-                    OutlinedTextField(
-                        value = aiAccessToken,
-                        onValueChange = { aiAccessToken = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Backend access token") },
-                        supportingText = { Text("This is your backend token, not your OpenAI API key.") }
-                    )
-                    OutlinedButton(
-                        onClick = { TradeIdeaAiSettings.saveConnection(context, aiEndpoint.trim(), aiAccessToken.trim()) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Save AI connection") }
-                    Text(
-                        if (aiEnabled && aiEndpoint.startsWith("https://") && aiAccessToken.isNotBlank()) "AI explanations enabled · on-demand only"
-                        else "AI is unavailable until enabled and a valid HTTPS backend URL and token are saved.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
         item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -561,13 +514,13 @@ fun DailyTradeIdeasScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol }) { idea ->
-                TradeIdeaCard(idea, density, aiEnabled, aiEndpoint, aiAccessToken) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             items(opportunityVisible, key = { "idea_" + it.symbol }) { idea ->
-                TradeIdeaCard(idea, density, aiEnabled, aiEndpoint, aiAccessToken) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         } else if (trackedVisible.isEmpty()) {
             item {
@@ -670,19 +623,8 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
 }
 
 @Composable
-private fun TradeIdeaCard(
-    idea: TradeIdea,
-    density: String,
-    aiEnabled: Boolean,
-    aiEndpoint: String,
-    aiAccessToken: String,
-    onTrackingChanged: (String, Boolean) -> Unit
-) {
+private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (String, Boolean) -> Unit) {
     val context = LocalContext.current
-    var aiLoading by remember(idea.symbol) { mutableStateOf(false) }
-    var aiExplanation by remember(idea.symbol) { mutableStateOf<String?>(null) }
-    var aiError by remember(idea.symbol) { mutableStateOf<String?>(null) }
-    val aiScope = rememberCoroutineScope()
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     val trackedEntryKey = "entry_" + idea.symbol
     var trackedEntry by remember(idea.symbol) {
@@ -872,44 +814,6 @@ private fun TradeIdeaCard(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
-            if (aiEnabled) {
-                OutlinedButton(
-                    onClick = {
-                        if (!aiLoading) {
-                            aiLoading = true
-                            aiError = null
-                            aiScope.launch {
-                                try {
-                                    aiExplanation = withContext(Dispatchers.IO) {
-                                        TradeIdeaAiClient.analyze(context, aiEndpoint, aiAccessToken, idea)
-                                    }
-                                } catch (e: Exception) {
-                                    aiError = e.message ?: "AI analysis is unavailable. Check your backend connection."
-                                } finally {
-                                    aiLoading = false
-                                }
-                            }
-                        }
-                    },
-                    enabled = !aiLoading && aiEndpoint.startsWith("https://") && aiAccessToken.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (aiLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(7.dp))
-                    Text(if (aiLoading) "Generating explanation…" else if (aiExplanation == null) "Explain with AI" else "Refresh AI explanation")
-                }
-                aiError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                aiExplanation?.let { explanation ->
-                    RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("AI explanation · informational only", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
-                            Text(explanation, style = MaterialTheme.typography.bodySmall)
-                            Text("AI may be wrong or incomplete. Verify market data and your risk plan independently.",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
             if (density == "Expanded") HistoricalOutcomePanel(idea) else Text(historyOneLine(idea), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
