@@ -738,7 +738,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text((if (trackedEntry != null) livePrice else idea.last).usd(6), fontWeight = FontWeight.SemiBold)
+                Text(livePrice.usd(6), fontWeight = FontWeight.SemiBold)
             }
             if (density != "Compact") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -772,7 +772,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
                 ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
-                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
+                ScannerMetric("Live price source", "Binance Futures WebSocket · refreshes every 2s")
                 Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
                 LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)
