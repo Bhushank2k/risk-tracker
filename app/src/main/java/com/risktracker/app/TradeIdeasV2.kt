@@ -67,7 +67,7 @@ internal object TradeIdeasV2 {
             h1.last().close < e1_50 && e1_20 < e1_50
         if (!longBias && !shortBias) return V2TradePlan(
             "WAIT", 0, current.close, 0.0, 0.0, 0.0, false, "Higher-timeframe disagreement",
-            "BLOCK: 4H and 1H trend filters do not agree.", "Both · 15M setup / 5M execution",
+            "BLOCK: 4H and 1H trend filters do not agree.", "Both · scalp + swing",
             if (h4.last().close >= e4_200) "Bullish" else "Bearish",
             if (h1.last().close >= e1_50) "Bullish" else "Bearish",
             if (m5.last().close >= e5_9) "Bullish" else "Bearish",
@@ -180,7 +180,9 @@ internal object TradeIdeasV2 {
             val avg = history.map { it.volume }.average()
             if (!breakout || avg <= 0.0 || m15[i].volume / avg < 1.5) { i++; continue }
             val retest = m15[i + 1]
-            val atr = atr(m15.subList(0, i + 2)) ?: run { i++; continue }
+            val atrValue = atr(m15.subList(0, i + 2))
+            if (atrValue == null) { i++; continue }
+            val atr = atrValue
             val touched = if (long) retest.low <= level + atr * 0.25 else retest.high >= level - atr * 0.25
             val held = if (long) retest.close >= level && retest.close >= m15[i].close * 0.995
                 else retest.close <= level && retest.close <= m15[i].close * 1.005
