@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Public-only Binance USD-M Futures market stream.
@@ -55,6 +56,8 @@ internal object BinanceFuturesStream {
     private val candles = ConcurrentHashMap<String, JSONObject>()
     private val marketConnecting = AtomicBoolean(false)
     private val publicConnecting = AtomicBoolean(false)
+    private val marketReconnects = AtomicInteger(0)
+    private val publicReconnects = AtomicInteger(0)
     @Volatile private var marketSocket: WebSocket? = null
     @Volatile private var publicSocket: WebSocket? = null
     @Volatile private var symbols: List<String> = emptyList()
@@ -96,9 +99,11 @@ internal object BinanceFuturesStream {
                 if (isMarket) {
                     marketSocket = webSocket
                     marketConnecting.set(false)
+                    marketReconnects.set(0)
                 } else {
                     publicSocket = webSocket
                     publicConnecting.set(false)
+                    publicReconnects.set(0)
                 }
             }
 
@@ -134,9 +139,11 @@ internal object BinanceFuturesStream {
             if (publicSocket === socket) publicSocket = null
             publicConnecting.set(false)
         }
-        // Bounded reconnect cadence; never tight-loop on network errors.
+        // Exponential reconnect backoff prevents reconnect storms during outages.
+        val attempts = if (isMarket) marketReconnects.incrementAndGet() else publicReconnects.incrementAndGet()
+        val backoffMs = (1_000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
         scope.launch {
-            delay(5_000)
+            delay(backoffMs)
             if (isMarket && marketSocket == null) connectMarket()
             if (!isMarket && publicSocket == null) connectPublic()
         }
