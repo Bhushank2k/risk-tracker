@@ -51,7 +51,7 @@ internal data class TradeIdea(
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats
 )
-private data class MarketMicrostructure(
+internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
 )
 
@@ -121,13 +121,28 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
+    @Volatile private var restBlockedUntilMs = 0L
+    @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
 
-    fun latestPrice(symbol: String): Double? = runCatching {
-        val row = JSONObject(get("/fapi/v1/ticker/price?symbol=" + symbol))
-        row.optString("price").toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }
-    }.getOrNull()
+    private class BinanceRateLimitException(message: String) : IllegalStateException(message)
+
+    fun initialize(context: android.content.Context) {
+        val prefs = context.applicationContext.getSharedPreferences("binance_rest_guard_v1", android.content.Context.MODE_PRIVATE)
+        restLimitPrefs = prefs
+        restBlockedUntilMs = maxOf(restBlockedUntilMs, prefs.getLong("blocked_until", 0L))
+    }
+
+    private fun ensureRestAllowed() {
+        val remaining = restBlockedUntilMs - System.currentTimeMillis()
+        if (remaining > 0L) throw BinanceRateLimitException(
+            "Binance REST is paused after a rate-limit response. Retry in about " + ((remaining / 1000L) + 1L) + "s; live WebSocket data remains preferred."
+        )
+    }
+
+    fun latestPrice(symbol: String): Double? = BinanceFuturesStream.latestTicker(symbol)?.first
 
     private fun get(path: String): String {
+        ensureRestAllowed()
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         c.connectTimeout = 12000
         c.readTimeout = 16000
@@ -138,6 +153,19 @@ internal object BinanceMarketScanner {
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
+                if (code == 418 || code == 429) {
+                    val now = System.currentTimeMillis()
+                    val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
+                    val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
+                    val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
+                    val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
+                    val serverPauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L)
+                    val pauseMs = serverPauseMs.takeIf { it > 0L }
+                        ?: if (code == 418) 15L * 60_000L else 60_000L
+                    restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
+                    restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
+                    throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+                }
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
             }
             body
@@ -183,49 +211,12 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    private suspend fun microstructure(symbol: String): MarketMicrostructure = coroutineScope {
-        val bookTask = async(Dispatchers.IO) {
-            runCatching { JSONObject(get("/fapi/v1/depth?symbol=$symbol&limit=20")) }.getOrNull()
-        }
-        val fundingTask = async(Dispatchers.IO) {
-            runCatching {
-                JSONObject(get("/fapi/v1/premiumIndex?symbol=$symbol"))
-                    .optString("lastFundingRate").toDoubleOrNull()
-            }.getOrNull()
-        }
-        val oiTask = async(Dispatchers.IO) {
-            runCatching {
-                val rows = JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
-                if (rows.length() < 2) null else {
-                    val old = rows.getJSONObject(0).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                    val latest = rows.getJSONObject(rows.length() - 1).optString("sumOpenInterest").toDoubleOrNull() ?: 0.0
-                    if (old <= 0.0) null else (latest / old - 1.0) * 100.0
-                }
-            }.getOrNull()
-        }
-        val bookData = bookTask.await()
-        val bids = bookData?.optJSONArray("bids") ?: JSONArray()
-        val asks = bookData?.optJSONArray("asks") ?: JSONArray()
-        val bid = bids.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
-        val ask = asks.optJSONArray(0)?.optString(0)?.toDoubleOrNull() ?: 0.0
-        val spread = if (bid > 0.0 && ask > bid) ((ask - bid) / ((ask + bid) / 2.0)) * 10_000.0 else null
-        fun notional(rows: JSONArray): Double = (0 until rows.length()).sumOf { i ->
-            val row = rows.optJSONArray(i) ?: return@sumOf 0.0
-            (row.optString(0).toDoubleOrNull() ?: 0.0) * (row.optString(1).toDoubleOrNull() ?: 0.0)
-        }
-        val bidValue = notional(bids)
-        val askValue = notional(asks)
-        val imbalance = if (bidValue + askValue <= 0.0) null else (bidValue - askValue) / (bidValue + askValue)
-        MarketMicrostructure(spread, imbalance, fundingTask.await(), oiTask.await())
-    }
-
     suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
-        progress("Loading active USDT perpetual contracts…")
+        progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
         }.map { it.optString("symbol") }.toSet()
-        progress("Ranking eligible contracts by 24-hour traded value…")
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
         val candidates = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
@@ -234,26 +225,44 @@ internal object BinanceMarketScanner {
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }
+        }.sortedByDescending { it.quoteVolume }.take(20)
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-        val gate = Semaphore(4)
-        progress("Checking all " + candidates.size + " eligible liquid USDT perpetual pairs (4H, 1H, 15M, 5M, order book, funding and open interest)…")
-        coroutineScope {
-            candidates.map { ticker -> async {
-                gate.withPermit {
-                    runCatching {
-                        coroutineScope {
-                            val h4Task = async(Dispatchers.IO) { candles(ticker.symbol, "4h", 260) }
-                            val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 260) }
-                            val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 500) }
-                            val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 120) }
-                            val microTask = async { microstructure(ticker.symbol) }
-                            evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
-                        }
-                    }.getOrNull()
-                }
-            } }.awaitAll().filterNotNull().sortedByDescending { it.score }
+
+        // One multiplexed market socket plus one high-frequency public socket for the selected universe.
+        BinanceFuturesStream.start(candidates.map { it.symbol })
+        delay(2_000)
+        progress("WebSocket connected · warming live prices, book and funding; loading candle history for top 20 pairs…")
+        val results = mutableListOf<TradeIdea>()
+        for ((index, ticker) in candidates.withIndex()) {
+            coroutineContext.ensureActive()
+            try {
+                // Serial, paced REST bootstrap only. All ongoing prices, klines, depth and funding are streamed.
+                delay(250)
+                val h4 = candles(ticker.symbol, "4h", 260)
+                delay(250)
+                val h1 = candles(ticker.symbol, "1h", 260)
+                delay(250)
+                val m15 = candles(ticker.symbol, "15m", 500)
+                delay(250)
+                val m5 = candles(ticker.symbol, "5m", 120)
+                val micro = BinanceFuturesStream.microstructure(ticker.symbol)
+                val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
+                val live = ticker.copy(
+                    last = liveTicker?.first ?: ticker.last,
+                    quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
+                    changePct = liveTicker?.third ?: ticker.changePct
+                )
+                evaluate(live, h4, h1, m15, m5, micro)?.let { results.add(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: BinanceRateLimitException) {
+                throw e
+            } catch (_: Exception) {
+                // Skip incomplete symbols; never fan out retries after a rate-limit response.
+            }
+            progress("WebSocket live · bootstrapped ${index + 1}/${candidates.size} pairs…")
         }
+        results.sortedByDescending { it.score }
     }
 
     private fun evaluate(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): TradeIdea? {
@@ -343,6 +352,9 @@ fun DailyTradeIdeasScreen() {
         }
     }
     LaunchedEffect(Unit) {
+        BinanceMarketScanner.initialize(context)
+        // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
+        BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
@@ -391,6 +403,8 @@ fun DailyTradeIdeasScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(50),
@@ -620,18 +634,16 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
     var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
-    LaunchedEffect(idea.symbol, trackedEntry) {
-        if (trackedEntry != null) {
-            while (true) {
-                val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
-                if (quote != null) livePrice = quote
-                delay(15_000)
-            }
-        } else {
-            livePrice = idea.last
+    LaunchedEffect(idea.symbol) {
+        // Poll only the in-memory WebSocket cache; this loop never makes a REST request.
+        while (true) {
+            val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+            if (quote != null) livePrice = quote
+            delay(2_000)
         }
     }
-    val stage = tradeIdeaStage(idea, trackedEntry != null)
+    val liveIdea = idea.copy(last = livePrice)
+    val stage = tradeIdeaStage(liveIdea, trackedEntry != null)
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
@@ -681,7 +693,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Last price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text((if (trackedEntry != null) livePrice else idea.last).usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(livePrice.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Risk / reward", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -733,7 +745,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text((if (trackedEntry != null) livePrice else idea.last).usd(6), fontWeight = FontWeight.SemiBold)
+                Text(livePrice.usd(6), fontWeight = FontWeight.SemiBold)
             }
             if (density != "Compact") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -767,7 +779,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
                 ScannerMetric("Live P&L", "%+.2f%%".format(Locale.US, pnlPercent ?: 0.0))
-                ScannerMetric("Live price source", "Binance Futures · refreshes every 15s")
+                ScannerMetric("Live price source", "Binance Futures WebSocket · refreshes every 2s")
                 Text("Progress to target 1", style = MaterialTheme.typography.labelSmall)
                 LinearProgressIndicator(progress = { targetProgress.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Text("Progress toward stop", style = MaterialTheme.typography.labelSmall)
