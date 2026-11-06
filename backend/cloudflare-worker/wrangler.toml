@@ -1,7 +1,0 @@
-name = "risk-tracker-ai"
-main = "src/index.js"
-compatibility_date = "2025-01-01"
-workers_dev = true
-
-[vars]
-OPENAI_MODEL = "gpt-4.1-mini"
