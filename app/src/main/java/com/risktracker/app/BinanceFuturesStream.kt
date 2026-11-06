@@ -204,12 +204,12 @@ internal object BinanceFuturesStream {
     fun microstructure(symbol: String): MarketMicrostructure {
         val key = symbol.lowercase()
         val book = books[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= MAX_AGE_MS }
-            ?: return MarketMicrostructure(null, null, funding[key]?.rate)
+            ?: return MarketMicrostructure(null, null, funding[key]?.rate, null)
         val spread = ((book.ask - book.bid) / ((book.ask + book.bid) / 2.0)) * 10_000.0
         val total = book.bidNotional + book.askNotional
         val imbalance = if (total > 0.0) (book.bidNotional - book.askNotional) / total else null
         val rate = funding[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= 60_000L }?.rate
-        return MarketMicrostructure(spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate)
+        return MarketMicrostructure(spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate, null)
     }
 
     fun connectionStatus(): String = when {
