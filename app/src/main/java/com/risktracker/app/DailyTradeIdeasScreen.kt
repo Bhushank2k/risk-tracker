@@ -56,7 +56,7 @@ private data class MarketMicrostructure(
 )
 
 internal object TradeIdeaCache {
-    private const val PREFS = "market_scan_cache_v1"
+    private const val PREFS = "market_scan_cache_v2"
     private const val KEY = "latest_scan"
 
     fun load(context: android.content.Context): Pair<Long, List<TradeIdea>>? = runCatching {
@@ -243,10 +243,10 @@ internal object BinanceMarketScanner {
                 gate.withPermit {
                     runCatching {
                         coroutineScope {
-                            val h4Task = async(Dispatchers.IO) { candles(ticker.symbol, "4h", 200) }
-                            val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 200) }
-                            val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 200) }
-                            val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 90) }
+                            val h4Task = async(Dispatchers.IO) { candles(ticker.symbol, "4h", 260) }
+                            val h1Task = async(Dispatchers.IO) { candles(ticker.symbol, "1h", 260) }
+                            val m15Task = async(Dispatchers.IO) { candles(ticker.symbol, "15m", 500) }
+                            val m5Task = async(Dispatchers.IO) { candles(ticker.symbol, "5m", 120) }
                             val microTask = async { microstructure(ticker.symbol) }
                             evaluate(ticker, h4Task.await(), h1Task.await(), m15Task.await(), m5Task.await(), microTask.await())
                         }
@@ -547,7 +547,7 @@ fun DailyTradeIdeasScreen() {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Performance validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Paper-trade results are historical observations, not a forecast.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Paper-trade results are historical observations, not a forecast. Replay excludes fees, funding, slippage and exchange execution effects.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         paperStats.forEach { stat ->
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(stat.setup, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
