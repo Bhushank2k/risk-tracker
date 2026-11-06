@@ -122,8 +122,15 @@ internal object TradeIdeaCache {
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
     @Volatile private var restBlockedUntilMs = 0L
+    @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
 
     private class BinanceRateLimitException(message: String) : IllegalStateException(message)
+
+    fun initialize(context: android.content.Context) {
+        val prefs = context.applicationContext.getSharedPreferences("binance_rest_guard_v1", android.content.Context.MODE_PRIVATE)
+        restLimitPrefs = prefs
+        restBlockedUntilMs = maxOf(restBlockedUntilMs, prefs.getLong("blocked_until", 0L))
+    }
 
     private fun ensureRestAllowed() {
         val remaining = restBlockedUntilMs - System.currentTimeMillis()
@@ -151,6 +158,7 @@ internal object BinanceMarketScanner {
                     val pauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
                         ?: if (code == 418) 15L * 60_000L else 60_000L
                     restBlockedUntilMs = maxOf(restBlockedUntilMs, System.currentTimeMillis() + pauseMs)
+                    restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
                     throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
                 }
                 throw IllegalStateException("Binance HTTP " + code + ": " + message)
@@ -339,6 +347,7 @@ fun DailyTradeIdeasScreen() {
         }
     }
     LaunchedEffect(Unit) {
+        BinanceMarketScanner.initialize(context)
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
