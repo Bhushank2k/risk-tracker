@@ -7,7 +7,7 @@ import kotlin.math.min
 internal data class V2Candle(
     val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long
 )
-internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?)
+internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double? = null)
 
 internal data class V2TradePlan(
     val side: String,
@@ -33,7 +33,7 @@ internal data class V2TradePlan(
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
-    const val MAX_SPREAD_BPS = 12.0
+    const val MAX_SPREAD_BPS = 10.0
     const val MIN_SCORE = 75
     private const val MIN_QUOTE_VOLUME = 5_000_000.0
 
@@ -47,8 +47,13 @@ internal object TradeIdeasV2 {
         changePct: Double
     ): V2TradePlan? {
         if (h4.size < 200 || h1.size < 50 || m15.size < 40 || m5.size < 25) return null
+        if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return null
         val now = System.currentTimeMillis()
-        if (now - m15.last().closeTime > 30 * 60_000L || now - m5.last().closeTime > 15 * 60_000L) return null
+        // Reject stale or future-dated bars on every timeframe, not only execution frames.
+        if (!isFresh(h4.last().closeTime, now, 8 * 60 * 60_000L) ||
+            !isFresh(h1.last().closeTime, now, 2 * 60 * 60_000L) ||
+            !isFresh(m15.last().closeTime, now, 30 * 60_000L) ||
+            !isFresh(m5.last().closeTime, now, 15 * 60_000L)) return null
         if (quoteVolume < MIN_QUOTE_VOLUME || !quoteVolume.isFinite()) return null
 
         val e4_20 = ema(h4.map { it.close }, 20) ?: return null
@@ -100,7 +105,17 @@ internal object TradeIdeasV2 {
             else m5.last().close < e5_9 && e5_9 < e5_21
         val avgVolume15 = m15.dropLast(1).takeLast(20).map { it.volume }.average()
         val retestVolume = if (avgVolume15 > 0.0) current.volume / avgVolume15 else 0.0
-        val triggered = breakoutIndex >= 0 && retestTouched && retestHeld && fiveMinuteConfirmed && retestVolume >= 1.2
+        val rsi15 = rsi(m15.map { it.close }) ?: return null
+        val notOverboughtOrOversold = if (longBias) rsi15 < 78.0 else rsi15 > 22.0
+        val notOverextended = abs(current.close - retestLevel) <= atr * 0.75
+        val funding = micro.fundingRate
+        // Funding is expressed as a fraction (0.001 = 0.1%). Missing funding is disclosed,
+        // but does not by itself invalidate otherwise complete public market data.
+        val fundingOkay = funding == null || !funding.isFinite() ||
+            (if (longBias) funding <= 0.001 else funding >= -0.001)
+        val triggered = breakoutIndex >= 0 && retestTouched && retestHeld &&
+            fiveMinuteConfirmed && retestVolume >= 1.2 &&
+            notOverboughtOrOversold && notOverextended && fundingOkay
 
         val structuralStop = if (longBias) m15.takeLast(3).minOf { it.low } - atr * 0.20
             else m15.takeLast(3).maxOf { it.high } + atr * 0.20
@@ -115,10 +130,10 @@ internal object TradeIdeasV2 {
         val imbalance = micro.bookImbalance
         val liquidityOkay = spread != null && spread.isFinite() && spread in 0.0..MAX_SPREAD_BPS &&
             imbalance != null && imbalance.isFinite() && imbalance in -1.0..1.0 &&
-            (if (longBias) imbalance > -0.45 else imbalance < 0.45)
-        val trendScore = 35
-        val breakoutScore = if (breakoutIndex >= 0) 15 else 0
-        val retestScore = if (retestTouched && retestHeld) 20 else 0
+            (if (longBias) imbalance >= -0.15 else imbalance <= 0.15)
+        val trendScore = 30
+        val breakoutScore = if (breakoutIndex >= 0) 20 else 0
+        val retestScore = if (retestTouched && retestHeld) 15 else 0
         val volumeScore = if (retestVolume >= 1.5) 15 else if (retestVolume >= 1.2) 10 else 0
         val timingScore = if (fiveMinuteConfirmed) 10 else 0
         val liquidityScore = if (liquidityOkay) 10 else 0
@@ -129,18 +144,26 @@ internal object TradeIdeasV2 {
                 else "Waiting for a 15M close beyond the prior 20-bar level on at least 1.5× volume",
             if (retestTouched && retestHeld) "15M retest held the breakout level" else "Retest has not yet confirmed",
             if (fiveMinuteConfirmed) "5M EMA9/21 momentum confirms execution" else "Waiting for 5M EMA9/21 confirmation",
-            "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer"
+            "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
+            "15M RSI " + "%.1f".format(java.util.Locale.US, rsi15) +
+                (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry")
         )
-        if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates")
+        if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates (spread ≤ 10 bps)")
+        if (funding == null || !funding.isFinite()) reasons.add("Funding unavailable; no funding-based directional edge assumed")
+        else reasons.add("Funding rate " + "%+.4f%%".format(java.util.Locale.US, funding * 100.0))
         val warning = when {
             spread == null || imbalance == null -> "BLOCK: Spread or order-book depth is unavailable; missing liquidity data never passes."
-            !liquidityOkay -> "BLOCK: Spread exceeds 12 bps or order-book imbalance is outside the allowed side threshold."
+            !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
+            !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
+            !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
+            !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
             triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
             !triggered -> "Conditional only: wait for breakout, retest hold, volume and 5M confirmation."
-            else -> "Entry conditions confirmed. Manage partial exits and verify fees, funding and slippage."
+            else -> "Entry conditions confirmed. Backtest estimates are historical only; account for fees, funding and slippage."
         }
-        val finalTriggered = triggered && liquidityOkay && validGeometry && score >= MIN_SCORE
+        val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
+            notOverboughtOrOversold && notOverextended && score >= MIN_SCORE
         return V2TradePlan(
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
@@ -153,9 +176,10 @@ internal object TradeIdeasV2 {
         )
     }
 
-    /** Causal 15m historical replay; uses only candles closed at or before each decision. */
-    fun backtest(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>): TradeIdeaBacktestStats {
-        if (m15.size < 80 || h4.size < 200 || h1.size < 50) return TradeIdeaBacktestStats()
+    /** Causal 15m replay with 5m execution confirmation and a 24h maximum holding window. */
+    fun backtest(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>): TradeIdeaBacktestStats {
+        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100) return TradeIdeaBacktestStats()
+        if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
         var i = 25
         while (i < m15.lastIndex - 1) {
@@ -184,9 +208,18 @@ internal object TradeIdeasV2 {
             if (atrValue == null) { i++; continue }
             val atr = atrValue
             val touched = if (long) retest.low <= level + atr * 0.25 else retest.high >= level - atr * 0.25
-            val held = if (long) retest.close >= level && retest.close >= m15[i].close * 0.995
-                else retest.close <= level && retest.close <= m15[i].close * 1.005
-            if (!touched || !held) { i++; continue }
+            val held = if (long) retest.close >= level && retest.close >= m15[i].close
+                else retest.close <= level && retest.close <= m15[i].close
+            val executionBars = m5.filter { it.closeTime <= retest.closeTime }
+            val executionCloses = executionBars.map { it.close }
+            val executionFast = ema(executionCloses, 9)
+            val executionSlow = ema(executionCloses, 21)
+            val executionConfirmed = executionBars.isNotEmpty() &&
+                retest.closeTime - executionBars.last().closeTime <= 10 * 60_000L &&
+                executionFast != null && executionSlow != null &&
+                (if (long) executionBars.last().close > executionFast && executionFast > executionSlow
+                else executionBars.last().close < executionFast && executionFast < executionSlow)
+            if (!touched || !held || !executionConfirmed) { i++; continue }
             val entry = retest.close
             val stop = if (long) min(retest.low, m15[i].low) - atr * 0.20
                 else max(retest.high, m15[i].high) + atr * 0.20
@@ -197,7 +230,8 @@ internal object TradeIdeasV2 {
             var partial = false
             var result = -1.0
             var exitAt = -1
-            for (j in i + 2 until m15.size) {
+            val maxExit = min(i + 2 + 96, m15.size)
+            for (j in i + 2 until maxExit) {
                 val c = m15[j]
                 val stopHit = if (long) c.low <= stop else c.high >= stop
                 val t1Hit = if (long) c.high >= t1 else c.low <= t1
@@ -209,10 +243,43 @@ internal object TradeIdeasV2 {
             if (exitAt >= 0) {
                 outcomes.add(result)
                 i = exitAt + 1
+            } else if (maxExit - 1 < m15.lastIndex) {
+                // Time stop: close any remaining position after 24h instead of silently
+                // dropping unresolved trades (which biases the historical sample).
+                val finalClose = m15[maxExit - 1].close
+                val openR = (finalClose - entry) / risk * sign
+                outcomes.add(if (partial) 0.75 + openR * 0.5 else openR)
+                i = maxExit
             } else i++
         }
         return if (outcomes.isEmpty()) TradeIdeaBacktestStats()
         else TradeIdeaBacktestStats(outcomes.size, outcomes.count { it > 0.0 }, outcomes.average())
+    }
+
+    private fun validCandles(rows: List<V2Candle>): Boolean {
+        if (rows.size < 2) return false
+        var previousTime = Long.MIN_VALUE
+        return rows.all { candle ->
+            val valid = candle.high.isFinite() && candle.low.isFinite() &&
+                candle.close.isFinite() && candle.volume.isFinite() &&
+                candle.high > 0.0 && candle.low > 0.0 && candle.close > 0.0 &&
+                candle.high >= candle.low && candle.close in candle.low..candle.high &&
+                candle.volume >= 0.0 && candle.closeTime > previousTime
+            previousTime = candle.closeTime
+            valid
+        }
+    }
+
+    private fun isFresh(closeTime: Long, now: Long, maxAge: Long): Boolean =
+        closeTime <= now + 60_000L && now - closeTime <= maxAge
+
+    private fun rsi(values: List<Double>): Double? {
+        if (values.size < 15) return null
+        val changes = values.zipWithNext { a, b -> b - a }.takeLast(14)
+        val gain = changes.filter { it > 0.0 }.sum() / 14.0
+        val loss = -changes.filter { it < 0.0 }.sum() / 14.0
+        if (loss == 0.0) return if (gain == 0.0) 50.0 else 100.0
+        return (100.0 - 100.0 / (1.0 + gain / loss)).takeIf { it.isFinite() }
     }
 
     private fun ema(values: List<Double>, period: Int): Double? {
