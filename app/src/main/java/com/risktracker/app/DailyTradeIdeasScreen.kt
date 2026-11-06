@@ -348,6 +348,8 @@ fun DailyTradeIdeasScreen() {
     }
     LaunchedEffect(Unit) {
         BinanceMarketScanner.initialize(context)
+        // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
+        BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
