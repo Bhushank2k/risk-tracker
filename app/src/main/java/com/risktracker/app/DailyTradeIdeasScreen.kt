@@ -625,18 +625,16 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
     var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
-    LaunchedEffect(idea.symbol, trackedEntry) {
-        if (trackedEntry != null) {
-            while (true) {
-                val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
-                if (quote != null) livePrice = quote
-                delay(15_000)
-            }
-        } else {
-            livePrice = idea.last
+    LaunchedEffect(idea.symbol) {
+        // Poll only the in-memory WebSocket cache; this loop never makes a REST request.
+        while (true) {
+            val quote = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
+            if (quote != null) livePrice = quote
+            delay(2_000)
         }
     }
-    val stage = tradeIdeaStage(idea, trackedEntry != null)
+    val liveIdea = idea.copy(last = livePrice)
+    val stage = tradeIdeaStage(liveIdea, trackedEntry != null)
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
@@ -686,7 +684,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Last price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text((if (trackedEntry != null) livePrice else idea.last).usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(livePrice.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Risk / reward", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
