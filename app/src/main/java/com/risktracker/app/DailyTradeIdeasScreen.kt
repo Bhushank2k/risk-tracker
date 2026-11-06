@@ -365,8 +365,8 @@ fun DailyTradeIdeasScreen() {
             "Waiting" -> stage == TradeIdeaStage.WAIT_CONFIRMATION
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Do not enter" -> stage == TradeIdeaStage.DO_NOT_ENTER
-            "Scalp" -> idea.horizon == "Intraday / scalp"
-            "Swing" -> idea.horizon == "Swing bias"
+            "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
+            "Swing" -> idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> idea.side == "LONG"
             "Short" -> idea.side == "SHORT"
             else -> true
