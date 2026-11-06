@@ -8,6 +8,7 @@ Risk Tracker is a native Android companion for **honest, auditable crypto-future
 - Separate manual trade journal and Binance-imported execution/position journals.
 - Read-only Binance sync, sync health, historical CSV import, audit and recovery.
 - Per-trade analytics, daily performance insights and behavioral review.
+- Optional, manual AI explanations for individual Binance futures setups (requires a separately deployed backend; disabled by default).
 - Position sizing, leverage reference, Trade Risk Gate and loss-streak stress tests.
 - Risk alerts, saved trade plans and post-trade reviews.
 - Historical crypto transaction review and CSV/PDF reports.
@@ -37,6 +38,7 @@ Use a Binance API key with read-only permissions only. The app does not request 
 - [Binance sync, coverage and data-trust caveats](docs/binance-sync-and-coverage.md)
 - [Product roadmap and usability/reliability plan](docs/roadmap.md)
 - [Design decisions](docs/design-notes.md)
+- [Optional AI trade explanations and backend setup](docs/optional-ai-trade-analysis.md)
 - [Google Sheets sync (experimental / unsupported)](docs/sheets-sync.md)
 
 Older backup bundles remain importable. When an older bundle does not contain trade plans or review notes, importing it leaves the existing plans and reviews unchanged. Import validation, audit, and pre-import recovery behavior are retained.
