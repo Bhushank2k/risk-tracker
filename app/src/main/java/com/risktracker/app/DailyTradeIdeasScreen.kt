@@ -396,6 +396,8 @@ fun DailyTradeIdeasScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(50),
