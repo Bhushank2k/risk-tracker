@@ -154,10 +154,14 @@ internal object BinanceMarketScanner {
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
                 if (code == 418 || code == 429) {
+                    val now = System.currentTimeMillis()
                     val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
-                    val pauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
-                        ?: if (code == 418) 15L * 60_000L else 60_000L
-                    restBlockedUntilMs = maxOf(restBlockedUntilMs, System.currentTimeMillis() + pauseMs)
+                    val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
+                    val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
+                    val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
+                    val defaultPauseMs = if (code == 418) 15L * 60_000L else 60_000L
+                    val pauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L, defaultPauseMs)
+                    restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
                     restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
                     throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
                 }
