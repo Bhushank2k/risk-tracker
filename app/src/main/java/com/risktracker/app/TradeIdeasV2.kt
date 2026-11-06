@@ -130,7 +130,7 @@ internal object TradeIdeasV2 {
         val imbalance = micro.bookImbalance
         val liquidityOkay = spread != null && spread.isFinite() && spread in 0.0..MAX_SPREAD_BPS &&
             imbalance != null && imbalance.isFinite() && imbalance in -1.0..1.0 &&
-            (if (longBias) imbalance > -0.45 else imbalance < 0.45)
+            (if (longBias) imbalance >= -0.15 else imbalance <= 0.15)
         val trendScore = 30
         val breakoutScore = if (breakoutIndex >= 0) 20 else 0
         val retestScore = if (retestTouched && retestHeld) 15 else 0
