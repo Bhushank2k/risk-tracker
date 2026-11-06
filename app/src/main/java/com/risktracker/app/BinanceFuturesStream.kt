@@ -62,7 +62,6 @@ internal object BinanceFuturesStream {
     @Synchronized
     fun start(requestedSymbols: List<String>) {
         val normalized = requestedSymbols.map { it.lowercase() }.distinct().sorted()
-        if (normalized.isEmpty()) return
         if (symbols == normalized && (marketSocket != null || marketConnecting.get())) return
         symbols = normalized
         marketSocket?.close(1000, "refresh subscriptions")
@@ -75,10 +74,10 @@ internal object BinanceFuturesStream {
 
     private fun connectMarket() {
         if (!marketConnecting.compareAndSet(false, true)) return
-        val streamNames = symbols.flatMap { symbol ->
+        val streamNames = listOf("!ticker@arr") + symbols.flatMap { symbol ->
             listOf(
                 "$symbol@kline_4h", "$symbol@kline_1h", "$symbol@kline_15m",
-                "$symbol@kline_5m", "$symbol@markPrice@1s", "$symbol@ticker"
+                "$symbol@kline_5m", "$symbol@markPrice@1s"
             )
         }
         open(MARKET_URL + streamNames.joinToString("/"), isMarket = true)
@@ -86,9 +85,7 @@ internal object BinanceFuturesStream {
 
     private fun connectPublic() {
         if (!publicConnecting.compareAndSet(false, true)) return
-        val streamNames = symbols.flatMap { symbol ->
-            listOf("$symbol@bookTicker", "$symbol@depth20@100ms")
-        }
+        val streamNames = listOf("!bookTicker") + symbols.map { symbol -> "$symbol@depth20@100ms" }
         open(PUBLIC_URL + streamNames.joinToString("/"), isMarket = false)
     }
 
@@ -106,7 +103,17 @@ internal object BinanceFuturesStream {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                runCatching { consume(JSONObject(text)) }
+                runCatching {
+                    val envelope = JSONObject(text)
+                    val batch = envelope.optJSONArray("data")
+                    if (batch != null) {
+                        for (index in 0 until batch.length()) {
+                            batch.optJSONObject(index)?.let { consume(it) }
+                        }
+                    } else {
+                        consume(envelope)
+                    }
+                }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
