@@ -51,7 +51,7 @@ internal data class TradeIdea(
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats
 )
-private data class MarketMicrostructure(
+internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
 )
 
