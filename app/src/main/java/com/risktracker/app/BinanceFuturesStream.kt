@@ -88,7 +88,7 @@ internal object BinanceFuturesStream {
 
     private fun connectPublic() {
         if (!publicConnecting.compareAndSet(false, true)) return
-        val streamNames = listOf("!bookTicker") + symbols.map { symbol -> "$symbol@depth20@100ms" }
+        val streamNames = listOf("!bookTicker") + symbols.flatMap { symbol -> listOf("$symbol@bookTicker", "$symbol@depth20@100ms") }
         open(PUBLIC_URL + streamNames.joinToString("/"), isMarket = false)
     }
 
