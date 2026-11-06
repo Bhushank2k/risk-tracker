@@ -244,7 +244,7 @@ internal object BinanceMarketScanner {
                 delay(250)
                 val m15 = candles(ticker.symbol, "15m", 500)
                 delay(250)
-                val m5 = candles(ticker.symbol, "5m", 120)
+                val m5 = candles(ticker.symbol, "5m", 1500)
                 val micro = BinanceFuturesStream.microstructure(ticker.symbol)
                 val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
                 val live = ticker.copy(
@@ -884,6 +884,8 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Historical replay uses closed candles and a 24-hour time stop. It is a simplified estimate, not a live fill simulation; fees, funding payments, spread and slippage can reduce actual results.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (stats.hasUsableEstimate) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
