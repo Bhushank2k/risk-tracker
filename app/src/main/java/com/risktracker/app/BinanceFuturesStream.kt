@@ -135,7 +135,8 @@ internal object BinanceFuturesStream {
 
     private fun consume(envelope: JSONObject) {
         val data = envelope.optJSONObject("data") ?: envelope
-        val symbol = data.optString("s").lowercase()
+        val streamName = envelope.optString("stream")
+        val symbol = data.optString("s").ifBlank { streamName.substringBefore("@", "") }.lowercase()
         if (symbol.isBlank()) return
         val now = System.currentTimeMillis()
         when (data.optString("e")) {
