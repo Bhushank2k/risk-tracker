@@ -78,7 +78,7 @@ internal object BinanceFuturesStream {
         val streamNames = symbols.flatMap { symbol ->
             listOf(
                 "$symbol@kline_4h", "$symbol@kline_1h", "$symbol@kline_15m",
-                "$symbol@kline_5m", "$symbol@depth20@100ms", "$symbol@markPrice@1s"
+                "$symbol@kline_5m", "$symbol@markPrice@1s"
             )
         }
         open(MARKET_URL + streamNames.joinToString("/"), isMarket = true)
@@ -86,7 +86,9 @@ internal object BinanceFuturesStream {
 
     private fun connectPublic() {
         if (!publicConnecting.compareAndSet(false, true)) return
-        val streamNames = symbols.flatMap { symbol -> listOf("$symbol@bookTicker", "$symbol@ticker") }
+        val streamNames = symbols.flatMap { symbol ->
+            listOf("$symbol@bookTicker", "$symbol@depth20@100ms", "$symbol@ticker")
+        }
         open(PUBLIC_URL + streamNames.joinToString("/"), isMarket = false)
     }
 
