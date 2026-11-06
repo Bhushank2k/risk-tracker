@@ -271,7 +271,7 @@ internal object BinanceMarketScanner {
             h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             m.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            V2Microstructure(micro.spreadBps, micro.bookImbalance),
+            V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate),
             t.quoteVolume,
             t.changePct
         ) ?: return null
@@ -286,7 +286,8 @@ internal object BinanceMarketScanner {
         val replay = TradeIdeasV2.backtest(
             h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+            m.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
+            m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         )
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
