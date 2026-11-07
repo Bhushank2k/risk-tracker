@@ -579,22 +579,31 @@ fun DailyTradeIdeasScreen() {
     )
     val visible = rankedIdeas.filter { idea ->
         val stage = tradeIdeaStage(idea, idea.symbol in trackedSymbols)
+        val nearSetup = isWithinSetupWatchRange(idea)
         when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
-            "Wait" -> stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION
+            "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> stage == TradeIdeaStage.TRACKING
-            "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
-            "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
-            "Intraday" -> idea.horizon.contains("swing", ignoreCase = true)
-            "Long" -> idea.side == "LONG"
-            "Short" -> idea.side == "SHORT"
-            else -> true
+            "Excluded" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
+            "Scalp" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
+                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("scalp", ignoreCase = true)
+            "Intraday" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
+                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("swing", ignoreCase = true)
+            "Long" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
+                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.side == "LONG"
+            "Short" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
+                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.side == "SHORT"
+            else -> stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING ||
+                stage == TradeIdeaStage.MONITOR || (stage == TradeIdeaStage.WAIT_CONFIRMATION && nearSetup)
         }
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
     val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
     val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
-    val monitorCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) }
+    val monitorCount = modeIdeas.count { idea ->
+        tradeIdeaStage(idea, idea.symbol in trackedSymbols) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
+            isWithinSetupWatchRange(idea)
+    }
     val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
     val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
     val longCount = modeIdeas.count { it.side == "LONG" }
@@ -747,7 +756,7 @@ fun DailyTradeIdeasScreen() {
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Tracking", "Avoid", "Scalp", "Intraday", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Tracking", "Excluded", "Scalp", "Intraday", "Long", "Short").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
@@ -781,11 +790,33 @@ fun DailyTradeIdeasScreen() {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(if (ideas.isEmpty()) "No scan results yet" else if (strategyMode == "Daily Picks") "No qualifying daily picks right now" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
-                        if (ideas.isNotEmpty() && strategyMode == "Daily Picks") {
-                            Text("No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text(
+                            when {
+                                loading && ideas.isEmpty() -> "Scanning Binance markets…"
+                                error != null && ideas.isEmpty() -> "Could not complete the market scan"
+                                ideas.isEmpty() -> "No scan results yet"
+                                filter == "Excluded" -> "No excluded markets to show"
+                                filter == "Ready" -> "No READY setups right now"
+                                filter == "Wait" -> "No setups near an entry right now"
+                                strategyMode == "Daily Picks" -> "No qualifying daily picks right now"
+                                else -> "No trade setups found right now"
+                            },
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            when {
+                                loading && ideas.isEmpty() -> "The scanner is checking eligible Binance USDT perpetual markets. Results will appear when valid setups are found."
+                                error != null && ideas.isEmpty() -> "Check your connection or Binance availability, then refresh the scan."
+                                ideas.isEmpty() -> "Refresh the market scan to look for new setups."
+                                filter == "Excluded" -> "No markets currently meet the excluded status criteria."
+                                filter == "Ready" -> "No setup has a confirmed entry trigger and passed all risk checks. Keep waiting; don't force a trade."
+                                filter == "Wait" -> "No valid setup is close enough to its planned entry zone to monitor. The scanner continues checking markets."
+                                strategyMode == "Daily Picks" -> "No setup passed the existing score, proximity and risk gates. The shortlist stays empty rather than forcing a weak trade."
+                                else -> "No valid setup is currently ready or close enough to its planned entry. The scanner keeps analysing markets; try again after the next scan."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -990,6 +1021,15 @@ private fun entryTooFarFromPlan(idea: TradeIdea): Boolean {
 private fun livePriceInvalidatesPlan(idea: TradeIdea): Boolean =
     if (idea.side == "LONG") idea.last <= idea.stop else idea.last >= idea.stop
 
+/** Keep the WAIT list focused on plans close enough to matter, not every valid distant setup. */
+private fun isWithinSetupWatchRange(idea: TradeIdea): Boolean {
+    if (idea.entry <= 0.0 || !idea.last.isFinite() || idea.last <= 0.0) return false
+    val riskDistance = abs(idea.entry - idea.stop)
+    if (riskDistance <= 0.0) return false
+    val watchDistance = maxOf(idea.entry * 0.003, riskDistance * 0.50)
+    return abs(idea.last - idea.entry) <= watchDistance
+}
+
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     if (tracked) return TradeIdeaStage.TRACKING
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
@@ -1018,6 +1058,7 @@ private fun displayIdeaHorizon(horizon: String): String =
 private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
     val eligible = ideas.filter { idea ->
         idea.side in setOf("LONG", "SHORT") &&
+            (idea.entryTriggered || isWithinSetupWatchRange(idea)) &&
             idea.score >= TradeIdeasV2.MIN_SCORE &&
             tradeIdeaRiskValid(idea) &&
             !idea.warning.startsWith("BLOCK:", ignoreCase = true) &&
