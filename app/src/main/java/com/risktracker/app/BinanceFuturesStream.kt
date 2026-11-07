@@ -60,35 +60,28 @@ internal object BinanceFuturesStream {
     private val publicReconnects = AtomicInteger(0)
     @Volatile private var marketSocket: WebSocket? = null
     @Volatile private var publicSocket: WebSocket? = null
-    @Volatile private var symbols: List<String> = emptyList()
 
     @Synchronized
     fun start(requestedSymbols: List<String>) {
-        val normalized = requestedSymbols.map { it.lowercase() }.distinct().sorted()
-        if (symbols == normalized && (marketSocket != null || marketConnecting.get())) return
-        symbols = normalized
-        marketSocket?.close(1000, "refresh subscriptions")
-        publicSocket?.close(1000, "refresh subscriptions")
-        marketSocket = null
-        publicSocket = null
-        connectMarket()
-        connectPublic()
+        // Global aggregate streams cover every eligible contract without building
+        // oversized per-symbol subscription URLs or exceeding stream-count limits.
+        if (marketSocket == null && !marketConnecting.get()) connectMarket()
+        if (publicSocket == null && !publicConnecting.get()) connectPublic()
     }
 
     private fun connectMarket() {
         if (!marketConnecting.compareAndSet(false, true)) return
-        val streamNames = listOf("!ticker@arr") + symbols.flatMap { symbol ->
-            listOf(
-                "$symbol@kline_4h", "$symbol@kline_1h", "$symbol@kline_15m",
-                "$symbol@kline_5m", "$symbol@markPrice@1s"
-            )
-        }
+        // Aggregate feeds are market-wide, so coverage does not depend on a
+        // fixed symbol cap and the combined-stream URL remains small.
+        val streamNames = listOf("!ticker@arr", "!markPrice@arr@1s")
         open(MARKET_URL + streamNames.joinToString("/"), isMarket = true)
     }
 
     private fun connectPublic() {
         if (!publicConnecting.compareAndSet(false, true)) return
-        val streamNames = listOf("!bookTicker") + symbols.flatMap { symbol -> listOf("$symbol@bookTicker", "$symbol@depth20@100ms") }
+        // The all-market book ticker supplies bid/ask spread for every symbol.
+        // Per-symbol depth subscriptions are intentionally omitted for full-universe coverage.
+        val streamNames = listOf("!bookTicker")
         open(PUBLIC_URL + streamNames.joinToString("/"), isMarket = false)
     }
 

@@ -225,25 +225,25 @@ internal object BinanceMarketScanner {
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }.take(50)
+        }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // One multiplexed market socket plus one high-frequency public socket for the selected universe.
+        // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        progress("WebSocket connected · warming live prices, book and funding; loading candle history for up to 50 pairs…")
+        progress("WebSocket connected · warming all-market prices, spread and funding; loading candle history for ${candidates.size} eligible pairs…")
         val results = mutableListOf<TradeIdea>()
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
             try {
-                // Serial, paced REST bootstrap only. All ongoing prices, klines, depth and funding are streamed.
-                delay(250)
+                // Serial, paced REST candle bootstrap. Aggregate WebSockets provide live prices, spread and funding.
+                delay(750)
                 val h4 = candles(ticker.symbol, "4h", 260)
-                delay(250)
+                delay(750)
                 val h1 = candles(ticker.symbol, "1h", 260)
-                delay(250)
+                delay(750)
                 val m15 = candles(ticker.symbol, "15m", 500)
-                delay(250)
+                delay(750)
                 val m5 = candles(ticker.symbol, "5m", 1500)
                 val micro = BinanceFuturesStream.microstructure(ticker.symbol)
                 val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
@@ -344,7 +344,7 @@ fun DailyTradeIdeasScreen() {
                 showingCached = false
                 trackedSymbols = readTrackedSymbols()
                 paperStats = TradeIdeaPaperJournal.stats(context)
-                status = "Scan complete · " + freshIdeas.size + " pairs analysed."
+                status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) error = "No complete readings returned. Retry the scan."
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
