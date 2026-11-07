@@ -582,11 +582,9 @@ fun DailyTradeIdeasScreen() {
         val stage = tradeIdeaStage(idea, idea.symbol in trackedSymbols)
         when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
-            "Monitor" -> stage == TradeIdeaStage.MONITOR
-            "Waiting" -> stage == TradeIdeaStage.WAIT_CONFIRMATION
+            "Wait" -> stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION
             "Tracking" -> stage == TradeIdeaStage.TRACKING
-            "Do not enter" -> stage == TradeIdeaStage.DO_NOT_ENTER
-            "Avoid chasing" -> stage == TradeIdeaStage.AVOID_CHASING
+            "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
             "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
             "Intraday" -> idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> idea.side == "LONG"
@@ -597,8 +595,8 @@ fun DailyTradeIdeasScreen() {
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
     val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
     val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
-    val monitorCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
-    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
+    val monitorCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) }
+    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
     val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
     val longCount = modeIdeas.count { it.side == "LONG" }
     val shortCount = modeIdeas.count { it.side == "SHORT" }
@@ -647,15 +645,20 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
+            Text("READY = entry confirmed · WAIT = confirmation missing · AVOID = invalid or too extended. Review the plan before placing any trade.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ScannerStat("Ready", readyCount.toString(), Modifier.weight(1f))
-                    ScannerStat("Monitor", monitorCount.toString(), Modifier.weight(1f))
-                    ScannerStat("Tracking", trackedCount.toString(), Modifier.weight(1f))
+                    ScannerStat("READY", readyCount.toString(), Modifier.weight(1f))
+                    ScannerStat("WAIT", monitorCount.toString(), Modifier.weight(1f))
+                    ScannerStat("AVOID", blockedCount.toString(), Modifier.weight(1f))
+                    ScannerStat("TRACKING", trackedCount.toString(), Modifier.weight(1f))
                 }
             }
         }
@@ -664,7 +667,7 @@ fun DailyTradeIdeasScreen() {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Market scanner", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Find trade ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(longCount.toString() + " long · " + shortCount.toString() + " short · " + waitCount.toString() + " no direction",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -689,7 +692,7 @@ fun DailyTradeIdeasScreen() {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("READY alerts", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Qualified setup approaching planned entry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("A trade has passed its entry confirmation checks.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(checked = readyAlertsEnabled, onCheckedChange = { enabled ->
                                 if (!enabled) {
@@ -741,11 +744,11 @@ fun DailyTradeIdeasScreen() {
                     "Selected ${dailyPicks.size}/3 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} intraday. No quota is forced.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Trade decisions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Monitor", "Waiting", "Tracking", "Do not enter", "Scalp", "Intraday", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Tracking", "Avoid", "Scalp", "Intraday", "Long", "Short").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
@@ -839,12 +842,12 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 private enum class TradeIdeaStage(val title: String, val detail: String) {
-    MONITOR("Monitor setup", "Price is approaching the planned entry zone."),
-    WAIT_CONFIRMATION("Wait for confirmation", "The entry trigger has not been confirmed yet."),
-    ENTRY_CONFIRMED("Entry conditions confirmed", "The trigger is confirmed and price remains near the planned entry."),
-    AVOID_CHASING("Avoid chasing", "The trigger fired, but price has moved too far from the planned entry. Wait for a fresh retest."),
+    MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."),
+    WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."),
+    ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."),
+    AVOID_CHASING("AVOID", "Price moved too far from the planned entry. Do not chase; wait for a fresh setup."),
     TRACKING("Trade being tracked", "Live market price and progress are being monitored."),
-    DO_NOT_ENTER("Do not enter", "The setup is invalid or its risk plan failed validation.")
+    DO_NOT_ENTER("AVOID", "The setup is invalid or its risk checks failed. Do not enter.")
 }
 
 private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
@@ -1106,20 +1109,16 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     }
                 }
                 Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(idea.entry.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (idea.side == "LONG" || idea.side == "SHORT") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
+                        SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
+                        SummaryLevel("Target 1", idea.target1.usd(6), Modifier.weight(1f))
+                        SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("Last price", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(livePrice.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    }
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("Risk / reward", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "Unavailable",
-                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                    }
+                    Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
                     Text("View details")
@@ -1156,14 +1155,11 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }
             }
             if (idea.side == "LONG" || idea.side == "SHORT") {
-                EntryGuidancePanel(liveIdea)
-            }
-            if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SummaryLevel("Entry", idea.entry.usd(6), Modifier.weight(1f))
+                    SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
                     SummaryLevel("Target 1", idea.target1.usd(6), Modifier.weight(1f))
-                    SummaryLevel("Reward", "%.2fR".format(Locale.US, rewardRisk), Modifier.weight(1f))
+                    SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1244,6 +1240,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
+                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea)
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
