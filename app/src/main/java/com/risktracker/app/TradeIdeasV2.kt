@@ -179,10 +179,10 @@ internal object TradeIdeasV2 {
         val warning = when {
             spread == null || imbalance == null -> "BLOCK: Spread or order-book depth is unavailable; missing liquidity data never passes."
             !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
-            breakoutInvalidated -> "INVALIDATED: Price closed back through the breakout level; wait for a fresh setup.",
-            !btcAligned -> "BLOCK: BTC market regime is opposed to this trade direction.",
-            retestVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles.",
-            atrPct < minAtrPct -> "BLOCK: ATR% is too low; insufficient movement for this strategy.",
+            breakoutInvalidated -> "INVALIDATED: Price closed back through the breakout level; wait for a fresh setup."
+            !btcAligned -> "BLOCK: BTC market regime is opposed to this trade direction."
+            retestVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles."
+            atrPct < minAtrPct -> "BLOCK: ATR% is too low; insufficient movement for this strategy."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
             !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
