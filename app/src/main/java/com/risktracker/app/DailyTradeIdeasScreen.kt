@@ -636,6 +636,9 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                         else -> "Showing all qualifying scalp and intraday strategy results."
                     },
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!november2Mode && strategyMode == "Daily Picks") Text(
+                    "Selected ${dailyPicks.size}/3 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} intraday. No quota is forced.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -675,8 +678,12 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(if (ideas.isEmpty()) "No scan results yet" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
-                        Text(if (ideas.isEmpty()) "Refresh the market scan to load current setups." else "Try another state or timeframe filter.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (ideas.isEmpty()) "No scan results yet" else if (strategyMode == "Daily Picks") "No qualifying daily picks right now" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (ideas.isEmpty()) "Refresh the market scan to load current setups."
+                            else if (strategyMode == "Daily Picks") "No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade."
+                            else "Try another state or timeframe filter.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
