@@ -436,7 +436,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                 trackedSymbols = readTrackedSymbols()
                 paperStats = TradeIdeaPaperJournal.stats(context)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
-                if (freshIdeas.isEmpty()) error = "No complete readings returned. Retry the scan."
+                if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
                 TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
