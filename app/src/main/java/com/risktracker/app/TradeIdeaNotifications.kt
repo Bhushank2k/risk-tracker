@@ -26,9 +26,9 @@ private data class TradeIdeaAlertPlan(
     val symbol: String, val side: String, val entry: Double, val stop: Double,
     val target1: Double, val target2: Double, val setup: String, val target1Reached: Boolean = false,
     val riskDistance: Double = kotlin.math.abs(entry - stop), val bestPrice: Double = entry,
-    val horizon: String = "Scalp"
+    val horizon: String = ""
 ) {
-    val key: String get() = "$symbol|$horizon|$side"
+    val key: String get() = if (horizon.isBlank()) symbol else "$symbol|$horizon|$side"
 }
 
 object TradeIdeaNotifications {
@@ -100,7 +100,7 @@ private object TradeIdeaAlertPlanStore {
                     row.getDouble("stop"), row.getDouble("target1"), row.getDouble("target2"),
                     row.optString("setup", "Trend continuation"), row.optBoolean("target1Reached", false),
                     row.optDouble("riskDistance", kotlin.math.abs(row.getDouble("entry") - row.getDouble("stop"))),
-                    row.optDouble("bestPrice", row.getDouble("entry")), row.optString("horizon", "Scalp")
+                    row.optDouble("bestPrice", row.getDouble("entry")), row.optString("horizon", "")
                 )
                 p.key to p
             }.getOrNull()
@@ -170,7 +170,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             val currentIdeas = allIdeas.associateBy { "${it.symbol}|${it.horizon}" }
             plans.toMap().forEach { (planKey, plan) ->
                 val symbol = plan.symbol
-                val current = currentIdeas["${plan.symbol}|${plan.horizon}"]
+                val current = if (plan.horizon.isBlank()) allIdeas.firstOrNull { it.symbol == symbol }
+                    else currentIdeas["${plan.symbol}|${plan.horizon}"]
                 if (current != null && current.side != "WAIT" && current.side != plan.side) {
                     TradeIdeaNotifications.notify(
                         context, symbol, "invalid", "Setup invalidated: $symbol",
@@ -200,7 +201,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                             "Latest price ~${price}; managed stop reference ~${managedPlan.stop}. Review any real position immediately.", plan.horizon)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.stop,
                             if (managedPlan.target1Reached) "TRAILING_STOP" else "STOP", managedPlan.riskDistance)
-                        plans.remove(symbol)
+                        plans.remove(planKey)
                     }
                     target2Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
