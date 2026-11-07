@@ -450,7 +450,6 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
         BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
-        refresh()
     }
     LaunchedEffect(november2Mode) {
         while (true) {
@@ -519,7 +518,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(if (november2Mode) "November 2 rule set · 4H/1H EMA alignment, 15M VWAP and 5M entry confirmation. Advisory only." else "Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
+                Text(if (november2Mode) "November 5 Daily Scalp rules · 4H/1H/15M EMA alignment, 15M VWAP + breakout, 5M confirmation. Advisory only." else "Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -548,7 +547,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                 Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                Text("Background scans run hourly when Android permits; battery and network rules may delay them. Price alerts are not real-time guarantees.",
+                Text("Background monitoring is best-effort; opening this screen does not start a scan. Use Refresh for a manual market scan. Price alerts are not real-time guarantees.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
