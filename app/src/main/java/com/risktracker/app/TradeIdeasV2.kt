@@ -5,9 +5,9 @@ import kotlin.math.max
 import kotlin.math.min
 
 internal data class V2Candle(
-    val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long
+    val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close
 )
-internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double? = null)
+internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double? = null, val oiChangePct: Double? = null)
 
 internal data class V2TradePlan(
     val side: String,
@@ -104,14 +104,47 @@ internal object TradeIdeasV2 {
             val broke = if (longBias) setupCandles[index].close > breakoutLevel else setupCandles[index].close < breakoutLevel
             if (broke && ratio >= 1.5) breakoutIndex = index
         }
-        val retestLevel = if (breakoutIndex >= 0) {
+        val breakoutLevel = if (breakoutIndex >= 0) {
             val history = setupCandles.subList(breakoutIndex - 20, breakoutIndex)
             if (longBias) history.maxOf { it.high } else history.minOf { it.low }
         } else level
-        val retestTouched = if (longBias) current.low <= retestLevel + atr * 0.25
-            else current.high >= retestLevel - atr * 0.25
-        val retestHeld = if (longBias) current.close >= retestLevel && current.close >= previous.close
-            else current.close <= retestLevel && current.close <= previous.close
+        val setupEma20 = ema(setupCandles.map { it.close }, 20) ?: return null
+        val pullbackTouched = if (longBias) current.low <= setupEma20 + atr * 0.20 && current.low >= setupEma20 - atr * 0.60
+            else current.high >= setupEma20 - atr * 0.20 && current.high <= setupEma20 + atr * 0.60
+        val pullbackHeld = if (longBias) current.close > setupEma20 && current.close > previous.close
+            else current.close < setupEma20 && current.close < previous.close
+        val sweepHistory = setupCandles.dropLast(1).takeLast(10)
+        val sweepLevel = if (longBias) sweepHistory.minOf { it.low } else sweepHistory.maxOf { it.high }
+        val candleBody = abs(current.close - current.open).coerceAtLeast(atr * 0.02)
+        val sweptAndReclaimed = if (longBias) {
+            current.low < sweepLevel && current.close > sweepLevel && (min(current.close, current.open) - current.low) >= candleBody * 0.8
+        } else {
+            current.high > sweepLevel && current.close < sweepLevel && (current.high - max(current.close, current.open)) >= candleBody * 0.8
+        }
+        val retestLevel = when {
+            breakoutIndex >= 0 -> breakoutLevel
+            pullbackTouched -> setupEma20
+            sweptAndReclaimed -> sweepLevel
+            else -> setupEma20
+        }
+        val strategySetup = when {
+            breakoutIndex >= 0 -> "Breakout retest"
+            pullbackTouched && pullbackHeld -> "Trend pullback"
+            sweptAndReclaimed -> "Liquidity sweep reclaim"
+            else -> "Trend pullback watch"
+        }
+        val patternDetected = breakoutIndex >= 0 || (pullbackTouched && pullbackHeld) || sweptAndReclaimed
+        val retestTouched = when {
+            breakoutIndex >= 0 -> if (longBias) current.low <= retestLevel + atr * 0.25 else current.high >= retestLevel - atr * 0.25
+            pullbackTouched -> pullbackTouched
+            else -> sweptAndReclaimed
+        }
+        val retestHeld = when {
+            breakoutIndex >= 0 -> if (longBias) current.close >= retestLevel && current.close >= previous.close
+                else current.close <= retestLevel && current.close <= previous.close
+            pullbackTouched -> pullbackHeld
+            else -> sweptAndReclaimed
+        }
         val breakoutInvalidated = breakoutIndex >= 0 && setupCandles.subList(breakoutIndex + 1, setupCandles.lastIndex).any {
             if (longBias) it.close < retestLevel - atr * 0.25 else it.close > retestLevel + atr * 0.25
         }
@@ -129,8 +162,12 @@ internal object TradeIdeasV2 {
             (if (longBias) funding <= 0.001 else funding >= -0.001)
         val btcAligned = btcBias.isNullOrBlank() || btcBias == "Neutral" ||
             (if (longBias) btcBias == "Bullish" else btcBias == "Bearish")
-        val triggered = breakoutIndex >= 0 && !breakoutInvalidated && retestTouched && retestHeld &&
-            executionConfirmed && setupRelativeVolume >= 1.5 &&
+        val minRelativeVolume = if (breakoutIndex >= 0) 1.5 else 1.0
+        val oiChange = micro.oiChangePct?.takeIf { it.isFinite() }
+        val oiAligned = oiChange != null && oiChange >= 0.5 &&
+            (if (longBias) current.close >= previous.close else current.close <= previous.close)
+        val triggered = patternDetected && !breakoutInvalidated && retestTouched && retestHeld &&
+            executionConfirmed && setupRelativeVolume >= minRelativeVolume &&
             notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
 
         val structuralStop = if (longBias) setupCandles.takeLast(3).minOf { it.low } - atr * 0.20
@@ -156,16 +193,21 @@ internal object TradeIdeasV2 {
             else -> 0
         }
         val trendScore = 20
-        val breakoutScore = if (breakoutIndex >= 0 && !breakoutInvalidated) 20 else 0
+        val patternScore = if (patternDetected && !breakoutInvalidated) 20 else 0
         val retestScore = if (retestTouched && retestHeld && !breakoutInvalidated) 15 else 0
-        val volumeScore = if (setupRelativeVolume >= 1.5) 10 else 0
+        val volumeScore = when { setupRelativeVolume >= 1.5 -> 10; setupRelativeVolume >= 1.0 -> 5; else -> 0 }
         val timingScore = if (executionConfirmed) 10 else 0
-        val liquidityScore = if (liquidityOkay) 10 else 0
-        val score = (trendScore + volatilityScore + breakoutScore + retestScore + volumeScore + timingScore + liquidityScore).coerceIn(0, 100)
+        val liquidityScore = if (liquidityOkay) 5 else 0
+        val oiScore = if (oiAligned) 5 else 0
+        val score = (trendScore + volatilityScore + patternScore + retestScore + volumeScore + timingScore + liquidityScore + oiScore).coerceIn(0, 100)
         val reasons = mutableListOf(
             if (swingMode) "4H EMA20/50/200 and 1H EMA20/50 trend alignment" else "1H EMA20/50/200 trend alignment",
-            if (breakoutIndex >= 0) "${setupTf} breakout candle closed beyond the prior 20-bar level on at least 1.5× volume"
-                else "Waiting for a ${setupTf} close beyond the prior 20-bar level on at least 1.5× volume",
+            when {
+                breakoutIndex >= 0 -> "${setupTf} breakout closed beyond the prior 20-bar level on at least 1.5× volume"
+                pullbackTouched && pullbackHeld -> "${setupTf} trend pullback reclaimed EMA20 with a directional close"
+                sweptAndReclaimed -> "${setupTf} liquidity sweep reclaimed the prior 10-bar extreme"
+                else -> "Waiting for breakout, EMA20 pullback or liquidity sweep confirmation"
+            },
             if (retestTouched && retestHeld) "${setupTf} retest held the breakout level" else "Retest has not yet confirmed",
             if (executionConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
             "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
@@ -178,6 +220,8 @@ internal object TradeIdeasV2 {
         if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates (spread ≤ 10 bps)")
         if (funding == null || !funding.isFinite()) reasons.add("Funding unavailable; no funding-based directional edge assumed")
         else reasons.add("Funding rate " + "%+.4f%%".format(java.util.Locale.US, funding * 100.0))
+        if (oiChange == null) reasons.add("Open-interest confirmation unavailable; no OI score added")
+        else reasons.add("Open interest changed " + "%+.2f%%".format(java.util.Locale.US, oiChange) + (if (oiAligned) " with directional price confirmation (+5 score)" else " without directional confirmation"))
         val warning = when {
             spread == null || imbalance == null -> "BLOCK: Spread or order-book depth is unavailable; missing liquidity data never passes."
             !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
@@ -196,11 +240,11 @@ internal object TradeIdeasV2 {
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
             notOverboughtOrOversold && notOverextended && !breakoutInvalidated && btcAligned &&
-            setupRelativeVolume >= 1.5 && atrPct >= minAtrPct && score >= MIN_SCORE
+            setupRelativeVolume >= minRelativeVolume && atrPct >= minAtrPct && score >= MIN_SCORE
         return V2TradePlan(
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
-            finalTriggered, if (breakoutIndex >= 0) "Breakout retest" else "Retest watch",
+            finalTriggered, strategySetup,
             warning, strategyHorizon,
             "Bullish".takeIf { longBias } ?: "Bearish",
             "Bullish".takeIf { longBias } ?: "Bearish",
