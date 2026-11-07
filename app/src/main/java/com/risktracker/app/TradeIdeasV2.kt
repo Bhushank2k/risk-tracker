@@ -48,14 +48,16 @@ internal object TradeIdeasV2 {
         swingMode: Boolean = false,
         btcBias: String? = null
     ): V2TradePlan? {
-        if (h4.size < 200 || h1.size < 50 || m15.size < 40 || m5.size < 25) return null
+        val setupCandles = if (swingMode) h1 else m15
+        val executionCandles = if (swingMode) m15 else m5
+        if (h4.size < 200 || h1.size < 50 || setupCandles.size < 40 || executionCandles.size < 25) return null
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return null
         val now = System.currentTimeMillis()
         // Reject stale or future-dated bars on every timeframe, not only execution frames.
         if (!isFresh(h4.last().closeTime, now, 8 * 60 * 60_000L) ||
             !isFresh(h1.last().closeTime, now, 2 * 60 * 60_000L) ||
-            !isFresh(m15.last().closeTime, now, if (swingMode) 2 * 60 * 60_000L else 30 * 60_000L) ||
-            !isFresh(m5.last().closeTime, now, if (swingMode) 30 * 60_000L else 15 * 60_000L)) return null
+            !isFresh(setupCandles.last().closeTime, now, if (swingMode) 2 * 60 * 60_000L else 30 * 60_000L) ||
+            !isFresh(executionCandles.last().closeTime, now, if (swingMode) 30 * 60_000L else 15 * 60_000L)) return null
         if (quoteVolume < MIN_QUOTE_VOLUME || !quoteVolume.isFinite()) return null
 
         val e4_20 = ema(h4.map { it.close }, 20) ?: return null
@@ -63,11 +65,11 @@ internal object TradeIdeasV2 {
         val e4_200 = ema(h4.map { it.close }, 200) ?: return null
         val e1_20 = ema(h1.map { it.close }, 20) ?: return null
         val e1_50 = ema(h1.map { it.close }, 50) ?: return null
-        val e5_9 = ema(m5.map { it.close }, 9) ?: return null
-        val e5_21 = ema(m5.map { it.close }, 21) ?: return null
-        val current = m15.last()
-        val previous = m15[m15.lastIndex - 1]
-        val atr = atr(m15) ?: return null
+        val executionFast = ema(executionCandles.map { it.close }, 9) ?: return null
+        val executionSlow = ema(executionCandles.map { it.close }, 21) ?: return null
+        val current = setupCandles.last()
+        val previous = setupCandles[setupCandles.lastIndex - 1]
+        val atr = atr(setupCandles) ?: return null
         val e1_200 = ema(h1.map { it.close }, 200) ?: return null
         val longBias = if (swingMode) {
             h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
@@ -85,20 +87,20 @@ internal object TradeIdeasV2 {
             "BLOCK: trend filters do not agree.", strategyHorizon,
             if (h4.last().close >= e4_200) "Bullish" else "Bearish",
             if (h1.last().close >= e1_50) "Bullish" else "Bearish",
-            if (m5.last().close >= e5_9) "Bullish" else "Bearish",
+            if (executionCandles.last().close >= executionFast) "Bullish" else "Bearish",
             listOf(if (swingMode) "Require aligned 4H and 1H EMA trends" else "Require aligned 1H EMA20/50/200 trend")
         )
         val side = if (longBias) "LONG" else "SHORT"
         val sign = if (longBias) 1.0 else -1.0
-        val level = if (longBias) m15.dropLast(1).takeLast(20).maxOf { it.high }
+        val level = if (longBias) setupCandles.dropLast(1).takeLast(20).maxOf { it.high }
             else m15.dropLast(1).takeLast(20).minOf { it.low }
         var breakoutIndex = -1
-        val first = (m15.lastIndex - 4).coerceAtLeast(20)
+        val first = (setupCandles.lastIndex - 4).coerceAtLeast(20)
         for (index in first until m15.lastIndex) {
-            val history = m15.subList(index - 20, index)
+            val history = setupCandles.subList(index - 20, index)
             val breakoutLevel = if (longBias) history.maxOf { it.high } else history.minOf { it.low }
             val avgVolume = history.takeLast(20).map { it.volume }.average()
-            val ratio = if (avgVolume > 0.0) m15[index].volume / avgVolume else 0.0
+            val ratio = if (avgVolume > 0.0) setupCandles[index].volume / avgVolume else 0.0
             val broke = if (longBias) m15[index].close > breakoutLevel else m15[index].close < breakoutLevel
             if (broke && ratio >= 1.5) breakoutIndex = index
         }
@@ -113,11 +115,11 @@ internal object TradeIdeasV2 {
         val breakoutInvalidated = breakoutIndex >= 0 && m15.subList(breakoutIndex + 1, m15.lastIndex).any {
             if (longBias) it.close < retestLevel - atr * 0.25 else it.close > retestLevel + atr * 0.25
         }
-        val fiveMinuteConfirmed = if (longBias) m5.last().close > e5_9 && e5_9 > e5_21
-            else m5.last().close < e5_9 && e5_9 < e5_21
+        val fiveMinuteConfirmed = if (longBias) executionCandles.last().close > executionFast && executionFast > executionSlow
+            else executionCandles.last().close < executionFast && executionFast < executionSlow
         val avgVolume15 = m15.dropLast(1).takeLast(20).map { it.volume }.average()
         val retestVolume = if (avgVolume15 > 0.0) current.volume / avgVolume15 else 0.0
-        val rsi15 = rsi(m15.map { it.close }) ?: return null
+        val rsi15 = rsi(setupCandles.map { it.close }) ?: return null
         val notOverboughtOrOversold = if (longBias) rsi15 < 78.0 else rsi15 > 22.0
         val notOverextended = abs(current.close - retestLevel) <= atr * 0.75
         val funding = micro.fundingRate
@@ -131,7 +133,7 @@ internal object TradeIdeasV2 {
             fiveMinuteConfirmed && retestVolume >= 1.5 &&
             notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
 
-        val structuralStop = if (longBias) m15.takeLast(3).minOf { it.low } - atr * 0.20
+        val structuralStop = if (longBias) setupCandles.takeLast(3).minOf { it.low } - atr * 0.20
             else m15.takeLast(3).maxOf { it.high } + atr * 0.20
         val entry = if (triggered) current.close else retestLevel
         val stop = structuralStop
