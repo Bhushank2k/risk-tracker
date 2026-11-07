@@ -138,7 +138,9 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             } catch (e: Exception) {
                 scalpWarning = "Daily Scalp scan failed: " + (e.message ?: "unknown error")
             }
-            TradeIdeaScanHealthStore.succeeded(context, scalp = scalpWarning == null, warning = scalpWarning)
+            TradeIdeaScanHealthStore.succeeded(context, scalp = false)
+            if (scalpWarning == null) TradeIdeaScanHealthStore.succeeded(context, scalp = true)
+            else TradeIdeaScanHealthStore.warning(context, scalpWarning)
             val allIdeas = ideas + scalpIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
