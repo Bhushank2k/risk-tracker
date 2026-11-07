@@ -449,6 +449,12 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
+    LaunchedEffect(november2Mode) {
+        while (true) {
+            delay(60_000)
+            scanHealth = TradeIdeaScanHealthStore.load(context)
+        }
+    }
     LaunchedEffect(ideas) {
         // Keep stage counts and filters in sync with the same live WebSocket cache used by idea cards.
         while (true) {
@@ -535,7 +541,12 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                     val stamp = SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(healthTime))
                     "Last successful ${if (november2Mode) "Daily Scalp" else "market"} scan: $stamp IST · ${ageMinutes}m ago"
                 } else "No successful ${if (november2Mode) "Daily Scalp" else "market"} scan recorded yet"
-                Text(healthLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val healthAge = if (healthTime > 0L) System.currentTimeMillis() - healthTime else Long.MAX_VALUE
+                Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                Text("Background scans run hourly when Android permits; battery and network rules may delay them. Price alerts are not real-time guarantees.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
