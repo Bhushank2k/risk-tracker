@@ -44,7 +44,7 @@ import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
-private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long)
+private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
     val last: Double, val entry: Double, val stop: Double, val target1: Double, val target2: Double,
@@ -126,7 +126,7 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
-    private const val MAX_DAILY_VOLATILE_MARKETS = 20
+    private const val MAX_DAILY_VOLATILE_MARKETS = 30
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
@@ -190,7 +190,7 @@ internal object BinanceMarketScanner {
         return (0 until raw.length()).mapNotNull { i ->
             val a = raw.optJSONArray(i) ?: return@mapNotNull null
             runCatching { ScanCandle(a.getString(2).toDouble(), a.getString(3).toDouble(),
-                a.getString(4).toDouble(), a.getString(5).toDouble(), a.getLong(6)) }.getOrNull()
+                a.getString(4).toDouble(), a.getString(5).toDouble(), a.getLong(6), a.getString(1).toDouble()) }.getOrNull()
         }.filter { it.closeTime < now && it.close > 0.0 }
     }
 
@@ -290,7 +290,7 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-            .take(30)
+            .take(50)
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // ATR% and relative volume refine a compact 30-market prefilter before the final 20 are evaluated.
@@ -314,7 +314,9 @@ internal object BinanceMarketScanner {
             }
         }.awaitAll().filterNotNull()
         val candidates = ranked.sortedByDescending {
-            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) + it.volatilityPct * 0.05
+            // Blend tradable movement with liquidity so quieter but liquid setups are not crowded out.
+            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
+                it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
         }.take(MAX_DAILY_VOLATILE_MARKETS)
         if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
 
@@ -381,11 +383,11 @@ internal object BinanceMarketScanner {
     } }
 
     private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
-        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate)
+        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
         val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
         // For swing mode, the H1 candles become the setup series and M15 candles become execution.
         val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
