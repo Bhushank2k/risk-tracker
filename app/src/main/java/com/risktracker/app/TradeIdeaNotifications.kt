@@ -157,9 +157,9 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
                 plans[strategyKey] = TradeIdeaAlertPlan(
                     idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup,
-                    horizon = idea.horizon
+                    horizon = idea.horizon + "|" + idea.setup
                 )
-                TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop)
+                TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop, strategyKey)
                 TradeIdeaNotifications.notify(
                     context, idea.symbol, "entry", "${idea.side} setup confirmed: ${idea.symbol}",
                     "Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed.",
@@ -176,9 +176,9 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     TradeIdeaNotifications.notify(
                         context, symbol, "invalid", "Setup invalidated: $symbol",
                         "Multi-timeframe direction no longer agrees with the original ${plan.side} setup (${plan.horizon}). Reassess manually; no order was changed.",
-                        plan.horizon
+                        plan.horizon + "|" + plan.setup
                     )
-                    TradeIdeaPaperJournal.recordExit(context, symbol, current.last, "INVALIDATED", plan.riskDistance)
+                    TradeIdeaPaperJournal.recordExit(context, symbol, current.last, "INVALIDATED", plan.riskDistance, if (plan.horizon.isBlank()) "" else planKey)
                     plans.remove(planKey)
                     return@forEach
                 }
@@ -198,19 +198,19 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     stopHit -> {
                         val stopLabel = if (managedPlan.target1Reached) "Breakeven/trailing stop reached" else "Initial stop reached"
                         TradeIdeaNotifications.notify(context, symbol, "stop", "$stopLabel: $symbol",
-                            "Latest price ~${price}; managed stop reference ~${managedPlan.stop}. Review any real position immediately.", plan.horizon)
+                            "Latest price ~${price}; managed stop reference ~${managedPlan.stop}. Review any real position immediately.", plan.horizon + "|" + plan.setup)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.stop,
-                            if (managedPlan.target1Reached) "TRAILING_STOP" else "STOP", managedPlan.riskDistance)
+                            if (managedPlan.target1Reached) "TRAILING_STOP" else "STOP", managedPlan.riskDistance, if (plan.horizon.isBlank()) "" else planKey)
                         plans.remove(planKey)
                     }
                     target2Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
                             "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.", plan.horizon)
-                        TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.target2, "TARGET2", managedPlan.riskDistance)
-                        plans.remove(symbol)
+                        TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.target2, "TARGET2", managedPlan.riskDistance, if (plan.horizon.isBlank()) "" else planKey)
+                        plans.remove(planKey)
                     }
                     !managedPlan.target1Reached && target1Hit -> {
-                        TradeIdeaPaperJournal.recordPartial(context, symbol)
+                        TradeIdeaPaperJournal.recordPartial(context, symbol, strategyKey = if (plan.horizon.isBlank()) "" else planKey)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
                             "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon)
                         plans[planKey] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
