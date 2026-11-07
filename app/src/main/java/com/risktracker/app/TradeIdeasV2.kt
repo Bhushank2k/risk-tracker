@@ -121,28 +121,29 @@ internal object TradeIdeasV2 {
         } else {
             current.high > sweepLevel && current.close < sweepLevel && (current.high - max(current.close, current.open)) >= candleBody * 0.8
         }
+        val pullbackConfirmed = pullbackTouched && pullbackHeld
         val retestLevel = when {
             breakoutIndex >= 0 -> breakoutLevel
-            pullbackTouched -> setupEma20
+            pullbackConfirmed -> setupEma20
             sweptAndReclaimed -> sweepLevel
             else -> setupEma20
         }
         val strategySetup = when {
             breakoutIndex >= 0 -> "Breakout retest"
-            pullbackTouched && pullbackHeld -> "Trend pullback"
+            pullbackConfirmed -> "Trend pullback"
             sweptAndReclaimed -> "Liquidity sweep reclaim"
             else -> "Trend pullback watch"
         }
-        val patternDetected = breakoutIndex >= 0 || (pullbackTouched && pullbackHeld) || sweptAndReclaimed
+        val patternDetected = breakoutIndex >= 0 || pullbackConfirmed || sweptAndReclaimed
         val retestTouched = when {
             breakoutIndex >= 0 -> if (longBias) current.low <= retestLevel + atr * 0.25 else current.high >= retestLevel - atr * 0.25
-            pullbackTouched -> pullbackTouched
+            pullbackConfirmed -> pullbackTouched
             else -> sweptAndReclaimed
         }
         val retestHeld = when {
             breakoutIndex >= 0 -> if (longBias) current.close >= retestLevel && current.close >= previous.close
                 else current.close <= retestLevel && current.close <= previous.close
-            pullbackTouched -> pullbackHeld
+            pullbackConfirmed -> pullbackHeld
             else -> sweptAndReclaimed
         }
         val breakoutInvalidated = breakoutIndex >= 0 && setupCandles.subList(breakoutIndex + 1, setupCandles.lastIndex).any {
@@ -204,7 +205,7 @@ internal object TradeIdeasV2 {
             if (swingMode) "4H EMA20/50/200 and 1H EMA20/50 trend alignment" else "1H EMA20/50/200 trend alignment",
             when {
                 breakoutIndex >= 0 -> "${setupTf} breakout closed beyond the prior 20-bar level on at least 1.5× volume"
-                pullbackTouched && pullbackHeld -> "${setupTf} trend pullback reclaimed EMA20 with a directional close"
+                pullbackConfirmed -> "${setupTf} trend pullback reclaimed EMA20 with a directional close"
                 sweptAndReclaimed -> "${setupTf} liquidity sweep reclaimed the prior 10-bar extreme"
                 else -> "Waiting for breakout, EMA20 pullback or liquidity sweep confirmation"
             },
