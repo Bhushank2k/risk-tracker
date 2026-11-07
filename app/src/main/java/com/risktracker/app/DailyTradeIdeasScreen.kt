@@ -727,11 +727,10 @@ fun DailyTradeIdeasScreen() {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(if (ideas.isEmpty()) "No scan results yet" else if (strategyMode == "Daily Picks") "No qualifying daily picks right now" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (ideas.isEmpty()) ""
-                            else if (strategyMode == "Daily Picks") "No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade."
-                            else "",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (ideas.isNotEmpty() && strategyMode == "Daily Picks") {
+                            Text("No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
