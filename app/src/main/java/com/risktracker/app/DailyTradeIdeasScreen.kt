@@ -399,7 +399,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    var strategyMode by remember(november2Mode) { mutableStateOf(if (november2Mode) "Scalping" else "Both") }
+    var strategyMode by remember(november2Mode) { mutableStateOf(if (november2Mode) "Scalping" else "Daily Picks") }
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
@@ -470,11 +470,15 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         }
     }
     val liveIdeas = ideas.map { idea -> idea.copy(last = livePrices[idea.symbol] ?: idea.last) }
-    val modeIdeas = liveIdeas.filter { idea ->
-        strategyMode == "Both" ||
+    val allModeIdeas = liveIdeas.filter { idea ->
+        strategyMode == "All" || strategyMode == "Daily Picks" ||
             (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
-            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
+            (strategyMode == "Intraday" && idea.horizon.contains("Swing", ignoreCase = true))
     }
+    val dailyPicks = selectDailyPicks(allModeIdeas)
+    val modeIdeas = if (strategyMode == "Daily Picks") {
+        (dailyPicks + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
+    } else allModeIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols)) {
@@ -495,7 +499,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Do not enter" -> stage == TradeIdeaStage.DO_NOT_ENTER
             "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
-            "Swing" -> idea.horizon.contains("swing", ignoreCase = true)
+            "Intraday" -> idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> idea.side == "LONG"
             "Short" -> idea.side == "SHORT"
             else -> true
@@ -619,24 +623,28 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!november2Mode) Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (!november2Mode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Scalping", "Swing", "Both").forEach { mode ->
+                    listOf("Daily Picks", "Scalping", "Intraday", "All").forEach { mode ->
                         FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
                             label = { Text(mode) })
                     }
                 }
                 if (!november2Mode) Text(
                     when (strategyMode) {
+                        "Daily Picks" -> "Up to 2 scalp setups (M15/M5) + 1 intraday setup (H1/M15), ranked by quality. Fewer may qualify."
                         "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
-                        "Swing" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
-                        else -> "Showing both independent strategies. Switch modes to focus the results."
+                        "Intraday" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
+                        else -> "Showing all qualifying scalp and intraday strategy results."
                     },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!november2Mode && strategyMode == "Daily Picks") Text(
+                    "Selected ${dailyPicks.size}/3 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} intraday. No quota is forced.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Monitor", "Waiting", "Tracking", "Do not enter", "Scalp", "Swing", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Monitor", "Waiting", "Tracking", "Do not enter", "Scalp", "Intraday", "Long", "Short").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
@@ -670,8 +678,12 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(if (ideas.isEmpty()) "No scan results yet" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
-                        Text(if (ideas.isEmpty()) "Refresh the market scan to load current setups." else "Try another state or timeframe filter.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (ideas.isEmpty()) "No scan results yet" else if (strategyMode == "Daily Picks") "No qualifying daily picks right now" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (ideas.isEmpty()) "Refresh the market scan to load current setups."
+                            else if (strategyMode == "Daily Picks") "No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade."
+                            else "Try another state or timeframe filter.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -766,6 +778,49 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
 }
 
+private fun displayIdeaHorizon(horizon: String): String =
+    horizon.replace("Swing · H1 setup", "Intraday · H1 setup")
+
+/**
+ * A daily shortlist is a target, not a quota: only directional, risk-valid ideas
+ * scoring at least 75 are eligible. Prefer confirmed triggers, then stronger
+ * scores/volume/liquidity. Keep symbols unique and cap one direction at two picks.
+ */
+private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
+    val eligible = ideas.filter { idea ->
+        idea.side in setOf("LONG", "SHORT") &&
+            idea.score >= TradeIdeasV2.MIN_SCORE &&
+            tradeIdeaRiskValid(idea) &&
+            !idea.warning.startsWith("BLOCK:", ignoreCase = true)
+    }.sortedWith(
+        compareByDescending<TradeIdea> { it.entryTriggered }
+            .thenByDescending { it.score }
+            .thenByDescending { it.volumeRatio }
+            .thenBy { it.spreadBps ?: Double.POSITIVE_INFINITY }
+            .thenBy { abs(it.last - it.entry) / it.entry.coerceAtLeast(0.00000001) }
+    )
+
+    val selected = mutableListOf<TradeIdea>()
+    val usedSymbols = mutableSetOf<String>()
+    val directionCounts = mutableMapOf("LONG" to 0, "SHORT" to 0)
+
+    fun addBest(horizon: String, limit: Int) {
+        eligible.asSequence()
+            .filter { it.horizon.contains(horizon, ignoreCase = true) }
+            .filter { it.symbol !in usedSymbols && (directionCounts[it.side] ?: 0) < 2 }
+            .take(limit)
+            .forEach { idea ->
+                selected += idea
+                usedSymbols += idea.symbol
+                directionCounts[idea.side] = (directionCounts[idea.side] ?: 0) + 1
+            }
+    }
+
+    addBest("Scalp", 2)
+    addBest("Swing", 1) // Existing H1 setup / M15 execution strategy is presented as Intraday.
+    return selected
+}
+
 @Composable
 private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (String, Boolean) -> Unit) {
     val context = LocalContext.current
@@ -822,7 +877,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(idea.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(idea.horizon + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
@@ -854,7 +909,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(idea.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(idea.horizon + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
