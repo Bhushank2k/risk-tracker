@@ -189,7 +189,8 @@ internal object TradeIdeasV2 {
             !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
             triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
             !triggered -> "Conditional only: wait for breakout, retest hold, volume and $executionTf confirmation."
-            else -> "Entry conditions confirmed. Backtest estimates are historical only; account for fees, funding and slippage."
+            else -> (if (score >= 85) "HIGH QUALITY: Entry conditions confirmed. " else "VALID SETUP: Entry conditions confirmed. ") +
+                "Backtest estimates are historical only; account for fees, funding and slippage."
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
             notOverboughtOrOversold && notOverextended && !breakoutInvalidated && btcAligned &&
