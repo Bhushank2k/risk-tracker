@@ -27,8 +27,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -124,6 +126,7 @@ internal object TradeIdeaCache {
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
     private const val MAX_DAILY_VOLATILE_MARKETS = 30
+    private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
 
@@ -238,7 +241,7 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    suspend fun scan(november2Mode: Boolean = false, progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
+    suspend fun scan(november2Mode: Boolean = false, progress: (String) -> Unit): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
         progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -337,7 +340,7 @@ internal object BinanceMarketScanner {
             progress("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
         }
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
-    }
+    } }
 
     private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
