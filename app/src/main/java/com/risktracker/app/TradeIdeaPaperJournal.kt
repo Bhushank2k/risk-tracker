@@ -33,7 +33,7 @@ internal object TradeIdeaPaperJournal {
         val rows = history(context)
         if ((0 until rows.length()).any { i ->
                 val row = rows.optJSONObject(i)
-                row?.optString("symbol") == symbol && row.optString("strategyKey", "") == strategyKey && !row.has("closedAt")
+                row?.optString("symbol") == symbol && row?.optString("strategyKey", "") == strategyKey && row?.has("closedAt") == false
             }) return
         rows.put(JSONObject().put("symbol", symbol).put("setup", setup).put("side", side)
             .put("strategyKey", strategyKey).put("entry", entry).put("stop", stop).put("openedAt", System.currentTimeMillis()))
