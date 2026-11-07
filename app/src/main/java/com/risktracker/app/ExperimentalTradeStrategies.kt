@@ -15,7 +15,8 @@ internal object ExperimentalTradeStrategies {
         m15: List<V2Candle>,
         m5: List<V2Candle>,
         micro: V2Microstructure,
-        btcBias: String?
+        btcBias: String?,
+        btc4h: List<V2Candle>
     ): List<V2TradePlan> {
         if (h4.size < 30 || h1.size < 50 || m15.size < 30 || m5.size < 30) return emptyList()
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return emptyList()
@@ -31,7 +32,7 @@ internal object ExperimentalTradeStrategies {
         if (priorVwap != null && currentVwap != null && h1Fast != null && h1Slow != null) {
             val longTrend = h1.last().close > h1Fast && h1Fast > h1Slow
             val shortTrend = h1.last().close < h1Fast && h1Fast < h1Slow
-            when {
+            val vwapPlan = when {
                 prior5.close <= priorVwap && current5.close > currentVwap && longTrend ->
                     makePlan("VWAP reclaim", "Scalp · M5 VWAP reclaim", "LONG", m5, m5, currentVwap,
                         micro, "5m close reclaimed its rolling 20-bar VWAP; 1h trend agrees",
@@ -40,7 +41,9 @@ internal object ExperimentalTradeStrategies {
                     makePlan("VWAP rejection", "Scalp · M5 VWAP rejection", "SHORT", m5, m5, currentVwap,
                         micro, "5m close lost its rolling 20-bar VWAP; 1h trend agrees",
                         btcBias, minVolume = 1.0)
-            }?.let { plans.add(it) }
+                else -> null
+            }
+            vwapPlan?.let { plans.add(it) }
         }
 
         // 5m volatility expansion: compressed prior range followed by a volume-backed close outside it.
@@ -106,7 +109,7 @@ internal object ExperimentalTradeStrategies {
             val avgVol = range4.map { it.volume }.average()
             val ratio = if (avgVol > 0.0) current4.volume / avgVol else 0.0
             val coinReturn = pctReturn(h4, 6)
-            val btcReturn = pctReturn(h4, 6) // replaced by BTC-relative qualifier below when benchmark candles are available
+            val btcReturn = pctReturn(btc4h, 6)
             when {
                 current4.close > top && ratio >= 1.5 && e4Long &&
                     h1.last().close > h1Fast && h1Fast > h1Slow ->
@@ -186,11 +189,17 @@ internal object ExperimentalTradeStrategies {
         val volatilityOkay = atrPct in 0.03..4.0
         val oiAligned = micro.oiChangePct != null && micro.oiChangePct >= 0.5 &&
             (if (side == "LONG") current.close >= previous.close else current.close <= previous.close)
-        val score = (20 + if (volumeRatio >= minVolume) 15 else 0 +
-            if (executionConfirmed) 15 else 0 + if (trendConfirmed) 15 else 0 +
-            if (liquidity) 10 else 0 + if (fundingOkay) 5 else 0 +
-            if (volatilityOkay) 10 else 0 + if (oiAligned) 5 else 0 +
-            if (notExtended && momentumOkay && geometry) 5 else 0).coerceIn(0, 100)
+        val score = listOf(
+            20,
+            if (volumeRatio >= minVolume) 15 else 0,
+            if (executionConfirmed) 15 else 0,
+            if (trendConfirmed) 15 else 0,
+            if (liquidity) 10 else 0,
+            if (fundingOkay) 5 else 0,
+            if (volatilityOkay) 10 else 0,
+            if (oiAligned) 5 else 0,
+            if (notExtended && momentumOkay && geometry) 5 else 0
+        ).sum().coerceIn(0, 100)
         val triggered = geometry && liquidity && fundingOkay && notExtended && momentumOkay &&
             volatilityOkay && volumeRatio >= minVolume && executionConfirmed && trendConfirmed && score >= TradeIdeasV2.MIN_SCORE
         val warning = when {

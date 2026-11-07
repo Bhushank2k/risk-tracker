@@ -378,7 +378,7 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias)
+                val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias, btcH4)
                 if (marketIdeas.isEmpty()) marketsWithoutPlans++ else marketsWithPlans++
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
@@ -406,7 +406,7 @@ internal object BinanceMarketScanner {
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
-    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
+    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
@@ -419,7 +419,8 @@ internal object BinanceMarketScanner {
             scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
             swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
         )
-        val experimentalPlans = ExperimentalTradeStrategies.evaluate(four, one, fifteen, five, market, btcBias)
+        val btcFour = btcH4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val experimentalPlans = ExperimentalTradeStrategies.evaluate(four, one, fifteen, five, market, btcBias, btcFour)
         val experimentalIdeas = experimentalPlans.map { plan ->
             val isScalp = plan.horizon.contains("Scalp", ignoreCase = true)
             val isSwing = plan.horizon.contains("Swing", ignoreCase = true)
