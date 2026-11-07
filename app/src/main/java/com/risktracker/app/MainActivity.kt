@@ -220,7 +220,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Post-trade reviews" to 14
         ),
         "PERFORMANCE" to listOf(
-            "P&L Calendar" to 23
+            "P&L Calendar" to 23,
+            "Scanner Performance Lab" to 25
         ),
         "IDEAS & RISK TOOLS" to listOf(
             "Daily Trade Ideas" to 21,
@@ -269,6 +270,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
                 24 -> "Daily discipline"
+                25 -> "Strategy Performance Lab"
                 else -> "More"
             }
 
@@ -484,6 +486,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     maxDailyLoss = store.maxDailyLoss,
                     onNavigate = { tab = it }
                 )
+                25 -> ScannerPerformanceLabScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
