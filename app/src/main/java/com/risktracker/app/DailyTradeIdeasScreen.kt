@@ -84,7 +84,7 @@ internal object TradeIdeaCache {
                 volatilityPct = x.optDouble("volatilityPct", 0.0)
             )
         }
-        if (timestamp <= 0L || ideas.isEmpty()) null else timestamp to ideas
+        if (timestamp <= 0L) null else timestamp to ideas
     }.getOrNull()
 
     fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>, november2Mode: Boolean = false) {
@@ -393,6 +393,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
     var status by remember { mutableStateOf(if (cachedScan != null) "Showing saved scan while fresh Binance data loads…" else "Refresh to scan live Binance USDT-M perpetual markets.") }
     var error by remember { mutableStateOf<String?>(null) }
     var updatedAt by remember { mutableStateOf(cachedScan?.first) }
+    var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
     var strategyMode by remember(november2Mode) { mutableStateOf(if (november2Mode) "Scalping" else "Both") }
@@ -417,11 +418,15 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         loading = true
         error = null
         status = if (november2Mode) "Loading November 2 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
+        TradeIdeaScanHealthStore.started(context)
+        scanHealth = TradeIdeaScanHealthStore.load(context)
         scope.launch {
             try {
                 val freshIdeas = BinanceMarketScanner.scan(november2Mode) { status = it }
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas, november2Mode) }
+                TradeIdeaScanHealthStore.succeeded(context, scalp = november2Mode, at = scanTime)
+                scanHealth = TradeIdeaScanHealthStore.load(context)
                 ideas = freshIdeas
                 updatedAt = scanTime
                 showingCached = false
@@ -431,6 +436,8 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                 if (freshIdeas.isEmpty()) error = "No complete readings returned. Retry the scan."
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
+                TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
+                scanHealth = TradeIdeaScanHealthStore.load(context)
                 status = "Scan could not be completed."
             } finally { loading = false }
         }
@@ -522,6 +529,14 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                     }
                     Text(timeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                val healthTime = if (november2Mode) scanHealth.lastScalpSuccessAt else scanHealth.lastSuccessAt
+                val healthLabel = if (healthTime > 0L) {
+                    val ageMinutes = ((System.currentTimeMillis() - healthTime).coerceAtLeast(0L) / 60_000L)
+                    val stamp = SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(healthTime))
+                    "Last successful ${if (november2Mode) "Daily Scalp" else "market"} scan: $stamp IST · ${ageMinutes}m ago"
+                } else "No successful ${if (november2Mode) "Daily Scalp" else "market"} scan recorded yet"
+                Text(healthLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 else if (showingCached) Text("Showing the last saved scan while fresh market data is unavailable.",
