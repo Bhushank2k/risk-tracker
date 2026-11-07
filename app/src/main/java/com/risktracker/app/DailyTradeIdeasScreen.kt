@@ -605,14 +605,14 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!november2Mode) Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (!november2Mode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Daily Picks", "Scalping", "Intraday", "All").forEach { mode ->
                         FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
                             label = { Text(mode) })
                     }
                 }
-                if (!november2Mode) Text(
+                Text(
                     when (strategyMode) {
                         "Daily Picks" -> "Up to 2 scalp setups (M15/M5) + 1 intraday setup (H1/M15), ranked by quality. Fewer may qualify."
                         "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
