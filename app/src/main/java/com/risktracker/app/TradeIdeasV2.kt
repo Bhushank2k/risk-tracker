@@ -76,17 +76,17 @@ internal object TradeIdeasV2 {
             h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
                 h1.last().close < e1_50 && e1_20 < e1_50
         } else h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
+        val setupTf = if (swingMode) "1H" else "15M"
+        val executionTf = if (swingMode) "15M" else "5M"
+        val strategyHorizon = if (swingMode) "Swing · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"
         if (!longBias && !shortBias) return V2TradePlan(
             "WAIT", 0, current.close, 0.0, 0.0, 0.0, false, "Higher-timeframe disagreement",
-            "BLOCK: 4H and 1H trend filters do not agree.", "if (swingMode) "Swing · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"",
+            "BLOCK: trend filters do not agree.", strategyHorizon,
             if (h4.last().close >= e4_200) "Bullish" else "Bearish",
             if (h1.last().close >= e1_50) "Bullish" else "Bearish",
             if (m5.last().close >= e5_9) "Bullish" else "Bearish",
-            listOf("if (swingMode) "Require aligned 4H and 1H EMA trends" else "Require aligned 1H EMA20/50/200 trend"")
+            listOf(if (swingMode) "Require aligned 4H and 1H EMA trends" else "Require aligned 1H EMA20/50/200 trend")
         )
-
-        val setupTf = if (swingMode) "1H" else "15M"
-        val executionTf = if (swingMode) "15M" else "5M"
         val side = if (longBias) "LONG" else "SHORT"
         val sign = if (longBias) 1.0 else -1.0
         val level = if (longBias) m15.dropLast(1).takeLast(20).maxOf { it.high }
@@ -167,7 +167,7 @@ internal object TradeIdeasV2 {
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
             !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
             triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
-            !triggered -> "Conditional only: wait for breakout, retest hold, volume and 5M confirmation."
+            !triggered -> "Conditional only: wait for breakout, retest hold, volume and $executionTf confirmation."
             else -> "Entry conditions confirmed. Backtest estimates are historical only; account for fees, funding and slippage."
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
@@ -176,7 +176,7 @@ internal object TradeIdeasV2 {
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
             finalTriggered, if (breakoutIndex >= 0) "Breakout retest" else "Retest watch",
-            warning, "if (swingMode) "Swing · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"",
+            warning, strategyHorizon,
             "Bullish".takeIf { longBias } ?: "Bearish",
             "Bullish".takeIf { longBias } ?: "Bearish",
             if (fiveMinuteConfirmed) if (longBias) "Bullish" else "Bearish" else "Mixed",
