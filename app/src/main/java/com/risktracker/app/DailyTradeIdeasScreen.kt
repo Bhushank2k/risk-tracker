@@ -971,7 +971,7 @@ private fun EntryGuidancePanel(idea: TradeIdea) {
 private fun entryTooFarFromPlan(idea: TradeIdea): Boolean {
     val riskDistance = abs(idea.entry - idea.stop)
     if (riskDistance <= 0.0 || idea.entry <= 0.0 || !idea.last.isFinite()) return true
-    val chaseLimit = maxOf(idea.entry * 0.003, riskDistance * 0.50)
+    val chaseLimit = minOf(idea.entry * 0.003, riskDistance * 0.50)
     return abs(idea.last - idea.entry) > chaseLimit
 }
 
