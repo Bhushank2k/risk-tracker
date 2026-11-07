@@ -127,23 +127,10 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             BinanceMarketScanner.initialize(context)
             TradeIdeaScanHealthStore.started(context)
 
-            // Refresh both independently maintained idea sets while the app is closed.
-            val ideas = BinanceMarketScanner.scan { }
-            TradeIdeaCache.save(context, System.currentTimeMillis(), ideas, november2Mode = false)
-            var scalpIdeas = emptyList<TradeIdea>()
-            var scalpWarning: String? = null
-            try {
-                scalpIdeas = BinanceMarketScanner.scan(november2Mode = true) { }
-                TradeIdeaCache.save(context, System.currentTimeMillis(), scalpIdeas, november2Mode = true)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                scalpWarning = "Daily Scalp scan failed: " + (e.message ?: "unknown error")
-            }
+            // Refresh the same Trade Ideas snapshot used by the foreground screen.
+            val allIdeas = BinanceMarketScanner.scan { }
+            TradeIdeaCache.save(context, System.currentTimeMillis(), allIdeas)
             TradeIdeaScanHealthStore.succeeded(context, scalp = false)
-            if (scalpWarning == null) TradeIdeaScanHealthStore.succeeded(context, scalp = true)
-            else TradeIdeaScanHealthStore.warning(context, scalpWarning)
-            val allIdeas = ideas + scalpIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
