@@ -157,18 +157,19 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 val readyIdeas = allIdeas.filter { isReadyAlertCandidate(it) }
                 val currentReadyKeys = readyIdeas.map { alertKey(it) }.toSet()
                 val previousReadyKeys = TradeIdeaReadyAlertStore.load(context)
-                readyIdeas.filter { alertKey(it) !in previousReadyKeys }
+                val stillAlerted = previousReadyKeys.intersect(currentReadyKeys)
+                val newlyReady = readyIdeas.filter { alertKey(it) !in stillAlerted }
                     .sortedByDescending { it.score }
                     .take(3)
-                    .forEach { idea ->
-                        TradeIdeaNotifications.notify(
-                            context, idea.symbol, "ready",
-                            "READY setup approaching: ${idea.symbol}",
-                            "${idea.side} setup qualified · score ${idea.score}/100 · price ~${idea.last} · planned entry ~${idea.entry} · stop ~${idea.stop}. Waiting for entry confirmation; no order placed.",
-                            idea.horizon + "|" + idea.setup
-                        )
-                    }
-                TradeIdeaReadyAlertStore.save(context, currentReadyKeys)
+                newlyReady.forEach { idea ->
+                    TradeIdeaNotifications.notify(
+                        context, idea.symbol, "ready",
+                        "READY setup approaching: ${idea.symbol}",
+                        "${idea.side} setup qualified · score ${idea.score}/100 · price ~${idea.last} · planned entry ~${idea.entry} · stop ~${idea.stop}. Waiting for entry confirmation; no order placed.",
+                        idea.horizon + "|" + idea.setup
+                    )
+                }
+                TradeIdeaReadyAlertStore.save(context, stillAlerted + newlyReady.map { alertKey(it) })
             } else {
                 TradeIdeaReadyAlertStore.clear(context)
             }
@@ -279,10 +280,18 @@ private fun alertKey(idea: TradeIdea): String =
 
 private fun isReadyAlertCandidate(idea: TradeIdea): Boolean {
     if (idea.side !in setOf("LONG", "SHORT") || idea.entryTriggered || idea.score < TradeIdeasV2.MIN_SCORE) return false
-    if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.last.isFinite() ||
-        idea.entry <= 0.0 || idea.stop <= 0.0) return false
-    val geometryValid = if (idea.side == "LONG") idea.stop < idea.entry else idea.stop > idea.entry
-    if (!geometryValid || idea.warning.startsWith("BLOCK:", ignoreCase = true)) return false
+    if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.target1.isFinite() ||
+        !idea.target2.isFinite() || !idea.last.isFinite() ||
+        idea.entry <= 0.0 || idea.stop <= 0.0 || idea.target1 <= 0.0 || idea.target2 <= 0.0) return false
+    val geometryValid = if (idea.side == "LONG") {
+        idea.stop < idea.entry && idea.target1 > idea.entry && idea.target2 > idea.target1
+    } else {
+        idea.stop > idea.entry && idea.target1 < idea.entry && idea.target2 < idea.target1
+    }
+    val warning = idea.warning.lowercase(java.util.Locale.US)
+    val warningBlocksEntry = warning.startsWith("block:") ||
+        listOf("overbought", "oversold", "elevated", "falling sharply", "weak").any { it in warning }
+    if (!geometryValid || warningBlocksEntry) return false
     val riskDistance = kotlin.math.abs(idea.entry - idea.stop)
     if (riskDistance <= 0.0) return false
     val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
