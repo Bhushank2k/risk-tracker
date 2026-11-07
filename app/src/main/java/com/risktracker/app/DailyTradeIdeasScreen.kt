@@ -236,7 +236,7 @@ internal object BinanceMarketScanner {
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
             try {
-                // Serial, paced REST bootstrap only. All ongoing prices, klines, depth and funding are streamed.
+                // Serial, paced REST candle bootstrap. Aggregate WebSockets provide live prices, spread and funding.
                 delay(750)
                 val h4 = candles(ticker.symbol, "4h", 260)
                 delay(750)
