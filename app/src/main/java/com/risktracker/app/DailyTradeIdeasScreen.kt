@@ -447,15 +447,24 @@ fun DailyTradeIdeasScreen() {
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var equityInput by remember { mutableStateOf("") }
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
-    var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
+    var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
+    var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
     val scope = rememberCoroutineScope()
-    fun enableTradeAlerts() {
-        TradeIdeaNotifications.setEnabled(context, true)
+    fun enableReadyAlerts() {
+        TradeIdeaNotifications.setReadyEnabled(context, true)
         TradeIdeaNotifications.schedule(context)
-        alertsEnabled = true
+        readyAlertsEnabled = true
     }
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) enableTradeAlerts()
+    fun enableEntryAlerts() {
+        TradeIdeaNotifications.setEntryEnabled(context, true)
+        TradeIdeaNotifications.schedule(context)
+        entryAlertsEnabled = true
+    }
+    val readyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) enableReadyAlerts()
+    }
+    val entryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) enableEntryAlerts()
     }
     fun refresh() {
         if (loading) return
@@ -650,19 +659,34 @@ fun DailyTradeIdeasScreen() {
                         HorizontalDivider()
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Entry & exit notifications", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Local alerts only · no orders are placed.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("READY alerts", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Qualified setup approaching planned entry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Switch(checked = alertsEnabled, onCheckedChange = { enabled ->
+                            Switch(checked = readyAlertsEnabled, onCheckedChange = { enabled ->
                                 if (!enabled) {
-                                    TradeIdeaNotifications.setEnabled(context, false)
-                                    TradeIdeaNotifications.cancel(context)
-                                    alertsEnabled = false
+                                    TradeIdeaNotifications.setReadyEnabled(context, false)
+                                    readyAlertsEnabled = false
                                 } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                } else enableTradeAlerts()
+                                    readyPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else enableReadyAlerts()
                             })
                         }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("ENTRY TRIGGERED alerts", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text("Entry conditions confirmed; exit alerts for tracked paper plans.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = entryAlertsEnabled, onCheckedChange = { enabled ->
+                                if (!enabled) {
+                                    TradeIdeaNotifications.setEntryEnabled(context, false)
+                                    entryAlertsEnabled = false
+                                } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                    entryPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else enableEntryAlerts()
+                            })
+                        }
+                        Text("Background market scans run about every 15 minutes when Android allows. Alerts only · no orders are placed.",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
