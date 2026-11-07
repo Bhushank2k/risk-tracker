@@ -81,7 +81,7 @@ internal object TradeIdeasV2 {
         } else h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
         val setupTf = if (swingMode) "1H" else "15M"
         val executionTf = if (swingMode) "15M" else "5M"
-        val strategyHorizon = if (swingMode) "Swing · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"
+        val strategyHorizon = if (swingMode) "Intraday · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"
         if (!longBias && !shortBias) return V2TradePlan(
             "WAIT", 0, current.close, 0.0, 0.0, 0.0, false, "Higher-timeframe disagreement",
             "BLOCK: trend filters do not agree.", strategyHorizon,
