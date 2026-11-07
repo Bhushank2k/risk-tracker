@@ -476,7 +476,9 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
             (strategyMode == "Intraday" && idea.horizon.contains("Swing", ignoreCase = true))
     }
     val dailyPicks = selectDailyPicks(allModeIdeas)
-    val modeIdeas = if (strategyMode == "Daily Picks") dailyPicks else allModeIdeas
+    val modeIdeas = if (strategyMode == "Daily Picks") {
+        (dailyPicks + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
+    } else allModeIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols)) {
