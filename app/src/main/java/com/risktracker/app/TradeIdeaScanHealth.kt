@@ -35,6 +35,11 @@ internal object TradeIdeaScanHealthStore {
         edit.apply()
     }
 
+    fun warning(context: Context, message: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("last_error", message.take(240)).apply()
+    }
+
     fun failed(context: Context, message: String, at: Long = System.currentTimeMillis()) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong("last_attempt", at)
