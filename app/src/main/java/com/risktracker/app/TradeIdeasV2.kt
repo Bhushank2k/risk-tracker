@@ -338,10 +338,10 @@ internal object TradeIdeasV2 {
         if (rows.size < 2) return false
         var previousTime = Long.MIN_VALUE
         return rows.all { candle ->
-            val valid = candle.high.isFinite() && candle.low.isFinite() &&
+            val valid = candle.high.isFinite() && candle.low.isFinite() && candle.open.isFinite() &&
                 candle.close.isFinite() && candle.volume.isFinite() &&
                 candle.high > 0.0 && candle.low > 0.0 && candle.close > 0.0 &&
-                candle.high >= candle.low && candle.close in candle.low..candle.high &&
+                candle.high >= candle.low && candle.open in candle.low..candle.high && candle.close in candle.low..candle.high &&
                 candle.volume >= 0.0 && candle.closeTime > previousTime
             previousTime = candle.closeTime
             valid
