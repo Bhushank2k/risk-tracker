@@ -790,7 +790,7 @@ fun DailyTradeIdeasScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val sizingIdea = ideas.firstOrNull { it.side != "WAIT" && tradeIdeaRiskValid(it) && it.entryTriggered && it.symbol !in trackedSymbols }
+                    val sizingIdea = ideas.firstOrNull { it.symbol !in trackedSymbols && tradeIdeaStage(it, tracked = false) == TradeIdeaStage.ENTRY_CONFIRMED }
                     val sizing = sizingIdea?.let { TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop) }
                     OutlinedTextField(value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
@@ -1019,7 +1019,9 @@ private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
         idea.side in setOf("LONG", "SHORT") &&
             idea.score >= TradeIdeasV2.MIN_SCORE &&
             tradeIdeaRiskValid(idea) &&
-            !idea.warning.startsWith("BLOCK:", ignoreCase = true)
+            !idea.warning.startsWith("BLOCK:", ignoreCase = true) &&
+            (!idea.entryTriggered || !entryTooFarFromPlan(idea)) &&
+            !livePriceInvalidatesPlan(idea)
     }.sortedWith(
         compareByDescending<TradeIdea> { it.entryTriggered }
             .thenByDescending { it.score }
