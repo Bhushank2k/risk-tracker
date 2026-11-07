@@ -60,8 +60,8 @@ internal object TradeIdeaCache {
     private const val PREFS = "market_scan_cache_v2"
     private const val KEY = "latest_scan"
 
-    fun load(context: android.content.Context): Pair<Long, List<TradeIdea>>? = runCatching {
-        val root = JSONObject(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(KEY, null) ?: return null)
+    fun load(context: android.content.Context, november2Mode: Boolean = false): Pair<Long, List<TradeIdea>>? = runCatching {
+        val root = JSONObject(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(if (november2Mode) KEY + "_nov2_scalp" else KEY, null) ?: return null)
         val timestamp = root.optLong("updatedAt", 0L)
         val rows = root.optJSONArray("ideas") ?: return null
         val ideas = (0 until rows.length()).mapNotNull { i ->
@@ -87,7 +87,7 @@ internal object TradeIdeaCache {
         if (timestamp <= 0L || ideas.isEmpty()) null else timestamp to ideas
     }.getOrNull()
 
-    fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
+    fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>, november2Mode: Boolean = false) {
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
@@ -111,7 +111,7 @@ internal object TradeIdeaCache {
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                .edit().putString(KEY, root.toString()).apply()
+                 .edit().putString(if (november2Mode) KEY + "_nov2_scalp" else KEY, root.toString()).apply()
         }
     }
 
@@ -238,7 +238,7 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
+    suspend fun scan(progress: (String) -> Unit, november2Mode: Boolean = false): List<TradeIdea> = withContext(Dispatchers.IO) {
         progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -316,7 +316,17 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
+                if (november2Mode) {
+                    val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                    val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                    val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                    val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                    val plan = November2ScalpRules.evaluate(four, one, fifteen, five,
+                        V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate))
+                    if (plan != null) results.add(buildIdea(live, plan, m15, m5, h4, h1, micro, false, runBacktest = false))
+                } else {
+                    results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
@@ -345,7 +355,7 @@ internal object BinanceMarketScanner {
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
-                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean): TradeIdea {
+                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true): TradeIdea {
         val rsiValue = rsi(setupRows.map { it.close }) ?: 50.0
         val priorVolume = setupRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorVolume > 0.0) setupRows.last().volume / priorVolume else 0.0
@@ -354,7 +364,7 @@ internal object BinanceMarketScanner {
         val bias5 = plan.bias5m
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
-        val replay = if (swingMode) TradeIdeaBacktestStats() else TradeIdeasV2.backtest(
+        val replay = if (swingMode || !runBacktest) TradeIdeaBacktestStats() else TradeIdeasV2.backtest(
             h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
@@ -371,9 +381,9 @@ internal object BinanceMarketScanner {
 }
 
 @Composable
-fun DailyTradeIdeasScreen() {
+fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
     val context = LocalContext.current
-    val cachedScan = remember { TradeIdeaCache.load(context) }
+    val cachedScan = remember(november2Mode) { TradeIdeaCache.load(context, november2Mode) }
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     fun readTrackedSymbols(): Set<String> = trackingPrefs.all.keys
         .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
@@ -385,7 +395,7 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf(cachedScan?.first) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    var strategyMode by remember { mutableStateOf("Both") }
+    var strategyMode by remember(november2Mode) { mutableStateOf(if (november2Mode) "Scalping" else "Both") }
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
@@ -406,12 +416,12 @@ fun DailyTradeIdeasScreen() {
         if (loading) return
         loading = true
         error = null
-        status = "Connecting to Binance public market data…"
+        status = if (november2Mode) "Loading November 2 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan { status = it }
+                val freshIdeas = BinanceMarketScanner.scan({ status = it }, november2Mode)
                 val scanTime = System.currentTimeMillis()
-                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
+                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas, november2Mode) }
                 ideas = freshIdeas
                 updatedAt = scanTime
                 showingCached = false
@@ -493,7 +503,7 @@ fun DailyTradeIdeasScreen() {
         item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
+                Text(if (november2Mode) "November 2 rule set · 4H/1H EMA alignment, 15M VWAP and 5M entry confirmation. Advisory only." else "Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -579,14 +589,14 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!november2Mode) Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (!november2Mode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Scalping", "Swing", "Both").forEach { mode ->
                         FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
                             label = { Text(mode) })
                     }
                 }
-                Text(
+                if (!november2Mode) Text(
                     when (strategyMode) {
                         "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
                         "Swing" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
