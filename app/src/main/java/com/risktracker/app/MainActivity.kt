@@ -182,6 +182,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var exchangeSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
+        BinanceMarketScanner.initialize(context)
+        TradeIdeaNotifications.schedule(context)
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)
             runCatching {
@@ -193,7 +195,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     }
     LaunchedEffect(tab) {
         val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-        if (tab == 20 && BinanceCredentialStore(context).read() != null &&
+        if ((tab == 1 || tab == 20) && BinanceCredentialStore(context).read() != null &&
             shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
             appScope.launch {
                 runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
@@ -202,8 +204,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Journal", "Analytics", "Ideas", "More")
-    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.ShowChart, Icons.Filled.Lightbulb, Icons.Filled.Apps)
+    val titles = listOf("Overview", "Journal", "Ideas", "More")
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.MenuBook, Icons.Filled.Lightbulb, Icons.Filled.Apps)
     // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
@@ -218,7 +220,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Post-trade reviews" to 14
         ),
         "PERFORMANCE" to listOf(
-            "Trading Analytics" to 20,
             "P&L Calendar" to 23
         ),
         "IDEAS & RISK TOOLS" to listOf(
@@ -245,7 +246,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 20 -> 2; 21 -> 3; else -> 4 }
+    val activeNavIndex = when (tab) { 0 -> 0; 1, 20 -> 1; 21 -> 2; else -> 3 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -264,7 +265,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> "Account Activity"
                 18 -> "Sync Health"
                 19 -> "Risk Alerts"
-                20 -> "Analytics"
+                20 -> "Journal & Performance"
                 21 -> "Trade Ideas"
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
@@ -409,7 +410,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 20; 3 -> tab = 21; 4 -> menuExpanded = true } },
+                        onClick = { when (i) { 0 -> tab = 0; 1 -> tab = 1; 2 -> tab = 21; 3 -> menuExpanded = true } },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
@@ -438,7 +439,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     entries = it
                     store.saveEntries(it)
                 }
-                1 -> TradeJournalScreen(exchangeFills)
+                1 -> TradeJournalScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 2 -> CombinedTradingCalculatorScreen(
                     input = input,
                     accountEquity = BinanceAccountSnapshotStore(context).load()?.let { it.spot.valueUsdt + it.futures.totalEquity },
@@ -473,7 +474,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
+                20 -> TradeJournalScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl, initialSection = "Analytics")
                 21 -> DailyTradeIdeasScreen()
                 25 -> DailyTradeIdeasScreen(november2Mode = true)
                 22 -> TargetScreen()
