@@ -330,6 +330,9 @@ internal object BinanceMarketScanner {
         delay(2_000)
         report("Evaluating ${candidates.size} top-ranked markets; BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
+        var marketsWithPlans = 0
+        var marketsWithoutPlans = 0
+        var lastMarketFailure: String? = null
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
             try {
@@ -349,19 +352,30 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
+                val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias)
+                if (marketIdeas.isEmpty()) marketsWithoutPlans++ else marketsWithPlans++
+                results.addAll(marketIdeas)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
                 throw e
-            } catch (_: Exception) {
-                // Skip incomplete symbols; never fan out retries after a rate-limit response.
+            } catch (e: Exception) {
+                marketsWithoutPlans++
+                lastMarketFailure = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
             }
             if (results.isNotEmpty()) {
                 val snapshot = results.toList()
                 withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
             }
-            report("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
+            report("Analyzed ${index + 1}/${candidates.size} markets · ${results.size} plans · ${marketsWithoutPlans} without plans…")
+        }
+        if (results.isEmpty()) {
+            val detail = lastMarketFailure?.let { " Last market error: $it" }
+                ?: " Candle history was fetched, but every strategy rejected the available series."
+            throw IllegalStateException(
+                "Scan produced no strategy plans from ${candidates.size} shortlisted markets. " +
+                    "Markets with plans: $marketsWithPlans; without plans: $marketsWithoutPlans.$detail"
+            )
         }
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
@@ -391,12 +405,15 @@ internal object BinanceMarketScanner {
         val bias5 = plan.bias5m
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
-        val replay = if (swingMode || !runBacktest) TradeIdeaBacktestStats() else TradeIdeasV2.backtest(
-            h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        )
+        // Historical replay is supplementary; a replay edge case must never discard a live setup.
+        val replay = if (swingMode || !runBacktest) TradeIdeaBacktestStats() else runCatching {
+            TradeIdeasV2.backtest(
+                h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
+                h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
+                setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
+                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+            )
+        }.getOrDefault(TradeIdeaBacktestStats())
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
