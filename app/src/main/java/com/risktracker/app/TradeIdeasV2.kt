@@ -93,31 +93,31 @@ internal object TradeIdeasV2 {
         val side = if (longBias) "LONG" else "SHORT"
         val sign = if (longBias) 1.0 else -1.0
         val level = if (longBias) setupCandles.dropLast(1).takeLast(20).maxOf { it.high }
-            else m15.dropLast(1).takeLast(20).minOf { it.low }
+            else setupCandles.dropLast(1).takeLast(20).minOf { it.low }
         var breakoutIndex = -1
         val first = (setupCandles.lastIndex - 4).coerceAtLeast(20)
-        for (index in first until m15.lastIndex) {
+        for (index in first until setupCandles.lastIndex) {
             val history = setupCandles.subList(index - 20, index)
             val breakoutLevel = if (longBias) history.maxOf { it.high } else history.minOf { it.low }
             val avgVolume = history.takeLast(20).map { it.volume }.average()
             val ratio = if (avgVolume > 0.0) setupCandles[index].volume / avgVolume else 0.0
-            val broke = if (longBias) m15[index].close > breakoutLevel else m15[index].close < breakoutLevel
+            val broke = if (longBias) setupCandles[index].close > breakoutLevel else setupCandles[index].close < breakoutLevel
             if (broke && ratio >= 1.5) breakoutIndex = index
         }
         val retestLevel = if (breakoutIndex >= 0) {
-            val history = m15.subList(breakoutIndex - 20, breakoutIndex)
+            val history = setupCandles.subList(breakoutIndex - 20, breakoutIndex)
             if (longBias) history.maxOf { it.high } else history.minOf { it.low }
         } else level
         val retestTouched = if (longBias) current.low <= retestLevel + atr * 0.25
             else current.high >= retestLevel - atr * 0.25
         val retestHeld = if (longBias) current.close >= retestLevel && current.close >= previous.close
             else current.close <= retestLevel && current.close <= previous.close
-        val breakoutInvalidated = breakoutIndex >= 0 && m15.subList(breakoutIndex + 1, m15.lastIndex).any {
+        val breakoutInvalidated = breakoutIndex >= 0 && setupCandles.subList(breakoutIndex + 1, setupCandles.lastIndex).any {
             if (longBias) it.close < retestLevel - atr * 0.25 else it.close > retestLevel + atr * 0.25
         }
         val fiveMinuteConfirmed = if (longBias) executionCandles.last().close > executionFast && executionFast > executionSlow
             else executionCandles.last().close < executionFast && executionFast < executionSlow
-        val avgVolume15 = m15.dropLast(1).takeLast(20).map { it.volume }.average()
+        val avgVolume15 = setupCandles.dropLast(1).takeLast(20).map { it.volume }.average()
         val retestVolume = if (avgVolume15 > 0.0) current.volume / avgVolume15 else 0.0
         val rsi15 = rsi(setupCandles.map { it.close }) ?: return null
         val notOverboughtOrOversold = if (longBias) rsi15 < 78.0 else rsi15 > 22.0
@@ -134,7 +134,7 @@ internal object TradeIdeasV2 {
             notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
 
         val structuralStop = if (longBias) setupCandles.takeLast(3).minOf { it.low } - atr * 0.20
-            else m15.takeLast(3).maxOf { it.high } + atr * 0.20
+            else setupCandles.takeLast(3).maxOf { it.high } + atr * 0.20
         val entry = if (triggered) current.close else retestLevel
         val stop = structuralStop
         val risk = abs(entry - stop)
