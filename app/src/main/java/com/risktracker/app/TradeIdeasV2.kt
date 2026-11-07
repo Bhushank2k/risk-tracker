@@ -28,7 +28,7 @@ internal data class V2TradePlan(
 
 /**
  * Advisory-only strategy rules. It never submits, edits, or cancels exchange orders.
- * Entry requires a 15m breakout followed by a successful retest and 5m confirmation.
+ * Scalping uses a 15m breakout/retest with 5m confirmation; Swing uses 1h setup with 15m confirmation.
  */
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
@@ -45,7 +45,8 @@ internal object TradeIdeasV2 {
         micro: V2Microstructure,
         quoteVolume: Double,
         changePct: Double,
-        swingMode: Boolean = false
+        swingMode: Boolean = false,
+        btcBias: String? = null
     ): V2TradePlan? {
         if (h4.size < 200 || h1.size < 50 || m15.size < 40 || m5.size < 25) return null
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return null
@@ -109,6 +110,9 @@ internal object TradeIdeasV2 {
             else current.high >= retestLevel - atr * 0.25
         val retestHeld = if (longBias) current.close >= retestLevel && current.close >= previous.close
             else current.close <= retestLevel && current.close <= previous.close
+        val breakoutInvalidated = breakoutIndex >= 0 && m15.subList(breakoutIndex + 1, m15.lastIndex).any {
+            if (longBias) it.close < retestLevel - atr * 0.25 else it.close > retestLevel + atr * 0.25
+        }
         val fiveMinuteConfirmed = if (longBias) m5.last().close > e5_9 && e5_9 > e5_21
             else m5.last().close < e5_9 && e5_9 < e5_21
         val avgVolume15 = m15.dropLast(1).takeLast(20).map { it.volume }.average()
@@ -121,9 +125,11 @@ internal object TradeIdeasV2 {
         // but does not by itself invalidate otherwise complete public market data.
         val fundingOkay = funding == null || !funding.isFinite() ||
             (if (longBias) funding <= 0.001 else funding >= -0.001)
-        val triggered = breakoutIndex >= 0 && retestTouched && retestHeld &&
-            fiveMinuteConfirmed && retestVolume >= 1.2 &&
-            notOverboughtOrOversold && notOverextended && fundingOkay
+        val btcAligned = btcBias.isNullOrBlank() || btcBias == "Neutral" ||
+            (if (longBias) btcBias == "Bullish" else btcBias == "Bearish")
+        val triggered = breakoutIndex >= 0 && !breakoutInvalidated && retestTouched && retestHeld &&
+            fiveMinuteConfirmed && retestVolume >= 1.5 &&
+            notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
 
         val structuralStop = if (longBias) m15.takeLast(3).minOf { it.low } - atr * 0.20
             else m15.takeLast(3).maxOf { it.high } + atr * 0.20
@@ -139,13 +145,21 @@ internal object TradeIdeasV2 {
         val liquidityOkay = spread != null && spread.isFinite() && spread in 0.0..MAX_SPREAD_BPS &&
             imbalance != null && imbalance.isFinite() && imbalance in -1.0..1.0 &&
             (if (longBias) imbalance >= -0.15 else imbalance <= 0.15)
-        val trendScore = 30
-        val breakoutScore = if (breakoutIndex >= 0) 20 else 0
-        val retestScore = if (retestTouched && retestHeld) 15 else 0
-        val volumeScore = if (retestVolume >= 1.5) 15 else if (retestVolume >= 1.2) 10 else 0
+        val atrPct = atr / current.close * 100.0
+        val minAtrPct = if (swingMode) 0.25 else 0.12
+        val maxAtrPct = if (swingMode) 3.0 else 1.5
+        val volatilityScore = when {
+            atrPct in minAtrPct..maxAtrPct -> 15
+            atrPct > maxAtrPct -> 7
+            else -> 0
+        }
+        val trendScore = 20
+        val breakoutScore = if (breakoutIndex >= 0 && !breakoutInvalidated) 20 else 0
+        val retestScore = if (retestTouched && retestHeld && !breakoutInvalidated) 15 else 0
+        val volumeScore = if (retestVolume >= 1.5) 10 else 0
         val timingScore = if (fiveMinuteConfirmed) 10 else 0
         val liquidityScore = if (liquidityOkay) 10 else 0
-        val score = (trendScore + breakoutScore + retestScore + volumeScore + timingScore + liquidityScore).coerceIn(0, 100)
+        val score = (trendScore + volatilityScore + breakoutScore + retestScore + volumeScore + timingScore + liquidityScore).coerceIn(0, 100)
         val reasons = mutableListOf(
             if (swingMode) "4H EMA20/50/200 and 1H EMA20/50 trend alignment" else "1H EMA20/50/200 trend alignment",
             if (breakoutIndex >= 0) "${setupTf} breakout candle closed beyond the prior 20-bar level on at least 1.5× volume"
@@ -153,8 +167,11 @@ internal object TradeIdeasV2 {
             if (retestTouched && retestHeld) "${setupTf} retest held the breakout level" else "Retest has not yet confirmed",
             if (fiveMinuteConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
             "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
+            "${setupTf} ATR is " + "%.2f%%".format(java.util.Locale.US, atrPct) + " of price",
+            "${setupTf} relative volume is " + "%.2f×".format(java.util.Locale.US, retestVolume) + " versus the prior 20 completed candles",
             "${setupTf} RSI " + "%.1f".format(java.util.Locale.US, rsi15) +
-                (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry")
+                (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry"),
+            "BTC market regime: " + (btcBias ?: "Unavailable")
         )
         if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates (spread ≤ 10 bps)")
         if (funding == null || !funding.isFinite()) reasons.add("Funding unavailable; no funding-based directional edge assumed")
@@ -162,16 +179,22 @@ internal object TradeIdeasV2 {
         val warning = when {
             spread == null || imbalance == null -> "BLOCK: Spread or order-book depth is unavailable; missing liquidity data never passes."
             !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
+            breakoutInvalidated -> "INVALIDATED: Price closed back through the breakout level; wait for a fresh setup."
+            !btcAligned -> "BLOCK: BTC market regime is opposed to this trade direction."
+            retestVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles."
+            atrPct < minAtrPct -> "BLOCK: ATR% is too low; insufficient movement for this strategy."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
             !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
             !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
             triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
             !triggered -> "Conditional only: wait for breakout, retest hold, volume and $executionTf confirmation."
-            else -> "Entry conditions confirmed. Backtest estimates are historical only; account for fees, funding and slippage."
+            else -> (if (score >= 85) "HIGH QUALITY: Entry conditions confirmed. " else "VALID SETUP: Entry conditions confirmed. ") +
+                "Backtest estimates are historical only; account for fees, funding and slippage."
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
-            notOverboughtOrOversold && notOverextended && score >= MIN_SCORE
+            notOverboughtOrOversold && notOverextended && !breakoutInvalidated && btcAligned &&
+            retestVolume >= 1.5 && atrPct >= minAtrPct && score >= MIN_SCORE
         return V2TradePlan(
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
