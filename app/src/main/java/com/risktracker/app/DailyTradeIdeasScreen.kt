@@ -126,7 +126,6 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
-    private const val MAX_DAILY_VOLATILE_MARKETS = 30
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
@@ -313,11 +312,10 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-            .take(50)
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // ATR%, relative volume and liquidity refine the 50-market prefilter before the final 30 are evaluated.
-        report("Measuring hourly ATR% and relative volume across ${prefiltered.size} liquid markets…")
+        // Measure every eligible active USDT perpetual; ranking changes evaluation order, never market coverage.
+        report("Measuring hourly ATR% and relative volume across all ${prefiltered.size} eligible markets…")
         val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
         val ranked = prefiltered.map { ticker ->
             async {
@@ -338,10 +336,11 @@ internal object BinanceMarketScanner {
         }.awaitAll().filterNotNull()
         val candidates = ranked.sortedByDescending {
             // Blend tradable movement with liquidity so quieter but liquid setups are not crowded out.
+            // Keep every eligible market; this score only prioritizes the order of deep evaluation.
             it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
                 it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
-        }.take(MAX_DAILY_VOLATILE_MARKETS)
-        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
+        }
+        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all eligible liquid markets.")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
@@ -353,7 +352,7 @@ internal object BinanceMarketScanner {
         // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        report("Evaluating ${candidates.size} top-ranked markets; BTC regime: $btcBias…")
+        report("Deep-scanning all ${candidates.size} eligible markets; BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         var marketsWithPlans = 0
         var marketsWithoutPlans = 0
