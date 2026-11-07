@@ -40,7 +40,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double)
+private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
@@ -49,7 +49,8 @@ internal data class TradeIdea(
     val rsi: Double, val volumeRatio: Double, val bias4h: String, val bias1h: String,
     val setup: String, val reasons: List<String>, val warning: String, val horizon: String,
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
-    val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats
+    val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats,
+    val volatilityPct: Double = 0.0
 )
 internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
@@ -79,7 +80,8 @@ internal object TradeIdeaCache {
                 bias5m = x.getString("bias5m"),
                 spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
                 fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
-                backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR"))
+                backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR")),
+                volatilityPct = x.optDouble("volatilityPct", 0.0)
             )
         }
         if (timestamp <= 0L || ideas.isEmpty()) null else timestamp to ideas
@@ -105,7 +107,7 @@ internal object TradeIdeaCache {
                     .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
                     .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
                     .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
-                    .put("backtest", stats))
+                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct))
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
@@ -121,6 +123,7 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
+    private const val MAX_DAILY_VOLATILE_MARKETS = 30
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
 
@@ -224,14 +227,21 @@ internal object BinanceMarketScanner {
             val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
-            else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }
+            else {
+                val change = x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
+                val high = x.optString("highPrice").toDoubleOrNull() ?: last
+                val low = x.optString("lowPrice").toDoubleOrNull() ?: last
+                val rangePct = ((high - low) / last * 100.0).coerceAtLeast(0.0)
+                ScanTicker(symbol, quote, change, last, rangePct)
+            }
+        }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
+            .take(MAX_DAILY_VOLATILE_MARKETS)
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        progress("WebSocket connected · warming all-market prices, spread and funding; loading candle history for ${candidates.size} eligible pairs…")
+        progress("Daily volatility radar · evaluating the top ${candidates.size} liquid USDT perpetuals by 24h range and absolute move…")
         val results = mutableListOf<TradeIdea>()
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
@@ -260,7 +270,7 @@ internal object BinanceMarketScanner {
             } catch (_: Exception) {
                 // Skip incomplete symbols; never fan out retries after a rate-limit response.
             }
-            progress("WebSocket live · bootstrapped ${index + 1}/${candidates.size} pairs…")
+            progress("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
         }
         results.sortedByDescending { it.score }
     }
@@ -301,7 +311,7 @@ internal object BinanceMarketScanner {
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
-            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay
+            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct
         )
     }
 }
@@ -472,7 +482,7 @@ fun DailyTradeIdeasScreen() {
                         Text(if (loading) "Scanning markets…" else "Refresh market scan")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. The scan ranks eligible liquid USDT perpetual pairs; directional counts describe this scan only.",
+                        Text("Source · Binance Futures public market data. Each daily scan evaluates the 30 most volatile eligible USDT perpetuals by 24h high-low range, with absolute 24h change as a tie-breaker. Liquidity and strategy gates still apply.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
@@ -783,6 +793,10 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("24h quote volume", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("$" + "%,.0f".format(Locale.US, idea.volume), style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("24h high-low range", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("%.2f%%".format(Locale.US, idea.volatilityPct), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                 }
             }
 
