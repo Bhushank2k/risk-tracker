@@ -104,6 +104,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     22 -> Icons.Filled.Flag
     23 -> Icons.Filled.Receipt
     24 -> Icons.Filled.FactCheck
+    25 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -222,6 +223,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "IDEAS & RISK TOOLS" to listOf(
             "Daily Trade Ideas" to 21,
+            "Daily Scalp" to 25,
             "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
@@ -267,6 +269,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
                 24 -> "Daily discipline"
+                25 -> "Daily Scalp"
                 else -> "More"
             }
 
@@ -472,6 +475,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 20 -> TradingAnalyticsScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl)
                 21 -> DailyTradeIdeasScreen()
+                25 -> DailyTradeIdeasScreen(november2Mode = true)
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 24 -> DailyDisciplineScreen(
