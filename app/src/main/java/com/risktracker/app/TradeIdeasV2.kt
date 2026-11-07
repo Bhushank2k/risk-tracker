@@ -115,12 +115,12 @@ internal object TradeIdeasV2 {
         val breakoutInvalidated = breakoutIndex >= 0 && setupCandles.subList(breakoutIndex + 1, setupCandles.lastIndex).any {
             if (longBias) it.close < retestLevel - atr * 0.25 else it.close > retestLevel + atr * 0.25
         }
-        val fiveMinuteConfirmed = if (longBias) executionCandles.last().close > executionFast && executionFast > executionSlow
+        val executionConfirmed = if (longBias) executionCandles.last().close > executionFast && executionFast > executionSlow
             else executionCandles.last().close < executionFast && executionFast < executionSlow
-        val avgVolume15 = setupCandles.dropLast(1).takeLast(20).map { it.volume }.average()
-        val retestVolume = if (avgVolume15 > 0.0) current.volume / avgVolume15 else 0.0
-        val rsi15 = rsi(setupCandles.map { it.close }) ?: return null
-        val notOverboughtOrOversold = if (longBias) rsi15 < 78.0 else rsi15 > 22.0
+        val averageSetupVolume = setupCandles.dropLast(1).takeLast(20).map { it.volume }.average()
+        val setupRelativeVolume = if (averageSetupVolume > 0.0) current.volume / averageSetupVolume else 0.0
+        val setupRsi = rsi(setupCandles.map { it.close }) ?: return null
+        val notOverboughtOrOversold = if (longBias) setupRsi < 78.0 else setupRsi > 22.0
         val notOverextended = abs(current.close - retestLevel) <= atr * 0.75
         val funding = micro.fundingRate
         // Funding is expressed as a fraction (0.001 = 0.1%). Missing funding is disclosed,
@@ -130,7 +130,7 @@ internal object TradeIdeasV2 {
         val btcAligned = btcBias.isNullOrBlank() || btcBias == "Neutral" ||
             (if (longBias) btcBias == "Bullish" else btcBias == "Bearish")
         val triggered = breakoutIndex >= 0 && !breakoutInvalidated && retestTouched && retestHeld &&
-            fiveMinuteConfirmed && retestVolume >= 1.5 &&
+            executionConfirmed && setupRelativeVolume >= 1.5 &&
             notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
 
         val structuralStop = if (longBias) setupCandles.takeLast(3).minOf { it.low } - atr * 0.20
@@ -158,8 +158,8 @@ internal object TradeIdeasV2 {
         val trendScore = 20
         val breakoutScore = if (breakoutIndex >= 0 && !breakoutInvalidated) 20 else 0
         val retestScore = if (retestTouched && retestHeld && !breakoutInvalidated) 15 else 0
-        val volumeScore = if (retestVolume >= 1.5) 10 else 0
-        val timingScore = if (fiveMinuteConfirmed) 10 else 0
+        val volumeScore = if (setupRelativeVolume >= 1.5) 10 else 0
+        val timingScore = if (executionConfirmed) 10 else 0
         val liquidityScore = if (liquidityOkay) 10 else 0
         val score = (trendScore + volatilityScore + breakoutScore + retestScore + volumeScore + timingScore + liquidityScore).coerceIn(0, 100)
         val reasons = mutableListOf(
@@ -167,11 +167,11 @@ internal object TradeIdeasV2 {
             if (breakoutIndex >= 0) "${setupTf} breakout candle closed beyond the prior 20-bar level on at least 1.5× volume"
                 else "Waiting for a ${setupTf} close beyond the prior 20-bar level on at least 1.5× volume",
             if (retestTouched && retestHeld) "${setupTf} retest held the breakout level" else "Retest has not yet confirmed",
-            if (fiveMinuteConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
+            if (executionConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
             "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
             "${setupTf} ATR is " + "%.2f%%".format(java.util.Locale.US, atrPct) + " of price",
-            "${setupTf} relative volume is " + "%.2f×".format(java.util.Locale.US, retestVolume) + " versus the prior 20 completed candles",
-            "${setupTf} RSI " + "%.1f".format(java.util.Locale.US, rsi15) +
+            "${setupTf} relative volume is " + "%.2f×".format(java.util.Locale.US, setupRelativeVolume) + " versus the prior 20 completed candles",
+            "${setupTf} RSI " + "%.1f".format(java.util.Locale.US, setupRsi) +
                 (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry"),
             "BTC market regime: " + (btcBias ?: "Unavailable")
         )
@@ -183,7 +183,7 @@ internal object TradeIdeasV2 {
             !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
             breakoutInvalidated -> "INVALIDATED: Price closed back through the breakout level; wait for a fresh setup."
             !btcAligned -> "BLOCK: BTC market regime is opposed to this trade direction."
-            retestVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles."
+            setupRelativeVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles."
             atrPct < minAtrPct -> "BLOCK: ATR% is too low; insufficient movement for this strategy."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
             !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
@@ -196,7 +196,7 @@ internal object TradeIdeasV2 {
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
             notOverboughtOrOversold && notOverextended && !breakoutInvalidated && btcAligned &&
-            retestVolume >= 1.5 && atrPct >= minAtrPct && score >= MIN_SCORE
+            setupRelativeVolume >= 1.5 && atrPct >= minAtrPct && score >= MIN_SCORE
         return V2TradePlan(
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
@@ -204,7 +204,7 @@ internal object TradeIdeasV2 {
             warning, strategyHorizon,
             "Bullish".takeIf { longBias } ?: "Bearish",
             "Bullish".takeIf { longBias } ?: "Bearish",
-            if (fiveMinuteConfirmed) if (longBias) "Bullish" else "Bearish" else "Mixed",
+            if (executionConfirmed) if (longBias) "Bullish" else "Bearish" else "Mixed",
             reasons
         )
     }
