@@ -36,15 +36,28 @@ object TradeIdeaNotifications {
     private const val CHANNEL = "trade_idea_alerts"
     private const val UNIQUE_WORK = "trade_idea_market_monitor"
 
-    fun isEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("enabled", false)
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun setEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
+    fun isReadyEnabled(context: Context): Boolean = prefs(context).getBoolean("ready_enabled", false)
+
+    fun isEntryEnabled(context: Context): Boolean =
+        prefs(context).getBoolean("entry_enabled", prefs(context).getBoolean("enabled", false))
+
+    fun isEnabled(context: Context): Boolean = isReadyEnabled(context) || isEntryEnabled(context)
+
+    fun setReadyEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean("ready_enabled", enabled).apply()
+        if (!enabled) TradeIdeaReadyAlertStore.clear(context)
     }
 
+    fun setEntryEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean("entry_enabled", enabled).putBoolean("enabled", enabled).apply()
+    }
+
+    fun setEnabled(context: Context, enabled: Boolean) = setEntryEnabled(context, enabled)
+
     fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(1, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
             .build()
@@ -134,9 +147,33 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
-            if (!TradeIdeaNotifications.isEnabled(context) || !TradeIdeaNotifications.hasPermission(context)) {
+            val readyAlertsEnabled = TradeIdeaNotifications.isReadyEnabled(context)
+            val entryAlertsEnabled = TradeIdeaNotifications.isEntryEnabled(context)
+            if (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled)) {
                 return Result.success()
             }
+
+            if (readyAlertsEnabled) {
+                val readyIdeas = allIdeas.filter { isReadyAlertCandidate(it) }
+                val currentReadyKeys = readyIdeas.map { alertKey(it) }.toSet()
+                val previousReadyKeys = TradeIdeaReadyAlertStore.load(context)
+                readyIdeas.filter { alertKey(it) !in previousReadyKeys }
+                    .sortedByDescending { it.score }
+                    .take(3)
+                    .forEach { idea ->
+                        TradeIdeaNotifications.notify(
+                            context, idea.symbol, "ready",
+                            "READY setup approaching: ${idea.symbol}",
+                            "${idea.side} setup qualified · score ${idea.score}/100 · price ~${idea.last} · planned entry ~${idea.entry} · stop ~${idea.stop}. Waiting for entry confirmation; no order placed.",
+                            idea.horizon + "|" + idea.setup
+                        )
+                    }
+                TradeIdeaReadyAlertStore.save(context, currentReadyKeys)
+            } else {
+                TradeIdeaReadyAlertStore.clear(context)
+            }
+
+            if (!entryAlertsEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
             allIdeas.filter {
@@ -216,5 +253,42 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
             Result.retry()
         }
+    }
+}
+
+private object TradeIdeaReadyAlertStore {
+    private const val KEY = "active_ready_alerts"
+
+    fun load(context: Context): Set<String> = runCatching {
+        JSONArray(context.getSharedPreferences(TradeIdeaNotifications.PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
+    }.getOrElse { JSONArray() }.let { rows ->
+        (0 until rows.length()).map { rows.optString(it) }.filter { it.isNotBlank() }.toSet()
+    }
+
+    fun save(context: Context, keys: Set<String>) {
+        val rows = JSONArray().apply { keys.sorted().forEach { put(it) } }
+        context.getSharedPreferences(TradeIdeaNotifications.PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, rows.toString()).apply()
+    }
+
+    fun clear(context: Context) = save(context, emptySet())
+}
+
+private fun alertKey(idea: TradeIdea): String =
+    "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
+
+private fun isReadyAlertCandidate(idea: TradeIdea): Boolean {
+    if (idea.side !in setOf("LONG", "SHORT") || idea.entryTriggered || idea.score < TradeIdeasV2.MIN_SCORE) return false
+    if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.last.isFinite() ||
+        idea.entry <= 0.0 || idea.stop <= 0.0) return false
+    val geometryValid = if (idea.side == "LONG") idea.stop < idea.entry else idea.stop > idea.entry
+    if (!geometryValid || idea.warning.startsWith("BLOCK:", ignoreCase = true)) return false
+    val riskDistance = kotlin.math.abs(idea.entry - idea.stop)
+    if (riskDistance <= 0.0) return false
+    val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
+    return if (idea.side == "LONG") {
+        idea.last < idea.entry && idea.entry - idea.last <= approachBand
+    } else {
+        idea.last > idea.entry && idea.last - idea.entry <= approachBand
     }
 }
