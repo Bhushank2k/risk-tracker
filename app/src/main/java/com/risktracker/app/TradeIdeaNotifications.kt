@@ -135,6 +135,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             try {
                 scalpIdeas = BinanceMarketScanner.scan(november2Mode = true) { }
                 TradeIdeaCache.save(context, System.currentTimeMillis(), scalpIdeas, november2Mode = true)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 scalpWarning = "Daily Scalp scan failed: " + (e.message ?: "unknown error")
             }
@@ -221,6 +223,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             }
             TradeIdeaAlertPlanStore.save(context, plans)
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
             Result.retry()
