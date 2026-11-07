@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.NetworkType
@@ -24,8 +25,11 @@ import java.util.concurrent.TimeUnit
 private data class TradeIdeaAlertPlan(
     val symbol: String, val side: String, val entry: Double, val stop: Double,
     val target1: Double, val target2: Double, val setup: String, val target1Reached: Boolean = false,
-    val riskDistance: Double = kotlin.math.abs(entry - stop), val bestPrice: Double = entry
-)
+    val riskDistance: Double = kotlin.math.abs(entry - stop), val bestPrice: Double = entry,
+    val horizon: String = "Scalp"
+) {
+    val key: String get() = "$symbol|$horizon|$side"
+}
 
 object TradeIdeaNotifications {
     const val PREFS = "trade_idea_alerts_v1"
@@ -42,6 +46,7 @@ object TradeIdeaNotifications {
     fun schedule(context: Context) {
         val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(1, TimeUnit.HOURS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
@@ -57,7 +62,7 @@ object TradeIdeaNotifications {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    internal fun notify(context: Context, symbol: String, event: String, title: String, detail: String) {
+    internal fun notify(context: Context, symbol: String, event: String, title: String, detail: String, strategy: String = "") {
         if (!hasPermission(context)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -76,7 +81,7 @@ object TradeIdeaNotifications {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS).setAutoCancel(true)
             .apply { if (pending != null) setContentIntent(pending) }.build()
-        runCatching { NotificationManagerCompat.from(context).notify((symbol + event).hashCode(), notification) }
+        runCatching { NotificationManagerCompat.from(context).notify((symbol + strategy + event).hashCode(), notification) }
     }
 }
 
@@ -95,9 +100,9 @@ private object TradeIdeaAlertPlanStore {
                     row.getDouble("stop"), row.getDouble("target1"), row.getDouble("target2"),
                     row.optString("setup", "Trend continuation"), row.optBoolean("target1Reached", false),
                     row.optDouble("riskDistance", kotlin.math.abs(row.getDouble("entry") - row.getDouble("stop"))),
-                    row.optDouble("bestPrice", row.getDouble("entry"))
+                    row.optDouble("bestPrice", row.getDouble("entry")), row.optString("horizon", "Scalp")
                 )
-                p.symbol to p
+                p.key to p
             }.getOrNull()
         }.toMap().toMutableMap()
     }
@@ -107,7 +112,8 @@ private object TradeIdeaAlertPlanStore {
         plans.values.forEach { p ->
             rows.put(JSONObject().put("symbol", p.symbol).put("side", p.side).put("entry", p.entry)
                 .put("stop", p.stop).put("target1", p.target1).put("target2", p.target2).put("setup", p.setup)
-                .put("target1Reached", p.target1Reached).put("riskDistance", p.riskDistance).put("bestPrice", p.bestPrice))
+                .put("target1Reached", p.target1Reached).put("riskDistance", p.riskDistance).put("bestPrice", p.bestPrice)
+                .put("horizon", p.horizon))
         }
         context.getSharedPreferences(TradeIdeaNotifications.PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, rows.toString()).apply()
@@ -119,17 +125,21 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
         val context = applicationContext
         return try {
             BinanceMarketScanner.initialize(context)
+            TradeIdeaScanHealthStore.started(context)
 
             // Refresh both independently maintained idea sets while the app is closed.
-            val now = System.currentTimeMillis()
             val ideas = BinanceMarketScanner.scan { }
-            TradeIdeaCache.save(context, now, ideas, november2Mode = false)
-
-            // The legacy November 2 Daily Scalp rules have their own cache and remain isolated.
-            runCatching {
-                val scalpIdeas = BinanceMarketScanner.scan(november2Mode = true) { }
+            TradeIdeaCache.save(context, System.currentTimeMillis(), ideas, november2Mode = false)
+            var scalpIdeas = emptyList<TradeIdea>()
+            var scalpWarning: String? = null
+            try {
+                scalpIdeas = BinanceMarketScanner.scan(november2Mode = true) { }
                 TradeIdeaCache.save(context, System.currentTimeMillis(), scalpIdeas, november2Mode = true)
+            } catch (e: Exception) {
+                scalpWarning = "Daily Scalp scan failed: " + (e.message ?: "unknown error")
             }
+            TradeIdeaScanHealthStore.succeeded(context, scalp = scalpWarning == null, warning = scalpWarning)
+            val allIdeas = ideas + scalpIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
@@ -138,29 +148,34 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             }
 
             val plans = TradeIdeaAlertPlanStore.load(context)
-            ideas.filter {
+            allIdeas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
                     (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
                     (it.oiChangePct == null || it.oiChangePct > -1.0) &&
-                    it.side in setOf("LONG", "SHORT") && it.symbol !in plans
-            }.sortedByDescending { it.score }.take((3 - plans.size).coerceAtLeast(0)).forEach { idea ->
-                plans[idea.symbol] = TradeIdeaAlertPlan(
-                    idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup
+                    it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}" !in plans
+            }.sortedByDescending { it.score }.take((6 - plans.size).coerceAtLeast(0)).forEach { idea ->
+                val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}"
+                plans[strategyKey] = TradeIdeaAlertPlan(
+                    idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup,
+                    horizon = idea.horizon
                 )
                 TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop)
                 TradeIdeaNotifications.notify(
                     context, idea.symbol, "entry", "${idea.side} setup confirmed: ${idea.symbol}",
-                    "Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed."
+                    "Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed.",
+                    idea.horizon
                 )
             }
 
-            val currentIdeas = ideas.associateBy { it.symbol }
-            plans.toMap().forEach { (symbol, plan) ->
-                val current = currentIdeas[symbol]
+            val currentIdeas = allIdeas.associateBy { "${it.symbol}|${it.horizon}|${it.side}" }
+            plans.toMap().forEach { (planKey, plan) ->
+                val symbol = plan.symbol
+                val current = currentIdeas[planKey]
                 if (current != null && current.side != "WAIT" && current.side != plan.side) {
                     TradeIdeaNotifications.notify(
                         context, symbol, "invalid", "Setup invalidated: $symbol",
-                        "Multi-timeframe direction no longer agrees with the original ${plan.side} setup. Reassess manually; no order was changed."
+                        "Multi-timeframe direction no longer agrees with the original ${plan.side} setup (${plan.horizon}). Reassess manually; no order was changed.",
+                        plan.horizon
                     )
                     TradeIdeaPaperJournal.recordExit(context, symbol, current.last, "INVALIDATED", plan.riskDistance)
                     plans.remove(symbol)
@@ -182,28 +197,29 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     stopHit -> {
                         val stopLabel = if (managedPlan.target1Reached) "Breakeven/trailing stop reached" else "Initial stop reached"
                         TradeIdeaNotifications.notify(context, symbol, "stop", "$stopLabel: $symbol",
-                            "Latest price ~${price}; managed stop reference ~${managedPlan.stop}. Review any real position immediately.")
+                            "Latest price ~${price}; managed stop reference ~${managedPlan.stop}. Review any real position immediately.", plan.horizon)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.stop,
                             if (managedPlan.target1Reached) "TRAILING_STOP" else "STOP", managedPlan.riskDistance)
                         plans.remove(symbol)
                     }
                     target2Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
-                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.")
+                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.", plan.horizon)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.target2, "TARGET2", managedPlan.riskDistance)
                         plans.remove(symbol)
                     }
                     !managedPlan.target1Reached && target1Hit -> {
                         TradeIdeaPaperJournal.recordPartial(context, symbol)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
-                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.")
+                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon)
                         plans[symbol] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
                     }
                 }
             }
             TradeIdeaAlertPlanStore.save(context, plans)
             Result.success()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
             Result.retry()
         }
     }
