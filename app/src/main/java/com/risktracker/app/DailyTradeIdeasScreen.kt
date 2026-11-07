@@ -41,6 +41,7 @@ import java.util.TimeZone
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import java.util.concurrent.ConcurrentHashMap
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long)
@@ -129,6 +130,11 @@ internal object BinanceMarketScanner {
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
+    private data class CachedCandles(val fetchedAt: Long, val rows: List<ScanCandle>)
+    private val candleCache = ConcurrentHashMap<String, CachedCandles>()
+    private val candleFetchSlots = Semaphore(4)
+    private val candleRequestPacer = Mutex()
+    @Volatile private var nextCandleRequestAtMs = 0L
 
     private class BinanceRateLimitException(message: String) : IllegalStateException(message)
 
@@ -188,6 +194,30 @@ internal object BinanceMarketScanner {
         }.filter { it.closeTime < now && it.close > 0.0 }
     }
 
+    private suspend fun cachedCandles(symbol: String, interval: String, limit: Int): List<ScanCandle> =
+        candleFetchSlots.withPermit {
+            val key = "$symbol|$interval|$limit"
+            val ttlMs = when (interval) {
+                "5m" -> 90_000L
+                "15m" -> 4 * 60_000L
+                "1h" -> 20 * 60_000L
+                "4h" -> 90 * 60_000L
+                else -> 60_000L
+            }
+            val now = System.currentTimeMillis()
+            candleCache[key]?.takeIf { now - it.fetchedAt in 0..ttlMs && it.rows.isNotEmpty() }?.let {
+                return@withPermit it.rows
+            }
+            candleRequestPacer.withLock {
+                val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
+                if (waitMs > 0L) delay(waitMs)
+                nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+            }
+            val rows = withContext(Dispatchers.IO) { candles(symbol, interval, limit) }
+            if (rows.isNotEmpty()) candleCache[key] = CachedCandles(System.currentTimeMillis(), rows)
+            rows
+        }
+
     private fun ema(v: List<Double>, p: Int): Double? {
         if (v.size < p) return null
         val alpha = 2.0 / (p + 1.0)
@@ -235,8 +265,12 @@ internal object BinanceMarketScanner {
         return when { bullish -> "Bullish"; bearish -> "Bearish"; else -> "Neutral" }
     }
 
-    suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
-        progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
+    suspend fun scan(
+        progress: (String) -> Unit,
+        onPartialResults: (List<TradeIdea>) -> Unit = {}
+    ): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
+        suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
+        report("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
@@ -260,52 +294,54 @@ internal object BinanceMarketScanner {
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // ATR% and relative volume refine a compact 30-market prefilter before the final 20 are evaluated.
-        progress("Measuring hourly ATR% and relative volume across the liquid volatility shortlist…")
-        val hourlyCache = linkedMapOf<String, List<ScanCandle>>()
-        val ranked = mutableListOf<ScanTicker>()
-        for (ticker in prefiltered) {
-            coroutineContext.ensureActive()
-            try {
-                delay(750)
-                val hourly = candles(ticker.symbol, "1h", 260)
-                hourlyCache[ticker.symbol] = hourly
-                ranked.add(ticker.copy(atrPct = atrPercent(hourly), relativeVolume = relativeVolume(hourly)))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: BinanceRateLimitException) {
-                throw e
-            } catch (_: Exception) {
-                // Incomplete hourly history is not eligible for ATR-based ranking.
+        report("Measuring hourly ATR% and relative volume across ${prefiltered.size} liquid markets…")
+        val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
+        val ranked = prefiltered.map { ticker ->
+            async {
+                coroutineContext.ensureActive()
+                try {
+                    val hourly = cachedCandles(ticker.symbol, "1h", 260)
+                    hourlyCache[ticker.symbol] = hourly
+                    ticker.copy(atrPct = atrPercent(hourly), relativeVolume = relativeVolume(hourly))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: BinanceRateLimitException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Incomplete hourly history is not eligible for ATR-based ranking.
+                    null
+                }
             }
-        }
+        }.awaitAll().filterNotNull()
         val candidates = ranked.sortedByDescending {
             it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) + it.volatilityPct * 0.05
         }.take(MAX_DAILY_VOLATILE_MARKETS)
         if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
-        delay(750)
-        val btcH4 = candles("BTCUSDT", "4h", 260)
-        delay(750)
-        val btcH1 = candles("BTCUSDT", "1h", 260)
+        val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
+        val btcH1Job = async { cachedCandles("BTCUSDT", "1h", 260) }
+        val btcH4 = btcH4Job.await()
+        val btcH1 = btcH1Job.await()
         val btcBias = btcRegime(btcH4, btcH1)
 
         // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        progress("Daily radar · evaluating ${candidates.size} markets ranked by hourly ATR% and relative volume; BTC regime: $btcBias…")
+        report("Evaluating ${candidates.size} top-ranked markets; BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
             try {
-                // Serial, paced REST candle bootstrap. The hourly candles from pre-ranking are reused.
-                delay(750)
-                val h4 = candles(ticker.symbol, "4h", 260)
-                val h1 = hourlyCache[ticker.symbol] ?: candles(ticker.symbol, "1h", 260)
-                delay(750)
-                val m15 = candles(ticker.symbol, "15m", 500)
-                delay(750)
-                val m5 = candles(ticker.symbol, "5m", 1500)
+                // Fetch each symbol's remaining intervals concurrently; the shared limiter
+                // caps total REST concurrency and spaces request starts to protect Binance.
+                val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
+                val m15Job = async { cachedCandles(ticker.symbol, "15m", 500) }
+                val m5Job = async { cachedCandles(ticker.symbol, "5m", 1500) }
+                val h4 = h4Job.await()
+                val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
+                val m15 = m15Job.await()
+                val m5 = m5Job.await()
                 val micro = BinanceFuturesStream.microstructure(ticker.symbol)
                 val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
                 val live = ticker.copy(
@@ -321,7 +357,11 @@ internal object BinanceMarketScanner {
             } catch (_: Exception) {
                 // Skip incomplete symbols; never fan out retries after a rate-limit response.
             }
-            progress("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
+            if (results.isNotEmpty()) {
+                val snapshot = results.toList()
+                withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
+            }
+            report("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
         }
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
@@ -404,12 +444,18 @@ fun DailyTradeIdeasScreen() {
         if (loading) return
         loading = true
         error = null
-        status = "Connecting to Binance public market data…"
+        status = if (ideas.isEmpty()) "Connecting to Binance public market data…" else "Refreshing market data · saved ideas remain visible…"
         TradeIdeaScanHealthStore.started(context)
         scanHealth = TradeIdeaScanHealthStore.load(context)
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan { status = it }
+                val freshIdeas = BinanceMarketScanner.scan(
+                    progress = { status = it },
+                    onPartialResults = { partial ->
+                        ideas = partial
+                        showingCached = false
+                    }
+                )
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
                 TradeIdeaScanHealthStore.succeeded(context, at = scanTime)
@@ -421,6 +467,8 @@ fun DailyTradeIdeasScreen() {
                 paperStats = TradeIdeaPaperJournal.stats(context)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
                 TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
@@ -434,6 +482,8 @@ fun DailyTradeIdeasScreen() {
         // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
         BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
+        val cacheAge = cachedScan?.first?.let { System.currentTimeMillis() - it } ?: Long.MAX_VALUE
+        if (cacheAge > 10 * 60_000L) refresh()
     }
     LaunchedEffect(Unit) {
         while (true) {
@@ -535,7 +585,7 @@ fun DailyTradeIdeasScreen() {
                 Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                Text("Background monitoring is best-effort; opening this screen does not start a scan. Use Refresh for a manual market scan. Price alerts are not real-time guarantees.",
+                Text("Saved ideas appear immediately. A fresh scan starts automatically when the saved snapshot is over 10 minutes old; use Refresh any time to update it. Price alerts are not real-time guarantees.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
