@@ -573,7 +573,8 @@ fun DailyTradeIdeasScreen() {
                 TradeIdeaStage.TRACKING -> 1
                 TradeIdeaStage.MONITOR -> 2
                 TradeIdeaStage.WAIT_CONFIRMATION -> 3
-                TradeIdeaStage.DO_NOT_ENTER -> 4
+                TradeIdeaStage.AVOID_CHASING -> 4
+                TradeIdeaStage.DO_NOT_ENTER -> 5
             }
         }.thenByDescending { it.score }
     )
@@ -585,6 +586,7 @@ fun DailyTradeIdeasScreen() {
             "Waiting" -> stage == TradeIdeaStage.WAIT_CONFIRMATION
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Do not enter" -> stage == TradeIdeaStage.DO_NOT_ENTER
+            "Avoid chasing" -> stage == TradeIdeaStage.AVOID_CHASING
             "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
             "Intraday" -> idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> idea.side == "LONG"
@@ -790,7 +792,7 @@ fun DailyTradeIdeasScreen() {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val sizingIdea = ideas.firstOrNull { it.side != "WAIT" && tradeIdeaRiskValid(it) && it.entryTriggered && it.symbol !in trackedSymbols }
+                    val sizingIdea = ideas.firstOrNull { it.symbol !in trackedSymbols && tradeIdeaStage(it, tracked = false) == TradeIdeaStage.ENTRY_CONFIRMED }
                     val sizing = sizingIdea?.let { TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop) }
                     OutlinedTextField(value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
@@ -839,7 +841,8 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
 private enum class TradeIdeaStage(val title: String, val detail: String) {
     MONITOR("Monitor setup", "Price is approaching the planned entry zone."),
     WAIT_CONFIRMATION("Wait for confirmation", "The entry trigger has not been confirmed yet."),
-    ENTRY_CONFIRMED("Entry conditions confirmed", "The trigger is confirmed and the risk plan passed validation."),
+    ENTRY_CONFIRMED("Entry conditions confirmed", "The trigger is confirmed and price remains near the planned entry."),
+    AVOID_CHASING("Avoid chasing", "The trigger fired, but price has moved too far from the planned entry. Wait for a fresh retest."),
     TRACKING("Trade being tracked", "Live market price and progress are being monitored."),
     DO_NOT_ENTER("Do not enter", "The setup is invalid or its risk plan failed validation.")
 }
@@ -858,10 +861,131 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
     return geometryValid && !warningBlocksEntry
 }
 
+private data class EntryGuidance(
+    val score: Int,
+    val grade: String,
+    val action: String,
+    val trigger: String,
+    val invalidation: String,
+    val zoneLow: Double,
+    val zoneHigh: Double,
+    val checks: List<Pair<String, Boolean?>>
+)
+
+private fun biasSupportsSide(bias: String, side: String): Boolean {
+    val value = bias.lowercase(Locale.US)
+    val tokens = if (side == "LONG") listOf("bull", "up", "long", "positive")
+        else listOf("bear", "down", "short", "negative")
+    return tokens.any { value.contains(it) }
+}
+
+/** Advisory entry timing layer. It never overrides scanner qualification or risk gates. */
+private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
+    val longSide = idea.side == "LONG"
+    val trend4h = biasSupportsSide(idea.bias4h, idea.side)
+    val trend1h = biasSupportsSide(idea.bias1h, idea.side)
+    val trend5m = biasSupportsSide(idea.bias5m, idea.side)
+    val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
+    val volumeOk = idea.volumeRatio >= 1.15
+    val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
+    val riskDistance = abs(idea.entry - idea.stop)
+    val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
+    val rewardOk = rr >= 1.5
+    val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
+        (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
+        (if (volumeOk) 15 else 0) + (if (spreadOk == true) 10 else 0) +
+        (if (rewardOk) 15 else 0)
+    val grade = when {
+        score >= 80 -> "Strong confluence"
+        score >= 65 -> "Good · verify"
+        score >= 45 -> "Mixed conditions"
+        else -> "Weak confluence"
+    }
+    val halfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
+    val zoneLow = idea.entry - halfWidth
+    val zoneHigh = idea.entry + halfWidth
+    val tooFar = entryTooFarFromPlan(idea)
+    val invalidated = livePriceInvalidatesPlan(idea)
+    val action = when {
+        !tradeIdeaRiskValid(idea) -> "Skip this setup: scanner risk validation did not pass."
+        invalidated -> "Plan invalidated: live price has reached or crossed the stop level."
+        idea.entryTriggered && tooFar -> "Trigger fired, but price has moved outside the chase limit. Do not chase; wait for a fresh retest and new scan confirmation."
+        idea.entryTriggered -> "Scanner trigger is confirmed and price remains near plan. Recheck the spread and completed candle before acting."
+        tooFar -> "Price is extended from the planned entry. Wait for price to return to the zone; do not chase."
+        else -> "Wait for price to approach the zone and then require a directional candle close. A zone touch alone is not an entry."
+    }
+    val trigger = if (longSide)
+        "LONG: retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
+    else
+        "SHORT: retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
+    val invalidation = if (longSide)
+        "Cancel the plan if price reaches the stop or closes below retest support before entry."
+    else
+        "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
+    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, listOf(
+        "4H trend aligned" to trend4h,
+        "1H trend aligned" to trend1h,
+        "5M execution trend aligned" to trend5m,
+        ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
+        ("Relative volume at least 1.15× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
+        "Spread at or below 10 bps" to spreadOk,
+        ("Target 1 offers at least 1.5R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
+    ))
+}
+
+@Composable
+private fun EntryGuidancePanel(idea: TradeIdea) {
+    val guidance = remember(idea) { buildEntryGuidance(idea) }
+    RiskCard(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+    ) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
+                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+                    fontWeight = FontWeight.SemiBold)
+            }
+            Text("Planned entry zone: " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
+                fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+            Text(guidance.action, style = MaterialTheme.typography.bodySmall)
+            Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+            HorizontalDivider()
+            Text("Entry quality checks", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            guidance.checks.forEach { (label, passed) ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (passed == true) "✓" else "○",
+                        color = if (passed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text(label + if (passed == null) " · unavailable" else if (passed) " · pass" else " · review",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text("Entry quality is a rule-based checklist, not a win probability. It never overrides the scanner's 75/100 qualification and hard risk gates.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun entryTooFarFromPlan(idea: TradeIdea): Boolean {
+    val riskDistance = abs(idea.entry - idea.stop)
+    if (riskDistance <= 0.0 || idea.entry <= 0.0 || !idea.last.isFinite()) return true
+    val chaseLimit = minOf(idea.entry * 0.003, riskDistance * 0.50)
+    return abs(idea.last - idea.entry) > chaseLimit
+}
+
+private fun livePriceInvalidatesPlan(idea: TradeIdea): Boolean =
+    if (idea.side == "LONG") idea.last <= idea.stop else idea.last >= idea.stop
+
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     if (tracked) return TradeIdeaStage.TRACKING
-    if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea)) return TradeIdeaStage.DO_NOT_ENTER
-    if (idea.entryTriggered) return TradeIdeaStage.ENTRY_CONFIRMED
+    if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
+    if (idea.entryTriggered) {
+        return if (entryTooFarFromPlan(idea)) TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.ENTRY_CONFIRMED
+    }
     val riskDistance = abs(idea.entry - idea.stop)
     val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
     val approaching = if (idea.side == "LONG") {
@@ -871,6 +995,7 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     }
     return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
 }
+
 
 private fun displayIdeaHorizon(horizon: String): String =
     horizon.replace("Swing · H1 setup", "Intraday · H1 setup")
@@ -885,7 +1010,9 @@ private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
         idea.side in setOf("LONG", "SHORT") &&
             idea.score >= TradeIdeasV2.MIN_SCORE &&
             tradeIdeaRiskValid(idea) &&
-            !idea.warning.startsWith("BLOCK:", ignoreCase = true)
+            !idea.warning.startsWith("BLOCK:", ignoreCase = true) &&
+            (!idea.entryTriggered || !entryTooFarFromPlan(idea)) &&
+            !livePriceInvalidatesPlan(idea)
     }.sortedWith(
         compareByDescending<TradeIdea> { it.entryTriggered }
             .thenByDescending { it.score }
@@ -1027,6 +1154,9 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     Text(stage.title.uppercase(Locale.US), color = tint, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
+            }
+            if (idea.side == "LONG" || idea.side == "SHORT") {
+                EntryGuidancePanel(liveIdea)
             }
             if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
