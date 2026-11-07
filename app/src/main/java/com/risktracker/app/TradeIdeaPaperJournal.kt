@@ -29,22 +29,22 @@ internal object TradeIdeaPaperJournal {
             .edit().putString(KEY, trimmed.toString()).apply()
     }
 
-    fun recordEntry(context: Context, symbol: String, setup: String, side: String, entry: Double, stop: Double) {
+    fun recordEntry(context: Context, symbol: String, setup: String, side: String, entry: Double, stop: Double, strategyKey: String = "") {
         val rows = history(context)
         if ((0 until rows.length()).any { i ->
                 val row = rows.optJSONObject(i)
-                row?.optString("symbol") == symbol && !row.has("closedAt")
+                row?.optString("symbol") == symbol && row.optString("strategyKey", "") == strategyKey && !row.has("closedAt")
             }) return
         rows.put(JSONObject().put("symbol", symbol).put("setup", setup).put("side", side)
-            .put("entry", entry).put("stop", stop).put("openedAt", System.currentTimeMillis()))
+            .put("strategyKey", strategyKey).put("entry", entry).put("stop", stop).put("openedAt", System.currentTimeMillis()))
         save(context, rows)
     }
 
-    fun recordPartial(context: Context, symbol: String, partialR: Double = 0.75) {
+    fun recordPartial(context: Context, symbol: String, partialR: Double = 0.75, strategyKey: String = "") {
         val rows = history(context)
         for (i in rows.length() - 1 downTo 0) {
             val row = rows.optJSONObject(i) ?: continue
-            if (row.optString("symbol") == symbol && !row.has("closedAt")) {
+            if (row.optString("symbol") == symbol && row.optString("strategyKey", "") == strategyKey && !row.has("closedAt")) {
                 rows.put(i, JSONObject(row.toString()).put("partialR", partialR))
                 save(context, rows)
                 return
@@ -52,11 +52,11 @@ internal object TradeIdeaPaperJournal {
         }
     }
 
-    fun recordExit(context: Context, symbol: String, exitPrice: Double, outcome: String, riskDistance: Double? = null) {
+    fun recordExit(context: Context, symbol: String, exitPrice: Double, outcome: String, riskDistance: Double? = null, strategyKey: String = "") {
         val rows = history(context)
         for (i in rows.length() - 1 downTo 0) {
             val row = rows.optJSONObject(i) ?: continue
-            if (row.optString("symbol") != symbol || row.has("closedAt")) continue
+            if (row.optString("symbol") != symbol || row.optString("strategyKey", "") != strategyKey || row.has("closedAt")) continue
             val entry = row.optDouble("entry", 0.0)
             val stop = row.optDouble("stop", 0.0)
             val side = row.optString("side")
