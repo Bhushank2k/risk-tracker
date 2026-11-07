@@ -321,6 +321,7 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf(cachedScan?.first) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
+    var strategyMode by remember { mutableStateOf("Both") }
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
@@ -366,7 +367,12 @@ fun DailyTradeIdeasScreen() {
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
-    val rankedIdeas = ideas.sortedWith(
+    val modeIdeas = ideas.filter { idea ->
+        strategyMode == "Both" ||
+            (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
+            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
+    }
+    val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols)) {
                 TradeIdeaStage.ENTRY_CONFIRMED -> 0
@@ -394,13 +400,13 @@ fun DailyTradeIdeasScreen() {
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
     val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
-    val readyCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
-    val monitorCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
-    val blockedCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
-    val trackedCount = ideas.count { it.symbol in trackedSymbols }
-    val longCount = ideas.count { it.side == "LONG" }
-    val shortCount = ideas.count { it.side == "SHORT" }
-    val waitCount = ideas.count { it.side == "WAIT" }
+    val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
+    val monitorCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
+    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
+    val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
+    val longCount = modeIdeas.count { it.side == "LONG" }
+    val shortCount = modeIdeas.count { it.side == "SHORT" }
+    val waitCount = modeIdeas.count { it.side == "WAIT" }
     val timeLabel = updatedAt?.let {
         SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
@@ -495,6 +501,20 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Scalping", "Swing", "Both").forEach { mode ->
+                        FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
+                            label = { Text(mode) })
+                    }
+                }
+                Text(
+                    when (strategyMode) {
+                        "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
+                        "Swing" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
+                        else -> "Showing both independent strategies. Switch modes to focus the results."
+                    },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -521,13 +541,13 @@ fun DailyTradeIdeasScreen() {
                     Text(trackedVisible.size.toString() + " tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            items(trackedVisible, key = { "tracked_" + it.symbol }) { idea ->
+            items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            items(opportunityVisible, key = { "idea_" + it.symbol }) { idea ->
+            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         } else if (trackedVisible.isEmpty()) {
