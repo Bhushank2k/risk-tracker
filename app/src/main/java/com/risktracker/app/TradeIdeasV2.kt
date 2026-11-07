@@ -157,19 +157,21 @@ internal object TradeIdeasV2 {
         val notOverboughtOrOversold = if (longBias) setupRsi < 78.0 else setupRsi > 22.0
         val notOverextended = abs(current.close - retestLevel) <= atr * 0.75
         val funding = micro.fundingRate
-        // Funding is expressed as a fraction (0.001 = 0.1%). Missing funding is disclosed,
-        // but does not by itself invalidate otherwise complete public market data.
-        val fundingOkay = funding == null || !funding.isFinite() ||
-            (if (longBias) funding <= 0.001 else funding >= -0.001)
-        val btcAligned = btcBias.isNullOrBlank() || btcBias == "Neutral" ||
-            (if (longBias) btcBias == "Bullish" else btcBias == "Bearish")
+        // Funding is contextual when unavailable; extreme adverse funding is a hard veto.
+        val fundingAvailable = funding != null && funding.isFinite()
+        val fundingOkay = !fundingAvailable ||
+            (if (longBias) funding!! <= 0.001 else funding!! >= -0.001)
+        // BTC direction is context, never a blanket veto for a coin-specific setup.
+        val btcOpposesSide = !btcBias.isNullOrBlank() && btcBias != "Neutral" &&
+            (if (longBias) btcBias == "Bearish" else btcBias == "Bullish")
         val minRelativeVolume = if (breakoutIndex >= 0) 1.5 else 1.0
         val oiChange = micro.oiChangePct?.takeIf { it.isFinite() }
         val oiAligned = oiChange != null && oiChange >= 0.5 &&
             (if (longBias) current.close >= previous.close else current.close <= previous.close)
-        val triggered = patternDetected && !breakoutInvalidated && retestTouched && retestHeld &&
-            executionConfirmed && setupRelativeVolume >= minRelativeVolume &&
-            notOverboughtOrOversold && notOverextended && fundingOkay && btcAligned
+        val setupConfirmed = patternDetected && !breakoutInvalidated && retestTouched && retestHeld
+        val triggered = setupConfirmed && executionConfirmed &&
+            setupRelativeVolume >= minRelativeVolume &&
+            notOverboughtOrOversold && notOverextended && fundingOkay
 
         val structuralStop = if (longBias) setupCandles.takeLast(3).minOf { it.low } - atr * 0.20
             else setupCandles.takeLast(3).maxOf { it.high } + atr * 0.20
@@ -188,6 +190,9 @@ internal object TradeIdeasV2 {
         val atrPct = atr / current.close * 100.0
         val minAtrPct = if (swingMode) 0.25 else 0.12
         val maxAtrPct = if (swingMode) 3.0 else 1.5
+        val volatilityOkay = atrPct in minAtrPct..maxAtrPct
+        val rewardRiskOkay = validGeometry && risk > 0.0 &&
+            abs(target1 - entry) / risk >= 1.5
         val volatilityScore = when {
             atrPct in minAtrPct..maxAtrPct -> 15
             atrPct > maxAtrPct -> 7
@@ -216,32 +221,49 @@ internal object TradeIdeasV2 {
             "${setupTf} relative volume is " + "%.2f×".format(java.util.Locale.US, setupRelativeVolume) + " versus the prior 20 completed candles",
             "${setupTf} RSI " + "%.1f".format(java.util.Locale.US, setupRsi) +
                 (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry"),
-            "BTC market regime: " + (btcBias ?: "Unavailable")
+            "BTC market regime: " + (btcBias ?: "Unavailable") +
+                (if (btcOpposesSide) " (opposes this coin's setup; contextual warning only)" else " (context only)")
         )
         if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates (spread ≤ 10 bps)")
         if (funding == null || !funding.isFinite()) reasons.add("Funding unavailable; no funding-based directional edge assumed")
         else reasons.add("Funding rate " + "%+.4f%%".format(java.util.Locale.US, funding * 100.0))
         if (oiChange == null) reasons.add("Open-interest confirmation unavailable; no OI score added")
         else reasons.add("Open interest changed " + "%+.2f%%".format(java.util.Locale.US, oiChange) + (if (oiAligned) " with directional price confirmation (+5 score)" else " without directional confirmation"))
+        // READY is an AND gate across all applicable setup, execution, liquidity,
+        // volatility, stop geometry, reward/risk and score requirements.
+        val hardGates = listOf(
+            setupConfirmed,
+            executionConfirmed,
+            setupRelativeVolume >= minRelativeVolume,
+            notOverboughtOrOversold,
+            notOverextended,
+            fundingOkay,
+            liquidityOkay,
+            volatilityOkay,
+            validGeometry,
+            rewardRiskOkay,
+            score >= MIN_SCORE
+        )
+        val allHardGatesPass = hardGates.all { it }
         val warning = when {
             spread == null || imbalance == null -> "BLOCK: Spread or order-book depth is unavailable; missing liquidity data never passes."
             !liquidityOkay -> "BLOCK: Spread exceeds 10 bps or order-book imbalance is outside the allowed side threshold."
-            breakoutInvalidated -> "INVALIDATED: Price closed back through the breakout level; wait for a fresh setup."
-            !btcAligned -> "BLOCK: BTC market regime is opposed to this trade direction."
-            setupRelativeVolume < 1.5 -> "BLOCK: Relative volume is below 1.5× the prior 20 completed candles."
-            atrPct < minAtrPct -> "BLOCK: ATR% is too low; insufficient movement for this strategy."
+            breakoutInvalidated -> "BLOCK: Price closed back through the breakout level; wait for a fresh setup."
+            !setupConfirmed -> "Conditional only: waiting for a valid setup, retest and hold."
+            !executionConfirmed -> "Conditional only: waiting for $executionTf execution confirmation."
+            setupRelativeVolume < minRelativeVolume -> "BLOCK: Relative volume is below the strategy threshold of " + minRelativeVolume + "x."
+            !volatilityOkay -> "BLOCK: ATR% is outside the allowed " + minAtrPct + "%–" + maxAtrPct + "% range."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
+            !rewardRiskOkay -> "BLOCK: Planned reward/risk is below 1.5:1."
             !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
-            !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
-            triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
-            !triggered -> "Conditional only: wait for breakout, retest hold, volume and $executionTf confirmation."
-            else -> (if (score >= 85) "HIGH QUALITY: Entry conditions confirmed. " else "VALID SETUP: Entry conditions confirmed. ") +
-                "Backtest estimates are historical only; account for fees, funding and slippage."
+            !notOverextended -> "BLOCK: Price is too extended from the setup level."
+            score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
+            else -> (if (score >= 85) "HIGH QUALITY: All mandatory entry gates passed. " else "VALID SETUP: All mandatory entry gates passed. ") +
+                (if (btcOpposesSide) "BTC direction opposes this coin; monitor broader-market risk. " else "") +
+                "Historical performance is not guaranteed; account for fees, funding and slippage."
         }
-        val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
-            notOverboughtOrOversold && notOverextended && !breakoutInvalidated && btcAligned &&
-            setupRelativeVolume >= minRelativeVolume && atrPct >= minAtrPct && score >= MIN_SCORE
+        val finalTriggered = triggered && allHardGatesPass
         return V2TradePlan(
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
