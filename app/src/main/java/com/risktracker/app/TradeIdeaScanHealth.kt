@@ -30,9 +30,8 @@ internal object TradeIdeaScanHealthStore {
 
     fun succeeded(context: Context, scalp: Boolean, at: Long = System.currentTimeMillis(), warning: String? = null) {
         val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong("last_success", at)
             .putString("last_error", warning)
-        if (scalp) edit.putLong("scalp_success", at)
+        if (scalp) edit.putLong("scalp_success", at) else edit.putLong("last_success", at)
         edit.apply()
     }
 
