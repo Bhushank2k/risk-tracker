@@ -209,7 +209,7 @@ internal object TradeIdeasV2 {
                 sweptAndReclaimed -> "${setupTf} liquidity sweep reclaimed the prior 10-bar extreme"
                 else -> "Waiting for breakout, EMA20 pullback or liquidity sweep confirmation"
             },
-            if (retestTouched && retestHeld) "${setupTf} retest held the breakout level" else "Retest has not yet confirmed",
+            if (retestTouched && retestHeld) "${setupTf} confirmation held the " + strategySetup.lowercase(java.util.Locale.US) + " level" else "Waiting for setup-level confirmation",
             if (executionConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
             "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
             "${setupTf} ATR is " + "%.2f%%".format(java.util.Locale.US, atrPct) + " of price",
