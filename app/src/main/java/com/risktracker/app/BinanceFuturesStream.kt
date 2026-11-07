@@ -152,9 +152,14 @@ internal object BinanceFuturesStream {
             "bookTicker" -> {
                 val bid = data.optString("b").toDoubleOrNull() ?: return
                 val ask = data.optString("a").toDoubleOrNull() ?: return
+                val bidQty = data.optString("B").toDoubleOrNull() ?: 0.0
+                val askQty = data.optString("A").toDoubleOrNull() ?: 0.0
                 if (bid > 0.0 && ask > bid) {
-                    val old = books[symbol]
-                    books[symbol] = Book(bid, ask, old?.bidNotional ?: 0.0, old?.askNotional ?: 0.0, now)
+                    // !bookTicker exposes best-level quantities, not full depth.
+                    // Use their notionals as a transparent top-of-book imbalance estimate.
+                    books[symbol] = Book(
+                        bid, ask, bid * bidQty, ask * askQty, now
+                    )
                 }
             }
             "24hrTicker" -> {
