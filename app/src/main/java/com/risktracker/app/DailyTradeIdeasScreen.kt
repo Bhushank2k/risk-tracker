@@ -44,7 +44,7 @@ import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
-private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long)
+private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
     val last: Double, val entry: Double, val stop: Double, val target1: Double, val target2: Double,
@@ -126,7 +126,7 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
-    private const val MAX_DAILY_VOLATILE_MARKETS = 20
+    private const val MAX_DAILY_VOLATILE_MARKETS = 30
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
@@ -190,7 +190,7 @@ internal object BinanceMarketScanner {
         return (0 until raw.length()).mapNotNull { i ->
             val a = raw.optJSONArray(i) ?: return@mapNotNull null
             runCatching { ScanCandle(a.getString(2).toDouble(), a.getString(3).toDouble(),
-                a.getString(4).toDouble(), a.getString(5).toDouble(), a.getLong(6)) }.getOrNull()
+                a.getString(4).toDouble(), a.getString(5).toDouble(), a.getLong(6), a.getString(1).toDouble()) }.getOrNull()
         }.filter { it.closeTime < now && it.close > 0.0 }
     }
 
@@ -253,6 +253,29 @@ internal object BinanceMarketScanner {
         return if (average > 0.0) rows.last().volume / average else 0.0
     }
 
+    private suspend fun openInterestChangePct(symbol: String): Double? {
+        return try {
+            // Pace the optional per-symbol historical OI request through the same REST limiter.
+            candleRequestPacer.withLock {
+                val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
+                if (waitMs > 0L) delay(waitMs)
+                nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+            }
+            val rows = withContext(Dispatchers.IO) {
+                JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
+            }
+            if (rows.length() < 2) return null
+            val previous = rows.optJSONObject(0)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return null
+            val latest = rows.optJSONObject(1)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return null
+            if (previous <= 0.0 || !previous.isFinite() || !latest.isFinite()) null
+            else ((latest - previous) / previous * 100.0).takeIf { it.isFinite() }
+        } catch (e: BinanceRateLimitException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>): String {
         val c4 = h4.map { it.close }; val c1 = h1.map { it.close }
         val e4_20 = ema(c4, 20); val e4_50 = ema(c4, 50); val e4_200 = ema(c4, 200)
@@ -290,10 +313,10 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-            .take(30)
+            .take(50)
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // ATR% and relative volume refine a compact 30-market prefilter before the final 20 are evaluated.
+        // ATR%, relative volume and liquidity refine the 50-market prefilter before the final 30 are evaluated.
         report("Measuring hourly ATR% and relative volume across ${prefiltered.size} liquid markets…")
         val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
         val ranked = prefiltered.map { ticker ->
@@ -314,7 +337,9 @@ internal object BinanceMarketScanner {
             }
         }.awaitAll().filterNotNull()
         val candidates = ranked.sortedByDescending {
-            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) + it.volatilityPct * 0.05
+            // Blend tradable movement with liquidity so quieter but liquid setups are not crowded out.
+            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
+                it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
         }.take(MAX_DAILY_VOLATILE_MARKETS)
         if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
 
@@ -345,7 +370,9 @@ internal object BinanceMarketScanner {
                 val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
                 val m15 = m15Job.await()
                 val m5 = m5Job.await()
-                val micro = BinanceFuturesStream.microstructure(ticker.symbol)
+                val micro = BinanceFuturesStream.microstructure(ticker.symbol).copy(
+                    oiChangePct = openInterestChangePct(ticker.symbol)
+                )
                 val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
                 val live = ticker.copy(
                     last = liveTicker?.first ?: ticker.last,
@@ -381,11 +408,11 @@ internal object BinanceMarketScanner {
     } }
 
     private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
-        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate)
+        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
         val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
         // For swing mode, the H1 candles become the setup series and M15 candles become execution.
         val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
@@ -406,12 +433,12 @@ internal object BinanceMarketScanner {
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
         // Historical replay is supplementary; a replay edge case must never discard a live setup.
-        val replay = if (swingMode || !runBacktest) TradeIdeaBacktestStats() else runCatching {
+        val replay = if (swingMode || !runBacktest || plan.setup != "Breakout retest") TradeIdeaBacktestStats() else runCatching {
             TradeIdeasV2.backtest(
-                h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         return TradeIdea(
