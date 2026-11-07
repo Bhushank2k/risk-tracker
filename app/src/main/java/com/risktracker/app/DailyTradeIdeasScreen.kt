@@ -384,9 +384,9 @@ internal object BinanceMarketScanner {
 
     private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
         val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
         // For swing mode, the H1 candles become the setup series and M15 candles become execution.
@@ -410,10 +410,10 @@ internal object BinanceMarketScanner {
         // Historical replay is supplementary; a replay edge case must never discard a live setup.
         val replay = if (swingMode || !runBacktest) TradeIdeaBacktestStats() else runCatching {
             TradeIdeasV2.backtest(
-                h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+                h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         return TradeIdea(
