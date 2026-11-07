@@ -225,13 +225,13 @@ internal object BinanceMarketScanner {
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
             else ScanTicker(symbol, quote, x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, last)
-        }.sortedByDescending { it.quoteVolume }.take(20)
+        }.sortedByDescending { it.quoteVolume }.take(50)
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // One multiplexed market socket plus one high-frequency public socket for the selected universe.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        progress("WebSocket connected · warming live prices, book and funding; loading candle history for top 20 pairs…")
+        progress("WebSocket connected · warming live prices, book and funding; loading candle history for up to 50 pairs…")
         val results = mutableListOf<TradeIdea>()
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
