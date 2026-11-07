@@ -412,7 +412,7 @@ fun DailyTradeIdeasScreen() {
                 val freshIdeas = BinanceMarketScanner.scan { status = it }
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
-                TradeIdeaScanHealthStore.succeeded(context, scalp = false, at = scanTime)
+                TradeIdeaScanHealthStore.succeeded(context, at = scanTime)
                 scanHealth = TradeIdeaScanHealthStore.load(context)
                 ideas = freshIdeas
                 updatedAt = scanTime
