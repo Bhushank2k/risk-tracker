@@ -1488,25 +1488,6 @@ fun CalculatorScreen(input: CalcInput, accountEquity: Double? = null, onChange: 
                 ResultRow("R:R", long.rr.num(2), short.rr.num(2))
             }
         }
-        val validSides = listOf(long, short).filter { it.message == null }
-        val suggestion = when {
-            parsed.riskPercent > 2.0 ->
-                "Your selected risk is " + parsed.riskPercent.pct(1) + " of balance. Consider lowering it to 1–2% if that matches your trading plan."
-            validSides.isEmpty() ->
-                "These inputs do not currently produce a valid Long or Short setup. Review entry, stop-loss, target, leverage and balance before relying on the estimates."
-            validSides.map { it.rr }.filter { it.isFinite() && it > 0.0 }.minOrNull()?.let { it < 1.0 } == true ->
-                "At least one valid side has a reward-to-risk ratio below 1:1. Review whether the target justifies the planned risk before trading."
-            validSides.all { it.margin > parsed.balance * 0.8 } ->
-                "The estimated margin uses more than 80% of your account balance. Consider reducing position size or leverage to leave a buffer for fees and price movement."
-            else ->
-                "Your current inputs estimate " + parsed.balance.usd() + " balance with " + parsed.riskPercent.pct(1) + " risk per trade. Recheck fees, slippage, funding and exchange margin rules before using this estimate."
-        }
-        RiskCard(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("Suggestion from current inputs", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                Text(suggestion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-            }
-        }
         long.message?.let { Warn("Long: $it") }
         short.message?.let { Warn("Short: $it") }
     }

@@ -573,8 +573,6 @@ fun DailyTradeIdeasScreen() {
         item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -602,8 +600,7 @@ fun DailyTradeIdeasScreen() {
                 Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                Text("Saved ideas appear immediately. A fresh scan starts automatically when the saved snapshot is over 10 minutes old; use Refresh any time to update it. Price alerts are not real-time guarantees.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Price alerts are not real-time guarantees.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -730,11 +727,10 @@ fun DailyTradeIdeasScreen() {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(if (ideas.isEmpty()) "No scan results yet" else if (strategyMode == "Daily Picks") "No qualifying daily picks right now" else "No ideas in this filter", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (ideas.isEmpty()) "Refresh the market scan to load current setups."
-                            else if (strategyMode == "Daily Picks") "No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade."
-                            else "Try another state or timeframe filter.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (ideas.isNotEmpty() && strategyMode == "Daily Picks") {
+                            Text("No setup passed the existing score and risk gates. The shortlist will stay empty rather than force a weak trade.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -748,17 +744,13 @@ fun DailyTradeIdeasScreen() {
                     OutlinedTextField(value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    if (sizingIdea == null) {
-                        Text("A confirmed, risk-valid setup is required before quantity can be estimated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else if (sizing == null) {
-                        Text("Enter valid equity to calculate quantity for " + sizingIdea.symbol + ".", style = MaterialTheme.typography.bodySmall)
-                    } else {
+                    if (sizingIdea != null && sizing != null) {
                         Text(sizingIdea.symbol + " · " + sizingIdea.side + " · 0.5% risk", fontWeight = FontWeight.SemiBold)
                         ScannerMetric("Suggested quantity", "%.6f".format(Locale.US, sizing.quantity))
                         ScannerMetric("Notional value", "$" + "%,.2f".format(Locale.US, sizing.notional))
                         ScannerMetric("Approx. margin at 3×", "$" + "%,.2f".format(Locale.US, sizing.marginAtMaxLeverage))
                         ScannerMetric("Planned loss at stop", "$" + "%,.2f".format(Locale.US, sizing.riskAmount) + " (" + "%.2f".format(Locale.US, sizing.actualRiskPercent) + "%)")
-                        Text("Estimate excludes fees, funding, slippage and exchange quantity/step-size filters. Recheck before placing an order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Estimate excludes fees, funding, slippage and exchange quantity/step-size filters.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -1046,7 +1038,7 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                     onTrackingChanged(idea.symbol, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
             } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
-                Text("Risk checks passed. Verify spread, slippage and position size before entering.", style = MaterialTheme.typography.bodySmall)
+                Text("Risk checks passed.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
                         val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
@@ -1059,7 +1051,6 @@ private fun TradeIdeaCard(idea: TradeIdea, density: String, onTrackingChanged: (
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
-                Text("Wait for the 15M close and volume trigger. Do not anticipate the breakout.", style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
