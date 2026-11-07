@@ -252,7 +252,7 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                evaluate(live, h4, h1, m15, m5, micro)?.let { results.add(it) }
+                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
@@ -265,36 +265,43 @@ internal object BinanceMarketScanner {
         results.sortedByDescending { it.score }
     }
 
-    private fun evaluate(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): TradeIdea? {
-        val plan = TradeIdeasV2.evaluate(
-            h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate),
-            t.quoteVolume,
-            t.changePct
-        ) ?: return null
-        val rsiValue = rsi(m.map { it.close }) ?: 50.0
-        val priorVolume = m.dropLast(1).takeLast(20).map { it.volume }.average()
-        val volumeRatio = if (priorVolume > 0.0) m.last().volume / priorVolume else 0.0
+    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): List<TradeIdea> {
+        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate)
+        val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false)
+        // For swing mode, the H1 candles become the setup series and M15 candles become execution.
+        val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true)
+        return listOfNotNull(
+            scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
+            swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
+        )
+    }
+
+    private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
+                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean): TradeIdea {
+        val rsiValue = rsi(setupRows.map { it.close }) ?: 50.0
+        val priorVolume = setupRows.dropLast(1).takeLast(20).map { it.volume }.average()
+        val volumeRatio = if (priorVolume > 0.0) setupRows.last().volume / priorVolume else 0.0
         val bias4 = plan.bias4h
         val bias1 = plan.bias1h
         val bias5 = plan.bias5m
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
-        val replay = TradeIdeasV2.backtest(
+        val replay = if (swingMode) TradeIdeaBacktestStats() else TradeIdeasV2.backtest(
             h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
-            m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
+            setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
+            executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         )
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
-            micro.oiChangePct, replay
+            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay
         )
     }
 }
@@ -314,6 +321,7 @@ fun DailyTradeIdeasScreen() {
     var updatedAt by remember { mutableStateOf(cachedScan?.first) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
+    var strategyMode by remember { mutableStateOf("Both") }
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
@@ -359,7 +367,12 @@ fun DailyTradeIdeasScreen() {
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
-    val rankedIdeas = ideas.sortedWith(
+    val modeIdeas = ideas.filter { idea ->
+        strategyMode == "Both" ||
+            (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
+            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
+    }
+    val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols)) {
                 TradeIdeaStage.ENTRY_CONFIRMED -> 0
@@ -387,13 +400,13 @@ fun DailyTradeIdeasScreen() {
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
     val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
-    val readyCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
-    val monitorCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
-    val blockedCount = ideas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
-    val trackedCount = ideas.count { it.symbol in trackedSymbols }
-    val longCount = ideas.count { it.side == "LONG" }
-    val shortCount = ideas.count { it.side == "SHORT" }
-    val waitCount = ideas.count { it.side == "WAIT" }
+    val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
+    val monitorCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.MONITOR }
+    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.DO_NOT_ENTER }
+    val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
+    val longCount = modeIdeas.count { it.side == "LONG" }
+    val shortCount = modeIdeas.count { it.side == "SHORT" }
+    val waitCount = modeIdeas.count { it.side == "WAIT" }
     val timeLabel = updatedAt?.let {
         SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
@@ -488,6 +501,20 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Scalping", "Swing", "Both").forEach { mode ->
+                        FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
+                            label = { Text(mode) })
+                    }
+                }
+                Text(
+                    when (strategyMode) {
+                        "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
+                        "Swing" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
+                        else -> "Showing both independent strategies. Switch modes to focus the results."
+                    },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + blockedCount + " do not enter", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -514,13 +541,13 @@ fun DailyTradeIdeasScreen() {
                     Text(trackedVisible.size.toString() + " tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            items(trackedVisible, key = { "tracked_" + it.symbol }) { idea ->
+            items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            items(opportunityVisible, key = { "idea_" + it.symbol }) { idea ->
+            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         } else if (trackedVisible.isEmpty()) {

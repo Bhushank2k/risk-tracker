@@ -44,7 +44,8 @@ internal object TradeIdeasV2 {
         m5: List<V2Candle>,
         micro: V2Microstructure,
         quoteVolume: Double,
-        changePct: Double
+        changePct: Double,
+        swingMode: Boolean = false
     ): V2TradePlan? {
         if (h4.size < 200 || h1.size < 50 || m15.size < 40 || m5.size < 25) return null
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return null
@@ -52,8 +53,8 @@ internal object TradeIdeasV2 {
         // Reject stale or future-dated bars on every timeframe, not only execution frames.
         if (!isFresh(h4.last().closeTime, now, 8 * 60 * 60_000L) ||
             !isFresh(h1.last().closeTime, now, 2 * 60 * 60_000L) ||
-            !isFresh(m15.last().closeTime, now, 30 * 60_000L) ||
-            !isFresh(m5.last().closeTime, now, 15 * 60_000L)) return null
+            !isFresh(m15.last().closeTime, now, if (swingMode) 2 * 60 * 60_000L else 30 * 60_000L) ||
+            !isFresh(m5.last().closeTime, now, if (swingMode) 30 * 60_000L else 15 * 60_000L)) return null
         if (quoteVolume < MIN_QUOTE_VOLUME || !quoteVolume.isFinite()) return null
 
         val e4_20 = ema(h4.map { it.close }, 20) ?: return null
@@ -66,19 +67,26 @@ internal object TradeIdeasV2 {
         val current = m15.last()
         val previous = m15[m15.lastIndex - 1]
         val atr = atr(m15) ?: return null
-        val longBias = h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
-            h1.last().close > e1_50 && e1_20 > e1_50
-        val shortBias = h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
-            h1.last().close < e1_50 && e1_20 < e1_50
+        val e1_200 = ema(h1.map { it.close }, 200) ?: return null
+        val longBias = if (swingMode) {
+            h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
+                h1.last().close > e1_50 && e1_20 > e1_50
+        } else h1.last().close > e1_200 && e1_20 > e1_50 && e1_50 > e1_200
+        val shortBias = if (swingMode) {
+            h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
+                h1.last().close < e1_50 && e1_20 < e1_50
+        } else h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
+        val setupTf = if (swingMode) "1H" else "15M"
+        val executionTf = if (swingMode) "15M" else "5M"
+        val strategyHorizon = if (swingMode) "Swing · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"
         if (!longBias && !shortBias) return V2TradePlan(
             "WAIT", 0, current.close, 0.0, 0.0, 0.0, false, "Higher-timeframe disagreement",
-            "BLOCK: 4H and 1H trend filters do not agree.", "Both · scalp + swing",
+            "BLOCK: trend filters do not agree.", strategyHorizon,
             if (h4.last().close >= e4_200) "Bullish" else "Bearish",
             if (h1.last().close >= e1_50) "Bullish" else "Bearish",
             if (m5.last().close >= e5_9) "Bullish" else "Bearish",
-            listOf("Require aligned 4H EMA20/50/200 and 1H EMA20/50 trends")
+            listOf(if (swingMode) "Require aligned 4H and 1H EMA trends" else "Require aligned 1H EMA20/50/200 trend")
         )
-
         val side = if (longBias) "LONG" else "SHORT"
         val sign = if (longBias) 1.0 else -1.0
         val level = if (longBias) m15.dropLast(1).takeLast(20).maxOf { it.high }
@@ -139,13 +147,13 @@ internal object TradeIdeasV2 {
         val liquidityScore = if (liquidityOkay) 10 else 0
         val score = (trendScore + breakoutScore + retestScore + volumeScore + timingScore + liquidityScore).coerceIn(0, 100)
         val reasons = mutableListOf(
-            "4H EMA20/50/200 and 1H EMA20/50 trend alignment",
-            if (breakoutIndex >= 0) "15M breakout candle closed beyond the prior 20-bar level on at least 1.5× volume"
-                else "Waiting for a 15M close beyond the prior 20-bar level on at least 1.5× volume",
-            if (retestTouched && retestHeld) "15M retest held the breakout level" else "Retest has not yet confirmed",
-            if (fiveMinuteConfirmed) "5M EMA9/21 momentum confirms execution" else "Waiting for 5M EMA9/21 confirmation",
+            if (swingMode) "4H EMA20/50/200 and 1H EMA20/50 trend alignment" else "1H EMA20/50/200 trend alignment",
+            if (breakoutIndex >= 0) "${setupTf} breakout candle closed beyond the prior 20-bar level on at least 1.5× volume"
+                else "Waiting for a ${setupTf} close beyond the prior 20-bar level on at least 1.5× volume",
+            if (retestTouched && retestHeld) "${setupTf} retest held the breakout level" else "Retest has not yet confirmed",
+            if (fiveMinuteConfirmed) "${executionTf} EMA9/21 momentum confirms execution" else "Waiting for ${executionTf} EMA9/21 confirmation",
             "Risk model: 0.5% equity, maximum 3× leverage, structural stop plus 0.2 ATR buffer",
-            "15M RSI " + "%.1f".format(java.util.Locale.US, rsi15) +
+            "${setupTf} RSI " + "%.1f".format(java.util.Locale.US, rsi15) +
                 (if (notOverboughtOrOversold) " is within the anti-chase range" else " blocks an overbought/oversold entry")
         )
         if (liquidityOkay) reasons.add("Spread and order-book depth passed hard liquidity gates (spread ≤ 10 bps)")
@@ -159,7 +167,7 @@ internal object TradeIdeasV2 {
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
             !notOverextended -> "BLOCK: Price is too extended from the breakout retest level."
             triggered && score < MIN_SCORE -> "BLOCK: Setup score is below the 75/100 entry threshold."
-            !triggered -> "Conditional only: wait for breakout, retest hold, volume and 5M confirmation."
+            !triggered -> "Conditional only: wait for breakout, retest hold, volume and $executionTf confirmation."
             else -> "Entry conditions confirmed. Backtest estimates are historical only; account for fees, funding and slippage."
         }
         val finalTriggered = triggered && liquidityOkay && validGeometry && fundingOkay &&
@@ -168,7 +176,7 @@ internal object TradeIdeasV2 {
             side, score, entry, stop,
             if (validGeometry) target1 else 0.0, if (validGeometry) target2 else 0.0,
             finalTriggered, if (breakoutIndex >= 0) "Breakout retest" else "Retest watch",
-            warning, "Both · 15M setup / 5M execution",
+            warning, strategyHorizon,
             "Bullish".takeIf { longBias } ?: "Bearish",
             "Bullish".takeIf { longBias } ?: "Bearish",
             if (fiveMinuteConfirmed) if (longBias) "Bullish" else "Bearish" else "Mixed",
