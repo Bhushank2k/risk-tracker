@@ -290,7 +290,7 @@ internal object BinanceMarketScanner {
         val bias5 = plan.bias5m
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
-        val replay = TradeIdeasV2.backtest(
+        val replay = if (swingMode) TradeIdeaBacktestStats() else TradeIdeasV2.backtest(
             h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
             setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) },
