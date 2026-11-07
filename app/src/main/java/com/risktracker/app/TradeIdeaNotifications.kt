@@ -28,7 +28,7 @@ private data class TradeIdeaAlertPlan(
     val riskDistance: Double = kotlin.math.abs(entry - stop), val bestPrice: Double = entry,
     val horizon: String = ""
 ) {
-    val key: String get() = if (horizon.isBlank()) symbol else "$symbol|$horizon|$side"
+    val key: String get() = if (horizon.isBlank()) symbol else "$symbol|$horizon|$side|$setup"
 }
 
 object TradeIdeaNotifications {
@@ -152,9 +152,9 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
                     (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
                     (it.oiChangePct == null || it.oiChangePct > -1.0) &&
-                    it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}" !in plans
+                    it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
             }.sortedByDescending { it.score }.take((6 - plans.size).coerceAtLeast(0)).forEach { idea ->
-                val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}"
+                val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
                 plans[strategyKey] = TradeIdeaAlertPlan(
                     idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup,
                     horizon = idea.horizon
