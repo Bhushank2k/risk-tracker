@@ -228,7 +228,7 @@ internal object BinanceMarketScanner {
         }.sortedByDescending { it.quoteVolume }
         if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // One multiplexed market socket plus one high-frequency public socket for the selected universe.
+        // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
         progress("WebSocket connected · warming all-market prices, spread and funding; loading candle history for ${candidates.size} eligible pairs…")
