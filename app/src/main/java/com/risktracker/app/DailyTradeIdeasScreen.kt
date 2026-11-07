@@ -620,7 +620,7 @@ fun DailyTradeIdeasScreen() {
                         else -> "Showing all qualifying scalp and intraday strategy results."
                     },
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!november2Mode && strategyMode == "Daily Picks") Text(
+                if (strategyMode == "Daily Picks") Text(
                     "Selected ${dailyPicks.size}/3 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} intraday. No quota is forced.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
