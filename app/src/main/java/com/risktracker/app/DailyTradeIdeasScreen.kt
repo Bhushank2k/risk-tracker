@@ -909,13 +909,16 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
     val zoneHigh = idea.entry + halfWidth
     val tooFar = entryTooFarFromPlan(idea)
     val invalidated = livePriceInvalidatesPlan(idea)
-    val action = when {
-        !tradeIdeaRiskValid(idea) -> "Skip this setup: scanner risk validation did not pass."
-        invalidated -> "Plan invalidated: live price has reached or crossed the stop level."
-        idea.entryTriggered && tooFar -> "Trigger fired, but price has moved outside the chase limit. Do not chase; wait for a fresh retest and new scan confirmation."
-        idea.entryTriggered -> "Scanner trigger is confirmed and price remains near plan. Recheck the spread and completed candle before acting."
-        tooFar -> "Price is extended from the planned entry. Wait for price to return to the zone; do not chase."
-        else -> "Wait for price to approach the zone and then require a directional candle close. A zone touch alone is not an entry."
+    // Share the main card's final state; the coach score is informational only.
+    val sharedStage = tradeIdeaStage(idea, tracked = false)
+    val action = when (sharedStage) {
+        TradeIdeaStage.ENTRY_CONFIRMED -> "READY TO ENTER: scanner trigger and live-price safety checks pass. Recheck the live quote, spread and stop before acting."
+        TradeIdeaStage.MONITOR -> "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
+        TradeIdeaStage.WAIT_CONFIRMATION -> "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
+        TradeIdeaStage.AVOID_CHASING -> "AVOID: price has moved beyond the permitted entry distance. Do not chase; wait for a fresh setup and rescan."
+        TradeIdeaStage.DO_NOT_ENTER -> if (invalidated) "AVOID: live price has reached or crossed the stop; this plan is invalidated."
+            else "AVOID: scanner risk validation failed. Do not enter this setup."
+        TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
         "LONG: retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
@@ -952,8 +955,13 @@ private fun EntryGuidancePanel(idea: TradeIdea) {
             }
             Text("Planned entry zone: " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
                 fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-            Text(guidance.action, style = MaterialTheme.typography.bodySmall)
-            Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            if (guidance.action.startsWith("READY TO ENTER")) {
+                Text("Next step: the scanner trigger is already confirmed. Recheck the current price and spread; the coach score is not additional approval.",
+                    style = MaterialTheme.typography.bodySmall)
+            } else if (guidance.action.startsWith("WAIT")) {
+                Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            }
             Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
@@ -967,7 +975,7 @@ private fun EntryGuidancePanel(idea: TradeIdea) {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Entry quality is a rule-based checklist, not a win probability. It never overrides the scanner's 75/100 qualification and hard risk gates.",
+            Text("Entry quality is a rule-based checklist, not a win probability or trade approval. The READY / WAIT / AVOID decision above is shared with Daily Trade Ideas and takes priority over this score. Scanner qualification (75/100) and hard risk gates are unchanged.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
