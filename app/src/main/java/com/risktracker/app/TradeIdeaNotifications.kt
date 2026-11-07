@@ -157,13 +157,13 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
                 plans[strategyKey] = TradeIdeaAlertPlan(
                     idea.symbol, idea.side, idea.entry, idea.stop, idea.target1, idea.target2, idea.setup,
-                    horizon = idea.horizon + "|" + idea.setup
+                    horizon = idea.horizon
                 )
                 TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop, strategyKey)
                 TradeIdeaNotifications.notify(
                     context, idea.symbol, "entry", "${idea.side} setup confirmed: ${idea.symbol}",
                     "Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed.",
-                    idea.horizon
+                    idea.horizon + "|" + idea.setup
                 )
             }
 
@@ -205,14 +205,14 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     }
                     target2Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
-                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.", plan.horizon)
+                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.", plan.horizon + "|" + plan.setup)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.target2, "TARGET2", managedPlan.riskDistance, if (plan.horizon.isBlank()) "" else planKey)
                         plans.remove(planKey)
                     }
                     !managedPlan.target1Reached && target1Hit -> {
                         TradeIdeaPaperJournal.recordPartial(context, symbol, strategyKey = if (plan.horizon.isBlank()) "" else planKey)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
-                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon)
+                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon + "|" + plan.setup)
                         plans[planKey] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
                     }
                 }
