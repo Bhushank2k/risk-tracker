@@ -167,10 +167,10 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 )
             }
 
-            val currentIdeas = allIdeas.associateBy { "${it.symbol}|${it.horizon}|${it.side}" }
+            val currentIdeas = allIdeas.associateBy { "${it.symbol}|${it.horizon}" }
             plans.toMap().forEach { (planKey, plan) ->
                 val symbol = plan.symbol
-                val current = currentIdeas[planKey]
+                val current = currentIdeas["${plan.symbol}|${plan.horizon}"]
                 if (current != null && current.side != "WAIT" && current.side != plan.side) {
                     TradeIdeaNotifications.notify(
                         context, symbol, "invalid", "Setup invalidated: $symbol",
@@ -178,7 +178,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                         plan.horizon
                     )
                     TradeIdeaPaperJournal.recordExit(context, symbol, current.last, "INVALIDATED", plan.riskDistance)
-                    plans.remove(symbol)
+                    plans.remove(planKey)
                     return@forEach
                 }
                 val price = BinanceMarketScanner.latestPrice(symbol) ?: return@forEach
@@ -188,7 +188,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                         else minOf(plan.entry, best + plan.riskDistance)
                     val tightenedStop = if (plan.side == "LONG") maxOf(plan.stop, candidateStop)
                         else minOf(plan.stop, candidateStop)
-                    plan.copy(stop = tightenedStop, bestPrice = best).also { plans[symbol] = it }
+                    plan.copy(stop = tightenedStop, bestPrice = best).also { plans[planKey] = it }
                 } else plan
                 val stopHit = if (managedPlan.side == "LONG") price <= managedPlan.stop else price >= managedPlan.stop
                 val target1Hit = if (managedPlan.side == "LONG") price >= managedPlan.target1 else price <= managedPlan.target1
@@ -212,7 +212,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                         TradeIdeaPaperJournal.recordPartial(context, symbol)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
                             "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon)
-                        plans[symbol] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
+                        plans[planKey] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
                     }
                 }
             }
