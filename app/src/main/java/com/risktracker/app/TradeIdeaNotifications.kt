@@ -128,7 +128,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaScanHealthStore.started(context)
 
             // Refresh the same Trade Ideas snapshot used by the foreground screen.
-            val allIdeas = BinanceMarketScanner.scan { }
+            val allIdeas = BinanceMarketScanner.scan(progress = { })
             TradeIdeaCache.save(context, System.currentTimeMillis(), allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
 
