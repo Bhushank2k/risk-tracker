@@ -3,10 +3,10 @@ package com.risktracker.app
 import kotlin.math.abs
 
 /**
- * November 2 legacy scalp rules. Kept separate from the newer breakout/retest strategy.
+ * November 5 legacy scalp rules. Kept separate from the newer breakout/retest strategy.
  * Advisory only: this evaluator never places exchange orders.
  */
-internal object November2ScalpRules {
+internal object November5ScalpRules {
     fun evaluate(
         h4: List<V2Candle>,
         h1: List<V2Candle>,
@@ -27,15 +27,18 @@ internal object November2ScalpRules {
 
         val h4Close = h4.map { it.close }
         val h1Close = h1.map { it.close }
+        val m15Close = m15.map { it.close }
+        val e15_9 = ema(m15Close, 9) ?: return null
+        val e15_21 = ema(m15Close, 21) ?: return null
         val e4_9 = ema(h4Close, 9) ?: return null
         val e4_21 = ema(h4Close, 21) ?: return null
         val e4_50 = ema(h4Close, 50) ?: return null
         val e1_9 = ema(h1Close, 9) ?: return null
         val e1_21 = ema(h1Close, 21) ?: return null
         val longTrend = h4.last().close > e4_50 && e4_9 > e4_21 && e4_21 > e4_50 &&
-            h1.last().close > e1_21 && e1_9 > e1_21
+            h1.last().close > e1_21 && e1_9 > e1_21 && m15.last().close > e15_21 && e15_9 > e15_21
         val shortTrend = h4.last().close < e4_50 && e4_9 < e4_21 && e4_21 < e4_50 &&
-            h1.last().close < e1_21 && e1_9 < e1_21
+            h1.last().close < e1_21 && e1_9 < e1_21 && m15.last().close < e15_21 && e15_9 < e15_21
         if (!longTrend && !shortTrend) return null
 
         val longSide = longTrend
@@ -45,6 +48,10 @@ internal object November2ScalpRules {
         if (totalVolume <= 0.0) return null
         val vwap = vwapRows.sumOf { it.close * it.volume } / totalVolume
         val vwapConfirmed = if (longSide) m15.last().close > vwap else m15.last().close < vwap
+        val priorBreakout = m15.dropLast(1).takeLast(5)
+        if (priorBreakout.size < 5) return null
+        val breakoutLevel = if (longSide) priorBreakout.maxOf { it.high } else priorBreakout.minOf { it.low }
+        val breakoutConfirmed = if (longSide) m15.last().close > breakoutLevel else m15.last().close < breakoutLevel
 
         val m5Fast = ema(m5.map { it.close }, 9) ?: return null
         val m5Slow = ema(m5.map { it.close }, 21) ?: return null
@@ -75,37 +82,40 @@ internal object November2ScalpRules {
         var score = 50
         score += 20 // aligned 4H and 1H EMA structure
         if (vwapConfirmed) score += 10
+        if (breakoutConfirmed) score += 10
         if (timingConfirmed) score += 10
         if (volumeConfirmed) score += 10
         if (rsiPreferred) score += 5
         if (liquidityOkay) score += 5
         score = score.coerceAtMost(100)
 
-        val triggered = vwapConfirmed && timingConfirmed && volumeConfirmed && liquidityOkay
+        val triggered = vwapConfirmed && breakoutConfirmed && timingConfirmed && volumeConfirmed && liquidityOkay
         val warnings = mutableListOf<String>()
         if (!vwapConfirmed) warnings += "Waiting for 15M VWAP confirmation."
+        if (!breakoutConfirmed) warnings += "Waiting for 15M close beyond the previous five-candle breakout level."
         if (!timingConfirmed) warnings += "Waiting for 5M EMA9/21 confirmation."
         if (!volumeConfirmed) warnings += "15M volume is below the 1.2× trigger."
-        if (!liquidityOkay) warnings += "Spread or order-book imbalance exceeds the November 2 limit."
+        if (!liquidityOkay) warnings += "Spread or order-book imbalance exceeds the November 5 limit."
         if (rsiExtreme) warnings += "RSI is in the extreme zone; avoid chasing."
         else if (!rsiPreferred) warnings += "RSI is outside the preferred range."
         if (fundingAdverse) warnings += "Funding is adverse; review before entry."
         if (micro.fundingRate == null) warnings += "Funding unavailable; not used as a hard block."
-        if (micro.spreadBps == null || micro.bookImbalance == null) warnings += "Some liquidity data unavailable; November 2 rules allow missing readings."
+        if (micro.spreadBps == null || micro.bookImbalance == null) warnings += "Some liquidity data unavailable; November 5 rules allow missing readings."
         val reasons = listOf(
-            "4H EMA9/21/50 and 1H EMA9/21 trend alignment",
-            "15M VWAP " + if (vwapConfirmed) "confirms direction" else "has not confirmed direction",
+            "4H EMA9/21/50, 1H EMA9/21 and 15M EMA9/21 trend alignment",
+            "15M EMA9/21 alignment and VWAP direction confirmation",
+            "15M close " + if (breakoutConfirmed) "broke the previous five-candle range" else "has not broken the previous five-candle range",
             "5M EMA9/21 " + if (timingConfirmed) "confirms entry momentum" else "is awaiting confirmation",
             "15M relative volume is %.2f× (1.2× trigger)".format(java.util.Locale.US, volumeRatio),
             "15M RSI is %.1f; preferred %s".format(java.util.Locale.US, rsi, if (longSide) "42–68" else "32–58"),
             "Fixed stop at 1.5× 15M ATR; targets at 1.5R and 2.5R",
-            "November 2 liquidity limits: spread ≤12 bps; imbalance ±0.45 when available"
+            "November 5 liquidity limits: spread ≤12 bps; imbalance ±0.45 when available"
         )
         return V2TradePlan(
             side, score, entry, stop, target1, target2, triggered,
             "Multi-timeframe EMA + VWAP scalp",
-            warnings.joinToString(" ").ifBlank { "November 2 scalp conditions confirmed." },
-            "Daily Scalp · 4H/1H trend · 15M VWAP · 5M execution",
+            warnings.joinToString(" ").ifBlank { "November 5 scalp conditions confirmed." },
+            "Daily Scalp · 4H/1H/15M EMA trend · 15M VWAP + breakout · 5M execution",
             if (longSide) "Bullish" else "Bearish",
             if (longSide) "Bullish" else "Bearish",
             if (timingConfirmed) if (longSide) "Bullish" else "Bearish" else "Mixed",
