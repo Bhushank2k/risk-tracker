@@ -316,7 +316,7 @@ internal object BinanceMarketScanner {
             .take(50)
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // ATR% and relative volume refine a compact 30-market prefilter before the final 20 are evaluated.
+        // ATR%, relative volume and liquidity refine the 50-market prefilter before the final 30 are evaluated.
         report("Measuring hourly ATR% and relative volume across ${prefiltered.size} liquid markets…")
         val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
         val ranked = prefiltered.map { ticker ->
