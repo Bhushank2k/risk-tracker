@@ -415,10 +415,23 @@ internal object BinanceMarketScanner {
         val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
         // For swing mode, the H1 candles become the setup series and M15 candles become execution.
         val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
-        return listOfNotNull(
+        val coreIdeas = listOfNotNull(
             scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
             swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
         )
+        val experimentalPlans = ExperimentalTradeStrategies.evaluate(four, one, fifteen, five, market, btcBias)
+        val experimentalIdeas = experimentalPlans.map { plan ->
+            val isScalp = plan.horizon.contains("Scalp", ignoreCase = true)
+            val isSwing = plan.horizon.contains("Swing", ignoreCase = true)
+            val setupRows = when {
+                isScalp -> m5
+                isSwing -> h4
+                else -> m15
+            }
+            val executionRows = if (isSwing) h1 else m5
+            buildIdea(t, plan, setupRows, executionRows, h4, h1, micro, isSwing, runBacktest = false)
+        }
+        return coreIdeas + experimentalIdeas
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
