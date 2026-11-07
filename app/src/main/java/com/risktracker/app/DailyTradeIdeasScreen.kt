@@ -272,7 +272,7 @@ internal object BinanceMarketScanner {
             }
             progress("Daily volatility radar · analyzed ${index + 1}/${candidates.size} top-ranked pairs…")
         }
-        results.sortedByDescending { it.score }
+        results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     }
 
     private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): List<TradeIdea> {
