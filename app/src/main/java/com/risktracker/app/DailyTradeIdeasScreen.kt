@@ -420,7 +420,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         if (loading) return
         loading = true
         error = null
-        status = if (november2Mode) "Loading November 2 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
+        status = if (november2Mode) "Loading November 5 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
         TradeIdeaScanHealthStore.started(context)
         scanHealth = TradeIdeaScanHealthStore.load(context)
         scope.launch {
