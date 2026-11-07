@@ -238,7 +238,7 @@ internal object BinanceMarketScanner {
         return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
     }
 
-    suspend fun scan(progress: (String) -> Unit, november2Mode: Boolean = false): List<TradeIdea> = withContext(Dispatchers.IO) {
+    suspend fun scan(november2Mode: Boolean = false, progress: (String) -> Unit): List<TradeIdea> = withContext(Dispatchers.IO) {
         progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -419,7 +419,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         status = if (november2Mode) "Loading November 2 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan({ status = it }, november2Mode)
+                val freshIdeas = BinanceMarketScanner.scan(november2Mode) { status = it }
                 val scanTime = System.currentTimeMillis()
                 withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas, november2Mode) }
                 ideas = freshIdeas
