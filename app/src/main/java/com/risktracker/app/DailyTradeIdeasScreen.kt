@@ -253,6 +253,25 @@ internal object BinanceMarketScanner {
         return if (average > 0.0) rows.last().volume / average else 0.0
     }
 
+    private suspend fun openInterestChangePct(symbol: String): Double? {
+        return runCatching {
+            // Pace the optional per-symbol historical OI request through the same REST limiter.
+            candleRequestPacer.withLock {
+                val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
+                if (waitMs > 0L) delay(waitMs)
+                nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+            }
+            val rows = withContext(Dispatchers.IO) {
+                JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
+            }
+            if (rows.length() < 2) return@runCatching null
+            val previous = rows.optJSONObject(0)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return@runCatching null
+            val latest = rows.optJSONObject(1)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return@runCatching null
+            if (previous <= 0.0 || !previous.isFinite() || !latest.isFinite()) null
+            else ((latest - previous) / previous * 100.0).takeIf { it.isFinite() }
+        }.getOrNull()
+    }
+
     private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>): String {
         val c4 = h4.map { it.close }; val c1 = h1.map { it.close }
         val e4_20 = ema(c4, 20); val e4_50 = ema(c4, 50); val e4_200 = ema(c4, 200)
@@ -347,7 +366,9 @@ internal object BinanceMarketScanner {
                 val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
                 val m15 = m15Job.await()
                 val m5 = m5Job.await()
-                val micro = BinanceFuturesStream.microstructure(ticker.symbol)
+                val micro = BinanceFuturesStream.microstructure(ticker.symbol).copy(
+                    oiChangePct = openInterestChangePct(ticker.symbol)
+                )
                 val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
                 val live = ticker.copy(
                     last = liveTicker?.first ?: ticker.last,
