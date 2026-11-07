@@ -993,18 +993,7 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
     }
     return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
 }
-    if (tracked) return TradeIdeaStage.TRACKING
-    if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea)) return TradeIdeaStage.DO_NOT_ENTER
-    if (idea.entryTriggered) return TradeIdeaStage.ENTRY_CONFIRMED
-    val riskDistance = abs(idea.entry - idea.stop)
-    val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
-    val approaching = if (idea.side == "LONG") {
-        idea.last < idea.entry && idea.entry - idea.last <= approachBand
-    } else {
-        idea.last > idea.entry && idea.last - idea.entry <= approachBand
-    }
-    return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
-}
+
 
 private fun displayIdeaHorizon(horizon: String): String =
     horizon.replace("Swing · H1 setup", "Intraday · H1 setup")
