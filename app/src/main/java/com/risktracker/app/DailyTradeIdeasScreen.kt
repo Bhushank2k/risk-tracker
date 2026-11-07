@@ -389,6 +389,7 @@ fun DailyTradeIdeasScreen() {
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
+    var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var equityInput by remember { mutableStateOf("") }
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     var alertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEnabled(context)) }
@@ -431,7 +432,20 @@ fun DailyTradeIdeasScreen() {
         paperStats = TradeIdeaPaperJournal.stats(context)
         refresh()
     }
-    val modeIdeas = ideas.filter { idea ->
+    LaunchedEffect(ideas) {
+        // Keep stage counts and filters in sync with the same live WebSocket cache used by idea cards.
+        while (true) {
+            val latest = withContext(Dispatchers.IO) {
+                ideas.mapNotNull { idea ->
+                    BinanceMarketScanner.latestPrice(idea.symbol)?.let { idea.symbol to it }
+                }.toMap()
+            }
+            if (latest.isNotEmpty()) livePrices = livePrices + latest
+            delay(2_000)
+        }
+    }
+    val liveIdeas = ideas.map { idea -> idea.copy(last = livePrices[idea.symbol] ?: idea.last) }
+    val modeIdeas = liveIdeas.filter { idea ->
         strategyMode == "Both" ||
             (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
             (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
