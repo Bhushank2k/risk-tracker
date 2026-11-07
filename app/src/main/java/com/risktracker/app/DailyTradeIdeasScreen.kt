@@ -254,7 +254,7 @@ internal object BinanceMarketScanner {
     }
 
     private suspend fun openInterestChangePct(symbol: String): Double? {
-        return runCatching {
+        return try {
             // Pace the optional per-symbol historical OI request through the same REST limiter.
             candleRequestPacer.withLock {
                 val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
@@ -264,12 +264,16 @@ internal object BinanceMarketScanner {
             val rows = withContext(Dispatchers.IO) {
                 JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
             }
-            if (rows.length() < 2) return@runCatching null
-            val previous = rows.optJSONObject(0)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return@runCatching null
-            val latest = rows.optJSONObject(1)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return@runCatching null
+            if (rows.length() < 2) return null
+            val previous = rows.optJSONObject(0)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return null
+            val latest = rows.optJSONObject(1)?.optString("sumOpenInterestValue")?.toDoubleOrNull() ?: return null
             if (previous <= 0.0 || !previous.isFinite() || !latest.isFinite()) null
             else ((latest - previous) / previous * 100.0).takeIf { it.isFinite() }
-        }.getOrNull()
+        } catch (e: BinanceRateLimitException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>): String {
