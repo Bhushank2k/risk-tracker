@@ -573,7 +573,8 @@ fun DailyTradeIdeasScreen() {
                 TradeIdeaStage.TRACKING -> 1
                 TradeIdeaStage.MONITOR -> 2
                 TradeIdeaStage.WAIT_CONFIRMATION -> 3
-                TradeIdeaStage.DO_NOT_ENTER -> 4
+                TradeIdeaStage.AVOID_CHASING -> 4
+                TradeIdeaStage.DO_NOT_ENTER -> 5
             }
         }.thenByDescending { it.score }
     )
@@ -585,6 +586,7 @@ fun DailyTradeIdeasScreen() {
             "Waiting" -> stage == TradeIdeaStage.WAIT_CONFIRMATION
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Do not enter" -> stage == TradeIdeaStage.DO_NOT_ENTER
+            "Avoid chasing" -> stage == TradeIdeaStage.AVOID_CHASING
             "Scalp" -> idea.horizon.contains("scalp", ignoreCase = true)
             "Intraday" -> idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> idea.side == "LONG"
