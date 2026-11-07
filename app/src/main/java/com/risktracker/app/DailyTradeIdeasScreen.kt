@@ -340,7 +340,7 @@ internal object BinanceMarketScanner {
             it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
                 it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
         }
-        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
+        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all eligible liquid markets.")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
