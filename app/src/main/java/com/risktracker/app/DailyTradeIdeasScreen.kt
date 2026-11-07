@@ -744,9 +744,7 @@ fun DailyTradeIdeasScreen() {
                     OutlinedTextField(value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
                         modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    if (sizingIdea == null) {
-                    } else if (sizing == null) {
-                    } else {
+                    if (sizingIdea != null && sizing != null) {
                         Text(sizingIdea.symbol + " · " + sizingIdea.side + " · 0.5% risk", fontWeight = FontWeight.SemiBold)
                         ScannerMetric("Suggested quantity", "%.6f".format(Locale.US, sizing.quantity))
                         ScannerMetric("Notional value", "$" + "%,.2f".format(Locale.US, sizing.notional))
