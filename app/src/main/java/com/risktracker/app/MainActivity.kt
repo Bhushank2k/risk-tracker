@@ -195,7 +195,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     }
     LaunchedEffect(tab) {
         val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-        if (tab == 20 && BinanceCredentialStore(context).read() != null &&
+        if ((tab == 1 || tab == 20) && BinanceCredentialStore(context).read() != null &&
             shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
             appScope.launch {
                 runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
