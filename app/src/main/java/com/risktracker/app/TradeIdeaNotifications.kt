@@ -49,7 +49,8 @@ object TradeIdeaNotifications {
     }
 
     fun cancel(context: Context) {
-        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(UNIQUE_WORK)
+        // Disable notifications only; the same periodic worker must keep refreshing idea caches.
+        setEnabled(context, false)
     }
 
     internal fun hasPermission(context: Context): Boolean =
