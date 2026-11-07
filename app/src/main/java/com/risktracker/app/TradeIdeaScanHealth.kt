@@ -6,7 +6,6 @@ import android.content.Context
 internal data class TradeIdeaScanHealth(
     val lastAttemptAt: Long,
     val lastSuccessAt: Long,
-    val lastScalpSuccessAt: Long,
     val lastError: String?
 )
 
@@ -18,7 +17,6 @@ internal object TradeIdeaScanHealthStore {
         return TradeIdeaScanHealth(
             p.getLong("last_attempt", 0L),
             p.getLong("last_success", 0L),
-            p.getLong("scalp_success", 0L),
             p.getString("last_error", null)
         )
     }
@@ -28,11 +26,11 @@ internal object TradeIdeaScanHealthStore {
             .putLong("last_attempt", at).apply()
     }
 
-    fun succeeded(context: Context, scalp: Boolean, at: Long = System.currentTimeMillis(), warning: String? = null) {
-        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+    fun succeeded(context: Context, at: Long = System.currentTimeMillis(), warning: String? = null) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("last_success", at)
             .putString("last_error", warning)
-        if (scalp) edit.putLong("scalp_success", at) else edit.putLong("last_success", at)
-        edit.apply()
+            .apply()
     }
 
     fun warning(context: Context, message: String) {
