@@ -40,7 +40,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double)
+private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
@@ -208,6 +208,30 @@ internal object BinanceMarketScanner {
         return ranges.average().takeIf { it > 0.0 && it.isFinite() }
     }
 
+    private fun atrPercent(rows: List<ScanCandle>): Double {
+        val value = atr(rows) ?: return 0.0
+        val close = rows.lastOrNull()?.close ?: return 0.0
+        return if (close > 0.0) value / close * 100.0 else 0.0
+    }
+
+    private fun relativeVolume(rows: List<ScanCandle>): Double {
+        if (rows.size < 22) return 0.0
+        val average = rows.dropLast(1).takeLast(20).map { it.volume }.average()
+        return if (average > 0.0) rows.last().volume / average else 0.0
+    }
+
+    private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>): String {
+        val c4 = h4.map { it.close }; val c1 = h1.map { it.close }
+        val e4_20 = ema(c4, 20); val e4_50 = ema(c4, 50); val e4_200 = ema(c4, 200)
+        val e1_20 = ema(c1, 20); val e1_50 = ema(c1, 50); val e1_200 = ema(c1, 200)
+        if (e4_20 == null || e4_50 == null || e4_200 == null || e1_20 == null || e1_50 == null || e1_200 == null) return "Neutral"
+        val bullish = h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
+            h1.last().close > e1_200 && e1_20 > e1_50 && e1_50 > e1_200
+        val bearish = h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
+            h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
+        return when { bullish -> "Bullish"; bearish -> "Bearish"; else -> "Neutral" }
+    }
+
     private fun vwap(rows: List<ScanCandle>): Double? {
         val s = rows.takeLast(24)
         val volume = s.sumOf { it.volume }
@@ -221,7 +245,7 @@ internal object BinanceMarketScanner {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
         }.map { it.optString("symbol") }.toSet()
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
-        val candidates = (0 until all.length()).mapNotNull { i ->
+        val prefiltered = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
             val symbol = x.optString("symbol")
             val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
@@ -235,22 +259,52 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-            .take(MAX_DAILY_VOLATILE_MARKETS)
-        if (candidates.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
+            .take(60)
+        if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
+
+        // ATR% and relative volume refine the 24h-range prefilter before the final 30 are selected.
+        progress("Measuring hourly ATR% and relative volume across the liquid volatility shortlist…")
+        val hourlyCache = linkedMapOf<String, List<ScanCandle>>()
+        val ranked = mutableListOf<ScanTicker>()
+        for (ticker in prefiltered) {
+            coroutineContext.ensureActive()
+            try {
+                delay(750)
+                val hourly = candles(ticker.symbol, "1h", 260)
+                hourlyCache[ticker.symbol] = hourly
+                ranked.add(ticker.copy(atrPct = atrPercent(hourly), relativeVolume = relativeVolume(hourly)))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: BinanceRateLimitException) {
+                throw e
+            } catch (_: Exception) {
+                // Incomplete hourly history is not eligible for ATR-based ranking.
+            }
+        }
+        val candidates = ranked.sortedByDescending {
+            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) + it.volatilityPct * 0.05
+        }.take(MAX_DAILY_VOLATILE_MARKETS)
+        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for the liquid market shortlist.")
+
+        // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
+        delay(750)
+        val btcH4 = candles("BTCUSDT", "4h", 260)
+        delay(750)
+        val btcH1 = candles("BTCUSDT", "1h", 260)
+        val btcBias = btcRegime(btcH4, btcH1)
 
         // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
         BinanceFuturesStream.start(candidates.map { it.symbol })
         delay(2_000)
-        progress("Daily volatility radar · evaluating the top ${candidates.size} liquid USDT perpetuals by 24h range and absolute move…")
+        progress("Daily radar · evaluating ${candidates.size} markets ranked by hourly ATR% and relative volume; BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
             try {
-                // Serial, paced REST candle bootstrap. Aggregate WebSockets provide live prices, spread and funding.
+                // Serial, paced REST candle bootstrap. The hourly candles from pre-ranking are reused.
                 delay(750)
                 val h4 = candles(ticker.symbol, "4h", 260)
-                delay(750)
-                val h1 = candles(ticker.symbol, "1h", 260)
+                val h1 = hourlyCache[ticker.symbol] ?: candles(ticker.symbol, "1h", 260)
                 delay(750)
                 val m15 = candles(ticker.symbol, "15m", 500)
                 delay(750)
@@ -262,7 +316,7 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro))
+                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
@@ -275,15 +329,15 @@ internal object BinanceMarketScanner {
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     }
 
-    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure): List<TradeIdea> {
+    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate)
-        val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false)
+        val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
         // For swing mode, the H1 candles become the setup series and M15 candles become execution.
-        val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true)
+        val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
         return listOfNotNull(
             scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
             swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
@@ -482,7 +536,7 @@ fun DailyTradeIdeasScreen() {
                         Text(if (loading) "Scanning markets…" else "Refresh market scan")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. Each daily scan evaluates the 30 most volatile eligible USDT perpetuals by 24h high-low range, with absolute 24h change as a tie-breaker. Liquidity and strategy gates still apply.",
+                        Text("Source · Binance Futures public market data. The scanner prefilters liquid USDT perpetuals by 24h range, then ranks the shortlist by 1H ATR% and relative volume. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
