@@ -10,7 +10,9 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.NetworkType
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -38,7 +40,9 @@ object TradeIdeaNotifications {
     }
 
     fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(15, TimeUnit.MINUTES).build()
+        val request = PeriodicWorkRequestBuilder<TradeIdeaMonitorWorker>(1, TimeUnit.HOURS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
             UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
         )
@@ -112,9 +116,26 @@ private object TradeIdeaAlertPlanStore {
 class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val context = applicationContext
-        if (!TradeIdeaNotifications.isEnabled(context) || !TradeIdeaNotifications.hasPermission(context)) return Result.success()
         return try {
+            BinanceMarketScanner.initialize(context)
+
+            // Refresh both independently maintained idea sets while the app is closed.
+            val now = System.currentTimeMillis()
             val ideas = BinanceMarketScanner.scan { }
+            TradeIdeaCache.save(context, now, ideas, november2Mode = false)
+
+            // The legacy November 2 Daily Scalp rules have their own cache and remain isolated.
+            runCatching {
+                val scalpIdeas = BinanceMarketScanner.scan(november2Mode = true) { }
+                TradeIdeaCache.save(context, System.currentTimeMillis(), scalpIdeas, november2Mode = true)
+            }
+
+            // Scanning and cache refresh do not require notification permission or opt-in.
+            // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
+            if (!TradeIdeaNotifications.isEnabled(context) || !TradeIdeaNotifications.hasPermission(context)) {
+                return Result.success()
+            }
+
             val plans = TradeIdeaAlertPlanStore.load(context)
             ideas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
@@ -128,7 +149,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 TradeIdeaPaperJournal.recordEntry(context, idea.symbol, idea.setup, idea.side, idea.entry, idea.stop)
                 TradeIdeaNotifications.notify(
                     context, idea.symbol, "entry", "${idea.side} setup confirmed: ${idea.symbol}",
-                    "15M breakout confirmed with volume. Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed."
+                    "Entry trigger ~${idea.entry}; stop ~${idea.stop}; target 1 ~${idea.target1}; target 2 ~${idea.target2}. Checklist score ${idea.score}/100. Alert only; no order placed."
                 )
             }
 
@@ -145,15 +166,10 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     return@forEach
                 }
                 val price = BinanceMarketScanner.latestPrice(symbol) ?: return@forEach
-                // After the 50% scale-out at 1.5R, protect the remainder at breakeven
-                // and trail by 1R from the best price observed by this worker.
                 val managedPlan = if (plan.target1Reached && plan.riskDistance > 0.0) {
                     val best = if (plan.side == "LONG") maxOf(plan.bestPrice, price) else minOf(plan.bestPrice, price)
-                    val candidateStop = if (plan.side == "LONG") {
-                        maxOf(plan.entry, best - plan.riskDistance)
-                    } else {
-                        minOf(plan.entry, best + plan.riskDistance)
-                    }
+                    val candidateStop = if (plan.side == "LONG") maxOf(plan.entry, best - plan.riskDistance)
+                        else minOf(plan.entry, best + plan.riskDistance)
                     val tightenedStop = if (plan.side == "LONG") maxOf(plan.stop, candidateStop)
                         else minOf(plan.stop, candidateStop)
                     plan.copy(stop = tightenedStop, bestPrice = best).also { plans[symbol] = it }
@@ -190,4 +206,5 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             Result.retry()
         }
     }
+}
 }
