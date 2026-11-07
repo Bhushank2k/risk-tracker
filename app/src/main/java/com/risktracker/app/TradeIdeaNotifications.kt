@@ -130,7 +130,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             // Refresh the same Trade Ideas snapshot used by the foreground screen.
             val allIdeas = BinanceMarketScanner.scan { }
             TradeIdeaCache.save(context, System.currentTimeMillis(), allIdeas)
-            TradeIdeaScanHealthStore.succeeded(context, scalp = false)
+            TradeIdeaScanHealthStore.succeeded(context)
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
