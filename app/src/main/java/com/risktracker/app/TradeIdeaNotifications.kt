@@ -207,4 +207,3 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
         }
     }
 }
-}
