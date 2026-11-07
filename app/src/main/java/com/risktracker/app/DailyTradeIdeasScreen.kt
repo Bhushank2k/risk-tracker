@@ -573,7 +573,8 @@ fun DailyTradeIdeasScreen() {
     val allModeIdeas = liveIdeas.filter { idea ->
         strategyMode == "All" || strategyMode == "Daily Picks" ||
             (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
-            (strategyMode == "Intraday" && idea.horizon.contains("Swing", ignoreCase = true))
+            (strategyMode == "Intraday" && idea.horizon.contains("Intraday", ignoreCase = true)) ||
+            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
     }
     val dailyPicks = selectDailyPicks(allModeIdeas)
     val modeIdeas = if (strategyMode == "Daily Picks") {
@@ -602,6 +603,8 @@ fun DailyTradeIdeasScreen() {
             "Scalp" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
                 (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("scalp", ignoreCase = true)
             "Intraday" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
+                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("intraday", ignoreCase = true)
+            "Swing" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
                 (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("swing", ignoreCase = true)
             "Long" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
                 (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.side == "LONG"
@@ -748,8 +751,8 @@ fun DailyTradeIdeasScreen() {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Daily Picks", "Scalping", "Intraday", "All").forEach { mode ->
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Daily Picks", "Scalping", "Intraday", "Swing", "All").forEach { mode ->
                         FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
                             label = { Text(mode) })
                     }
@@ -757,20 +760,21 @@ fun DailyTradeIdeasScreen() {
                 Text(
                     when (strategyMode) {
                         "Daily Picks" -> "Up to 2 scalp setups (M15/M5) + 1 intraday setup (H1/M15), ranked by quality. Fewer may qualify."
-                        "Scalping" -> "H1 trend · M15 breakout/retest · M5 entry confirmation"
-                        "Intraday" -> "H4 + H1 trend · H1 breakout/retest · M15 entry confirmation"
-                        else -> "Showing all qualifying scalp and intraday strategy results."
+                        "Scalping" -> "M5 VWAP reclaim and volatility expansion, plus existing M15/M5 setups"
+                        "Intraday" -> "M15 rolling-range breakouts with 5m confirmation, plus existing H1/M15 setups"
+                        "Swing" -> "4H consolidation breakouts and relative-strength momentum with 1H confirmation"
+                        else -> "Showing all qualifying scalp, intraday and swing strategy results."
                     },
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (strategyMode == "Daily Picks") Text(
-                    "Selected ${dailyPicks.size}/3 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} intraday. No quota is forced.",
+                    "Selected ${dailyPicks.size}/4 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Intraday", ignoreCase = true) }} intraday · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} swing. No quota is forced.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Trade decisions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Tracking", "Excluded", "Scalp", "Intraday", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Tracking", "Excluded", "Scalp", "Intraday", "Swing", "Long", "Short").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
@@ -1061,8 +1065,7 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
 }
 
 
-private fun displayIdeaHorizon(horizon: String): String =
-    horizon.replace("Swing · H1 setup", "Intraday · H1 setup")
+private fun displayIdeaHorizon(horizon: String): String = horizon
 
 /**
  * A daily shortlist is a target, not a quota: only directional, risk-valid ideas
@@ -1103,7 +1106,8 @@ private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
     }
 
     addBest("Scalp", 2)
-    addBest("Swing", 1) // Existing H1 setup / M15 execution strategy is presented as Intraday.
+    addBest("Intraday", 1)
+    addBest("Swing", 1)
     return selected
 }
 
