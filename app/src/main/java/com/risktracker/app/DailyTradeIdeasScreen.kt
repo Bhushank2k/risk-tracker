@@ -62,8 +62,8 @@ internal object TradeIdeaCache {
     private const val PREFS = "market_scan_cache_v2"
     private const val KEY = "latest_scan"
 
-    fun load(context: android.content.Context, november2Mode: Boolean = false): Pair<Long, List<TradeIdea>>? = runCatching {
-        val root = JSONObject(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(if (november2Mode) KEY + "_nov2_scalp" else KEY, null) ?: return null)
+    fun load(context: android.content.Context): Pair<Long, List<TradeIdea>>? = runCatching {
+        val root = JSONObject(context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(KEY, null) ?: return null)
         val timestamp = root.optLong("updatedAt", 0L)
         val rows = root.optJSONArray("ideas") ?: return null
         val ideas = (0 until rows.length()).mapNotNull { i ->
@@ -89,7 +89,7 @@ internal object TradeIdeaCache {
         if (timestamp <= 0L) null else timestamp to ideas
     }.getOrNull()
 
-    fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>, november2Mode: Boolean = false) {
+    fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
@@ -113,7 +113,7 @@ internal object TradeIdeaCache {
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                 .edit().putString(if (november2Mode) KEY + "_nov2_scalp" else KEY, root.toString()).apply()
+                 .edit().putString(KEY, root.toString()).apply()
         }
     }
 
@@ -125,7 +125,7 @@ internal object TradeIdeaCache {
 
 internal object BinanceMarketScanner {
     private const val BASE = "https://fapi.binance.com"
-    private const val MAX_DAILY_VOLATILE_MARKETS = 30
+    private const val MAX_DAILY_VOLATILE_MARKETS = 20
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
@@ -235,13 +235,7 @@ internal object BinanceMarketScanner {
         return when { bullish -> "Bullish"; bearish -> "Bearish"; else -> "Neutral" }
     }
 
-    private fun vwap(rows: List<ScanCandle>): Double? {
-        val s = rows.takeLast(24)
-        val volume = s.sumOf { it.volume }
-        return if (volume <= 0) null else s.sumOf { it.close * it.volume } / volume
-    }
-
-    suspend fun scan(november2Mode: Boolean = false, progress: (String) -> Unit): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
+    suspend fun scan(progress: (String) -> Unit): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
         progress("Loading active USDT perpetual contracts (one REST bootstrap)…")
         val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
@@ -262,10 +256,10 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-            .take(60)
+            .take(30)
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // ATR% and relative volume refine the 24h-range prefilter before the final 30 are selected.
+        // ATR% and relative volume refine a compact 30-market prefilter before the final 20 are evaluated.
         progress("Measuring hourly ATR% and relative volume across the liquid volatility shortlist…")
         val hourlyCache = linkedMapOf<String, List<ScanCandle>>()
         val ranked = mutableListOf<ScanTicker>()
@@ -319,17 +313,7 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                if (november2Mode) {
-                    val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-                    val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-                    val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-                    val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-                    val plan = November5ScalpRules.evaluate(four, one, fifteen, five,
-                        V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate))
-                    if (plan != null) results.add(buildIdea(live, plan, m15, m5, h4, h1, micro, false, runBacktest = false))
-                } else {
-                    results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
-                }
+                results.addAll(evaluateModes(live, h4, h1, m15, m5, micro, btcBias))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
@@ -384,9 +368,9 @@ internal object BinanceMarketScanner {
 }
 
 @Composable
-fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
+fun DailyTradeIdeasScreen() {
     val context = LocalContext.current
-    val cachedScan = remember(november2Mode) { TradeIdeaCache.load(context, november2Mode) }
+    val cachedScan = remember { TradeIdeaCache.load(context) }
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     fun readTrackedSymbols(): Set<String> = trackingPrefs.all.keys
         .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
@@ -399,7 +383,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    var strategyMode by remember(november2Mode) { mutableStateOf(if (november2Mode) "Scalping" else "Daily Picks") }
+    var strategyMode by remember { mutableStateOf("Daily Picks") }
     var density by remember { mutableStateOf("Compact") }
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
@@ -420,15 +404,15 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         if (loading) return
         loading = true
         error = null
-        status = if (november2Mode) "Loading November 5 Daily Scalp rules from Binance public market data…" else "Connecting to Binance public market data…"
+        status = "Connecting to Binance public market data…"
         TradeIdeaScanHealthStore.started(context)
         scanHealth = TradeIdeaScanHealthStore.load(context)
         scope.launch {
             try {
-                val freshIdeas = BinanceMarketScanner.scan(november2Mode) { status = it }
+                val freshIdeas = BinanceMarketScanner.scan { status = it }
                 val scanTime = System.currentTimeMillis()
-                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas, november2Mode) }
-                TradeIdeaScanHealthStore.succeeded(context, scalp = november2Mode, at = scanTime)
+                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
+                TradeIdeaScanHealthStore.succeeded(context, scalp = false, at = scanTime)
                 scanHealth = TradeIdeaScanHealthStore.load(context)
                 ideas = freshIdeas
                 updatedAt = scanTime
@@ -451,7 +435,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
     }
-    LaunchedEffect(november2Mode) {
+    LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
@@ -522,7 +506,7 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
         item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(if (november2Mode) "November 5 Daily Scalp rules · 4H/1H/15M EMA alignment, 15M VWAP + breakout, 5M confirmation. Advisory only." else "Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
+                Text("Rule-based setups from liquid USDT perpetual markets. Review the risk before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -541,12 +525,12 @@ fun DailyTradeIdeasScreen(november2Mode: Boolean = false) {
                     }
                     Text(timeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                val healthTime = if (november2Mode) scanHealth.lastScalpSuccessAt else scanHealth.lastSuccessAt
+                val healthTime = scanHealth.lastSuccessAt
                 val healthLabel = if (healthTime > 0L) {
                     val ageMinutes = ((System.currentTimeMillis() - healthTime).coerceAtLeast(0L) / 60_000L)
                     val stamp = SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(healthTime))
-                    "Last successful ${if (november2Mode) "Daily Scalp" else "market"} scan: $stamp IST · ${ageMinutes}m ago"
-                } else "No successful ${if (november2Mode) "Daily Scalp" else "market"} scan recorded yet"
+                    "Last successful market scan: $stamp IST · ${ageMinutes}m ago"
+                } else "No successful market scan recorded yet"
                 val healthAge = if (healthTime > 0L) System.currentTimeMillis() - healthTime else Long.MAX_VALUE
                 Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
                     style = MaterialTheme.typography.labelSmall,
