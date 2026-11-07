@@ -324,7 +324,7 @@ internal object BinanceMarketScanner {
                     val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
                     val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
                     val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime) }
-                    val plan = November2ScalpRules.evaluate(four, one, fifteen, five,
+                    val plan = November5ScalpRules.evaluate(four, one, fifteen, five,
                         V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate))
                     if (plan != null) results.add(buildIdea(live, plan, m15, m5, h4, h1, micro, false, runBacktest = false))
                 } else {
