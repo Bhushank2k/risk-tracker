@@ -491,7 +491,6 @@ fun DailyTradeIdeasScreen() {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    val strategyMode = "Daily Picks"
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
@@ -600,16 +599,9 @@ fun DailyTradeIdeasScreen() {
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
-    val allModeIdeas = liveIdeas.filter { idea ->
-        strategyMode == "All" || strategyMode == "Daily Picks" ||
-            (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
-            (strategyMode == "Intraday" && idea.horizon.contains("Intraday", ignoreCase = true)) ||
-            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
-    }
-    val dailyPicks = selectDailyPicks(allModeIdeas, scanSnapshotAgeMs)
-    val modeIdeas = if (strategyMode == "Daily Picks") {
-        (dailyPicks + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
-    } else allModeIdeas
+    // Show every scanner-produced setup, including WAIT and AVOID candidates.
+    // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
+    val modeIdeas = liveIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs)) {
@@ -630,8 +622,7 @@ fun DailyTradeIdeasScreen() {
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
-            else -> stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING ||
-                stage == TradeIdeaStage.MONITOR || (stage == TradeIdeaStage.WAIT_CONFIRMATION && nearSetup)
+            else -> true
         }
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
@@ -792,7 +783,6 @@ fun DailyTradeIdeasScreen() {
                                 filter == "Avoid" -> "No excluded markets to show"
                                 filter == "Ready" -> "No READY setups right now"
                                 filter == "Wait" -> "No setups near an entry right now"
-                                strategyMode == "Daily Picks" -> "No qualifying daily picks right now"
                                 else -> "No trade setups found right now"
                             },
                             fontWeight = FontWeight.SemiBold
@@ -805,7 +795,6 @@ fun DailyTradeIdeasScreen() {
                                 filter == "Avoid" -> "No markets currently meet the excluded status criteria."
                                 filter == "Ready" -> "No setup has a confirmed entry trigger and passed all risk checks. Keep waiting; don't force a trade."
                                 filter == "Wait" -> "No valid setup is close enough to its planned entry zone to monitor. The scanner continues checking markets."
-                                strategyMode == "Daily Picks" -> "No setup passed the existing score, proximity and risk gates. The shortlist stays empty rather than forcing a weak trade."
                                 else -> "No valid setup is currently ready or close enough to its planned entry. The scanner keeps analysing markets; try again after the next scan."
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -1048,51 +1037,6 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
 
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
-
-/**
- * A daily shortlist is a target, not a quota: only directional, risk-valid ideas
- * scoring at least 75 are eligible. Prefer confirmed triggers, then stronger
- * scores/volume/liquidity. Keep symbols unique and cap one direction at two picks.
- */
-private fun selectDailyPicks(ideas: List<TradeIdea>, snapshotAgeMs: Long = 0L): List<TradeIdea> {
-    val eligible = ideas.filter { idea ->
-        (snapshotAgeMs <= 0L || snapshotAgeMs <= ideaMaxAgeMs(idea)) &&
-            idea.side in setOf("LONG", "SHORT") &&
-            (idea.entryTriggered || isWithinSetupWatchRange(idea)) &&
-            idea.score >= TradeIdeasV2.MIN_SCORE &&
-            tradeIdeaRiskValid(idea) &&
-            !idea.warning.startsWith("BLOCK:", ignoreCase = true) &&
-            (!idea.entryTriggered || !entryTooFarFromPlan(idea)) &&
-            !livePriceInvalidatesPlan(idea)
-    }.sortedWith(
-        compareByDescending<TradeIdea> { it.entryTriggered }
-            .thenByDescending { it.score }
-            .thenByDescending { it.volumeRatio }
-            .thenBy { it.spreadBps ?: Double.POSITIVE_INFINITY }
-            .thenBy { abs(it.last - it.entry) / it.entry.coerceAtLeast(0.00000001) }
-    )
-
-    val selected = mutableListOf<TradeIdea>()
-    val usedSymbols = mutableSetOf<String>()
-    val directionCounts = mutableMapOf("LONG" to 0, "SHORT" to 0)
-
-    fun addBest(horizon: String, limit: Int) {
-        eligible.asSequence()
-            .filter { it.horizon.contains(horizon, ignoreCase = true) }
-            .filter { it.symbol !in usedSymbols && (directionCounts[it.side] ?: 0) < 2 }
-            .take(limit)
-            .forEach { idea ->
-                selected += idea
-                usedSymbols += idea.symbol
-                directionCounts[idea.side] = (directionCounts[idea.side] ?: 0) + 1
-            }
-    }
-
-    addBest("Scalp", 2)
-    addBest("Intraday", 1)
-    addBest("Swing", 1)
-    return selected
-}
 
 @Composable
 private fun TradeIdeaCard(
