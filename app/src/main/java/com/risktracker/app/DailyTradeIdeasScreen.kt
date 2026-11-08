@@ -472,17 +472,17 @@ internal object BinanceMarketScanner {
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
             market, t.quoteVolume, btcBias, "Scalp")?.let {
             buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false, runBacktest = false,
-                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H")
+                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H", runBacktest = true)
         }
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
             market, t.quoteVolume, btcBias, "Intraday")?.let {
             buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false,
-                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H")
+                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H", runBacktest = true)
         }
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
             market, t.quoteVolume, btcBias, "Swing")?.let {
             buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true, runBacktest = false,
-                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D")
+                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D", runBacktest = true)
         }
         return listOfNotNull(scalp, intraday, swing)
     }
@@ -500,12 +500,14 @@ internal object BinanceMarketScanner {
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
         // Historical replay is supplementary; a replay edge case must never discard a live setup.
-        val replay = if (swingMode || !runBacktest || plan.setup != "Breakout retest") TradeIdeaBacktestStats() else runCatching {
+        val replay = if (!runBacktest || !plan.setup.contains("breakout", ignoreCase = true)) TradeIdeaBacktestStats() else runCatching {
             TradeIdeasV2.backtest(
                 h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
                 h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
                 setupRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
-                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+                executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+                maxHoldingBars = when { plan.horizon.startsWith("Scalp", true) -> 48; plan.horizon.startsWith("Swing", true) -> 72; else -> 96 },
+                setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
