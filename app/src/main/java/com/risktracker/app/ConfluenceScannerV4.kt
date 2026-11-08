@@ -11,9 +11,6 @@ internal const val MAX_TRADE_SPREAD_BPS = 10.0
 internal fun isTradeIdeaVolumeEligible(quoteVolume: Double): Boolean =
     quoteVolume.isFinite() && quoteVolume >= MIN_TRADE_QUOTE_VOLUME_USD
 
-internal fun confluenceRegimePoints(isRangeSetup: Boolean, rangeMode: Boolean, trendAligned: Boolean): Int =
-    if (isRangeSetup) { if (rangeMode) 25 else 0 } else { if (trendAligned) 25 else 0 }
-
 internal fun isTradeIdeaLiquidityAcceptable(
     side: String, spreadBps: Double?, bookImbalance: Double?,
     bidDepthUsd: Double?, askDepthUsd: Double?
@@ -66,7 +63,6 @@ internal object ConfluenceScannerV4 {
         val rsi=rsi(c15)?:return null
         val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
         val prevMacd=(ema(c15.dropLast(1),12)?:macd)-(ema(c15.dropLast(1),26)?:0.0)
-        val macdUp=macd>0&&macd>=prevMacd; val macdDn=macd<0&&macd<=prevMacd
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
             setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned ${bias1Label}/${bias2Label} uptrend"))
@@ -100,18 +96,24 @@ internal object ConfluenceScannerV4 {
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
-            val momentum=if(long)rsi in 38.0..72.0&&macdUp else rsi in 28.0..62.0&&macdDn
+            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
-            val extended=abs(cur.close-s.level)<=atr*.9
-            val entry=exec.close; val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
+            val entry=exec.close
+            val extended=confluenceEntryWithinExtension(entry, s.level, atr)
+            val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
             val t1=entry+sign*risk*2; val t2=entry+sign*risk*3; val rr=geometry&&risk>0&&abs(t1-entry)/risk>=2
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
-            val regimePoints=confluenceRegimePoints(s.range, rangeMode, up || down)
-            val volumePoints=if(rv>=1.5)10 else if(rv>=1.2)7 else 0
-            val momentumPoints=if(momentum)10 else if(if(long)rsi<78 else rsi>22)5 else 0
-            val btcPoints=if(btcBias==null||btcBias=="Neutral"||!btcAgainst)5 else 2
-            val score=regimePoints+20+15+(if(entryOk)15 else 0)+volumePoints+momentumPoints+btcPoints
+            val score=confluenceScore(
+                regimeConfirmed = up || down || rangeMode,
+                structureConfirmed = true,
+                entryConfirmed = entryOk,
+                relativeVolume = rv,
+                momentumConfirmed = momentum,
+                liquidityConfirmed = liquid,
+                btcAgainst = btcAgainst,
+                stopGeometryConfirmed = geometry
+            )
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
@@ -150,11 +152,11 @@ internal object ConfluenceScannerV4 {
                 score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
                 else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
             }
-            val reasons=listOf("Confluence score "+score+"/100: "+(if(s.range)"range regime 25" else bias1Label+"+"+bias2Label+" trend 25")+" · structure 20 · "+setupLabel+" setup 15 · "+executionLabel+" entry 15 · volume 10 · momentum 10 · BTC 5",
+            val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
-                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
+                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
