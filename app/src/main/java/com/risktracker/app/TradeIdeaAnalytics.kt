@@ -57,7 +57,13 @@ internal data class TradeIdeaBacktestStats(
     val longAverageR: Double? = null,
     val shortTrades: Int = 0,
     val shortWins: Int = 0,
-    val shortAverageR: Double? = null
+    val shortAverageR: Double? = null,
+    val trendTrades: Int = 0,
+    val trendWins: Int = 0,
+    val trendAverageR: Double? = null,
+    val rangeTrades: Int = 0,
+    val rangeWins: Int = 0,
+    val rangeAverageR: Double? = null
 ) {
 
     val losses: Int get() = (trades - wins).coerceAtLeast(0)
@@ -87,10 +93,10 @@ internal data class TradeIdeaBacktestStats(
     companion object {
         const val MINIMUM_ESTIMATE_SAMPLES = 30
 
-        fun fromOutcomes(outcomes: List<Pair<String, Double>>): TradeIdeaBacktestStats {
-            val valid = outcomes.filter { it.second.isFinite() && it.first in setOf("LONG", "SHORT") }
+        fun fromOutcomes(outcomes: List<Triple<String, String, Double>>): TradeIdeaBacktestStats {
+            val valid = outcomes.filter { it.third.isFinite() && it.first in setOf("LONG", "SHORT") && it.second in setOf("TREND", "RANGE") }
             if (valid.isEmpty()) return TradeIdeaBacktestStats()
-            val values = valid.map { it.second }
+            val values = valid.map { it.third }
             val grossWins = values.filter { it > 0.0 }.sum()
             val grossLosses = -values.filter { it < 0.0 }.sum()
             var equity = 0.0
@@ -101,8 +107,10 @@ internal data class TradeIdeaBacktestStats(
                 peak = maxOf(peak, equity)
                 maxDrawdown = maxOf(maxDrawdown, peak - equity)
             }
-            val longs = valid.filter { it.first == "LONG" }.map { it.second }
-            val shorts = valid.filter { it.first == "SHORT" }.map { it.second }
+            val longs = valid.filter { it.first == "LONG" }.map { it.third }
+            val shorts = valid.filter { it.first == "SHORT" }.map { it.third }
+            val trends = valid.filter { it.second == "TREND" }.map { it.third }
+            val ranges = valid.filter { it.second == "RANGE" }.map { it.third }
             return TradeIdeaBacktestStats(
                 trades = valid.size,
                 wins = values.count { it > 0.0 },
@@ -114,7 +122,13 @@ internal data class TradeIdeaBacktestStats(
                 longAverageR = longs.takeIf { it.isNotEmpty() }?.average(),
                 shortTrades = shorts.size,
                 shortWins = shorts.count { it > 0.0 },
-                shortAverageR = shorts.takeIf { it.isNotEmpty() }?.average()
+                shortAverageR = shorts.takeIf { it.isNotEmpty() }?.average(),
+                trendTrades = trends.size,
+                trendWins = trends.count { it > 0.0 },
+                trendAverageR = trends.takeIf { it.isNotEmpty() }?.average(),
+                rangeTrades = ranges.size,
+                rangeWins = ranges.count { it > 0.0 },
+                rangeAverageR = ranges.takeIf { it.isNotEmpty() }?.average()
             )
         }
     }
