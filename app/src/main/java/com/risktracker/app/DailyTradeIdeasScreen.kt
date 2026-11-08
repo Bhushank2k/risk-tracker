@@ -1311,7 +1311,7 @@ private fun TradeIdeaCard(
                 IdeaLevel("Target 1", idea.target1)
                 IdeaLevel("Target 2", idea.target2)
                 ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
-                ScannerMetric("Exit plan", "TP1 50% at 1.5R · TP2 30% at 2.5R · trail 20% by 1 ATR")
+                ScannerMetric("Exit plan", "TP1 40% at target 1 · TP2 30% at target 2 · trail 30%")
                 EntryRiskPlanDetails(idea, riskSettings)
                 }
             }
