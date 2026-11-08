@@ -1023,7 +1023,7 @@ private fun EntryGuidancePanel(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Scanner qualification (75/100) and hard risk gates are unchanged.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Confluence V4 scoring and its existing hard risk gates determine scanner qualification.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
