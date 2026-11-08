@@ -9,6 +9,44 @@ internal data class V2Candle(
 )
 internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double? = null, val oiChangePct: Double? = null)
 
+internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
+    LOW_LIQUIDITY(true),
+    INVALID_STOP(true),
+    INSUFFICIENT_REWARD_RISK(true),
+    ADVERSE_FUNDING(true),
+    VOLATILITY_OUT_OF_RANGE(true),
+    EXTENDED_ENTRY(true),
+    LOW_RELATIVE_VOLUME(true),
+    MOMENTUM_NOT_CONFIRMED(true),
+    LOW_CONFLUENCE_SCORE(true),
+    STALE_MARKET_DATA(true),
+    WAITING_FOR_ENTRY_CONFIRMATION(false),
+    BELOW_READY_SCORE_THRESHOLD(false),
+    COSTS_NOT_INCLUDED(false),
+    LEGACY_BLOCKING_WARNING(true)
+}
+
+internal fun isTradeIdeaRiskValid(
+    side: String,
+    entry: Double,
+    stop: Double,
+    target1: Double,
+    target2: Double,
+    riskCodes: Set<TradeIdeaRiskCode>
+): Boolean {
+    if (side !in setOf("LONG", "SHORT")) return false
+    if (!entry.isFinite() || !stop.isFinite() || !target1.isFinite() || !target2.isFinite()) return false
+    if (entry <= 0.0 || stop <= 0.0 || target1 <= 0.0 || target2 <= 0.0) return false
+    val geometryValid = if (side == "LONG") {
+        stop < entry && target1 > entry && target2 > target1
+    } else {
+        stop > entry && target1 < entry && target2 < target1
+    }
+    val riskDistance = abs(entry - stop)
+    val rewardRisk = if (riskDistance > 0.0) abs(target1 - entry) / riskDistance else 0.0
+    return geometryValid && rewardRisk >= 2.0 && riskCodes.none { it.blocksEntry }
+}
+
 internal data class V2TradePlan(
     val side: String,
     val score: Int,
@@ -23,7 +61,8 @@ internal data class V2TradePlan(
     val bias4h: String,
     val bias1h: String,
     val bias5m: String,
-    val reasons: List<String>
+    val reasons: List<String>,
+    val riskCodes: Set<TradeIdeaRiskCode> = emptySet()
 )
 
 /**
