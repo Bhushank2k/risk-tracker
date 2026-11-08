@@ -1,9 +1,21 @@
 package com.risktracker.app
 
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BinanceMarkPriceStreamTest {
+
+    @Test
+    fun fundingRateMustBeFiniteAndFreshEvenWithoutOrderBook() {
+        assertEquals(0.0001, freshFundingRate(0.0001, 100_000L, 160_000L)!!, 0.0)
+        assertNull(freshFundingRate(0.0001, 99_999L, 160_000L))
+        assertNull(freshFundingRate(Double.NaN, 100_000L, 100_001L))
+        assertNull(freshFundingRate(Double.POSITIVE_INFINITY, 100_000L, 100_001L))
+        assertNull(freshFundingRate(0.0001, 100_001L, 100_000L))
+    }
+
+
     @Test
     fun longPositionPnlUsesStreamedMarkPrice() {
         val position = BinanceLiveTrade(
