@@ -124,6 +124,26 @@ internal fun isReplayRangeReversal(
     }
 }
 
+
+internal data class TradeReplayBarResult(val exitR: Double? = null, val reachedTarget1: Boolean = false)
+
+/** Resolves one OHLC bar conservatively: an active stop wins if stop and target are both touched. */
+internal fun resolveTradeReplayBar(
+    sideLong: Boolean, entry: Double, stop: Double, risk: Double, partial: Boolean, candle: V2Candle
+): TradeReplayBarResult {
+    if (!entry.isFinite() || !stop.isFinite() || !risk.isFinite() || risk <= 0.0 ||
+        !candle.high.isFinite() || !candle.low.isFinite() || candle.high < candle.low) {
+        return TradeReplayBarResult(exitR = if (partial) 1.0 else -1.0)
+    }
+    val activeStop = if (partial) entry else stop
+    val stopHit = if (sideLong) candle.low <= activeStop else candle.high >= activeStop
+    if (stopHit) return TradeReplayBarResult(exitR = if (partial) 1.0 else -1.0)
+    val target1Hit = if (sideLong) candle.high >= entry + risk * 2.0 else candle.low <= entry - risk * 2.0
+    val target2Hit = if (sideLong) candle.high >= entry + risk * 3.0 else candle.low <= entry - risk * 3.0
+    if (target2Hit) return TradeReplayBarResult(exitR = 2.5)
+    return TradeReplayBarResult(reachedTarget1 = target1Hit && !partial)
+}
+
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
@@ -253,15 +273,9 @@ internal object TradeIdeasV2 {
             val maxExit = min(entryIndex + 1 + maxHoldingBars, m15.size)
             for (j in entryIndex + 1 until maxExit) {
                 val candle = m15[j]
-                val activeStop = if (partial) entry else stop
-                val stopHit = if (sideLong) candle.low <= activeStop else candle.high >= activeStop
-                val target1Hit = if (sideLong) candle.high >= entry + sign * risk * 2.0
-                    else candle.low <= entry - risk * 2.0
-                val target2Hit = if (sideLong) candle.high >= entry + sign * risk * 3.0
-                    else candle.low <= entry - risk * 3.0
-                if (stopHit) { result = if (partial) 1.0 else -1.0; exitAt = j; break }
-                if (target2Hit) { result = 2.5; exitAt = j; break }
-                if (target1Hit && !partial) { partial = true; result = 1.0 }
+                val barResult = resolveTradeReplayBar(sideLong, entry, stop, risk, partial, candle)
+                if (barResult.exitR != null) { result = barResult.exitR; exitAt = j; break }
+                if (barResult.reachedTarget1) { partial = true; result = 1.0 }
             }
             if (exitAt >= 0) {
                 val heldBars = (exitAt - entryIndex).coerceAtLeast(0)

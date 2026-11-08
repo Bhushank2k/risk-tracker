@@ -5,6 +5,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TradeIdeaBacktestCostTest {
+
+    @Test
+    fun stopWinsWhenLongBarTouchesStopAndTargets() {
+        val candle = V2Candle(107.0, 97.0, 102.0, 1.0, 1L)
+        assertEquals(-1.0, resolveTradeReplayBar(true, 100.0, 98.0, 2.0, false, candle).exitR!!, 0.0)
+    }
+
+    @Test
+    fun stopWinsWhenShortBarTouchesStopAndTargets() {
+        val candle = V2Candle(103.0, 93.0, 98.0, 1.0, 1L)
+        assertEquals(-1.0, resolveTradeReplayBar(false, 100.0, 102.0, 2.0, false, candle).exitR!!, 0.0)
+    }
+
+    @Test
+    fun breakEvenStopAfterFirstTargetPreservesPartialProfit() {
+        val candle = V2Candle(104.0, 99.0, 101.0, 1.0, 1L)
+        assertEquals(1.0, resolveTradeReplayBar(true, 100.0, 98.0, 2.0, true, candle).exitR!!, 0.0)
+    }
+
+    @Test
+    fun firstTargetIsPartialAndSecondTargetClosesAtWeightedTwoPointFiveR() {
+        val first = V2Candle(104.0, 99.0, 103.0, 1.0, 1L)
+        val second = V2Candle(106.0, 101.0, 105.0, 1.0, 2L)
+        assertTrue(resolveTradeReplayBar(true, 100.0, 98.0, 2.0, false, first).reachedTarget1)
+        assertEquals(2.5, resolveTradeReplayBar(true, 100.0, 98.0, 2.0, true, second).exitR!!, 0.0)
+    }
+
     @Test
     fun costsReduceGrossReturnAndCanTurnSmallWinIntoNetLoss() {
         val gross = 0.10
