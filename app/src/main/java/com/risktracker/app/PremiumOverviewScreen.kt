@@ -48,6 +48,7 @@ fun RiskOverviewScreen(
     var balanceRefreshing by remember { mutableStateOf(false) }
     var balanceStatus by remember { mutableStateOf("") }
     val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
+    var liveImportedPnl by remember { mutableStateOf(importedPnl) }
     var livePositions by remember { mutableStateOf(positionsStore.load()) }
     var positionsLoading by remember { mutableStateOf(false) }
     var positionsStatus by remember {
@@ -141,12 +142,21 @@ fun RiskOverviewScreen(
         }
     }
 
+    LaunchedEffect(importedPnl) {
+        liveImportedPnl = importedPnl
+    }
+
+    // WorkManager updates SharedPreferences in the background; observe its latest snapshot
+    // while the dashboard is visible so Today's P&L doesn't remain frozen at screen-open time.
     LaunchedEffect(hasBinanceCredentials) {
         if (hasBinanceCredentials) {
+            BinanceDailyWorker.schedule(context)
             refreshLivePositions()
             refreshAccountBalance()
             while (true) {
-                delay(60_000L)
+                delay(30_000L)
+                val latestPnl = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
+                if (latestPnl != liveImportedPnl) liveImportedPnl = latestPnl
                 refreshLivePositions()
                 refreshAccountBalance()
             }
@@ -174,8 +184,8 @@ fun RiskOverviewScreen(
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    val daily = remember(entries, importedPnl, trades) {
-        reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
+    val daily = remember(entries, liveImportedPnl, trades) {
+        reconcileDailyPnl(entries, liveImportedPnl, trades).sortedBy { it.date }
     }
     val todayPnl = daily.lastOrNull { it.date == today }?.selectedPnl
     val netPnl = daily.sumOf { it.selectedPnl }
