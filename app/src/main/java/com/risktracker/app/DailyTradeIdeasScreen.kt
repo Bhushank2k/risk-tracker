@@ -999,8 +999,11 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.MONITOR -> "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
         TradeIdeaStage.WAIT_CONFIRMATION -> "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
         TradeIdeaStage.AVOID_CHASING -> "AVOID: price has moved beyond the permitted entry distance. Do not chase; wait for a fresh setup and rescan."
-        TradeIdeaStage.DO_NOT_ENTER -> if (invalidated) "AVOID: live price has reached or crossed the stop; this plan is invalidated."
-            else "AVOID: scanner risk validation failed. Do not enter this setup."
+        TradeIdeaStage.DO_NOT_ENTER -> when {
+            snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea) -> "AVOID: this signal snapshot has expired. Run a fresh market scan before considering an entry."
+            invalidated -> "AVOID: live price has reached or crossed the stop; this plan is invalidated."
+            else -> "AVOID: scanner risk validation failed. Do not enter this setup."
+        }
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
@@ -1390,7 +1393,9 @@ private fun TradeIdeaCard(
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
+                val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
+                Text(if (expired) "This signal has expired. Refresh the market scan before considering it."
+                    else if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
                     else "The risk plan failed validation or has a blocking warning: " + idea.warning,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
