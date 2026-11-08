@@ -100,7 +100,7 @@ internal object TradeIdeaPaperJournal {
     }
 
     /** Realized paper-journal risk controls; no account balance is assumed. */
-    fun riskStatus(context: Context, riskPerTradePercent: Double = 1.0, now: Long = System.currentTimeMillis()): PaperRiskStatus {
+    fun riskStatus(context: Context, now: Long = System.currentTimeMillis(), riskPerTradePercent: Double = 1.0): PaperRiskStatus {
         val rows = history(context)
         val dayStart = java.util.Calendar.getInstance().apply {
             timeInMillis = now
