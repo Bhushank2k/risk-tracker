@@ -142,8 +142,27 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
 
             // Refresh the same Trade Ideas snapshot used by the foreground screen.
             val allIdeas = BinanceMarketScanner.scan(progress = { })
-            TradeIdeaCache.save(context, System.currentTimeMillis(), allIdeas)
+            val scanCompletedAt = System.currentTimeMillis()
+            TradeIdeaCache.save(context, scanCompletedAt, allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
+
+            // If Strict Quality V3 is enabled, background alerts and paper entries use
+            // the same hard gates as the foreground screen.
+            val strictModeEnabled = context.getSharedPreferences("trade_idea_quality_v3", Context.MODE_PRIVATE)
+                .getBoolean("enabled", false)
+            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt)
+            val alertIdeas = if (strictModeEnabled) allIdeas.map { idea ->
+                val assessment = TradeIdeasV3.assess(
+                    idea, 0L, paperRisk.openPositions, false,
+                    paperRisk.dailyLossPercent, paperRisk.consecutiveLosses, paperRisk.openPositions
+                )
+                idea.copy(
+                    score = assessment.score,
+                    warning = if (assessment.blockers.isNotEmpty()) {
+                        "BLOCK: V3 Strict Quality — " + assessment.blockers.joinToString(" ")
+                    } else idea.warning
+                )
+            } else allIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
@@ -154,7 +173,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             }
 
             if (readyAlertsEnabled) {
-                val readyIdeas = allIdeas.filter { isReadyAlertCandidate(it) }
+                val readyIdeas = alertIdeas.filter { isReadyAlertCandidate(it) }
                 val currentReadyKeys = readyIdeas.map { alertKey(it) }.toSet()
                 val previousReadyKeys = TradeIdeaReadyAlertStore.load(context)
                 val stillAlerted = previousReadyKeys.intersect(currentReadyKeys)
@@ -177,8 +196,9 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             if (!entryAlertsEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
-            allIdeas.filter {
+            alertIdeas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
+                    (!strictModeEnabled || !it.warning.startsWith("BLOCK:", ignoreCase = true)) &&
                     (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
                     (it.oiChangePct == null || it.oiChangePct > -1.0) &&
                     it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
