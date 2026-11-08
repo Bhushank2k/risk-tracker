@@ -1109,7 +1109,7 @@ private fun EntryGuidancePanel(
             HorizontalDivider()
             val scannerStage = tradeIdeaStage(idea, tracked = false)
             if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
-                Text("SCANNER HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
+                Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
