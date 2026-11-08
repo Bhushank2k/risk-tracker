@@ -37,7 +37,6 @@ internal object ConfluenceScannerV4 {
         val rsi=rsi(c15)?:return null
         val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
         val prevMacd=(ema(c15.dropLast(1),12)?:macd)-(ema(c15.dropLast(1),26)?:0.0)
-        val macdUp=macd>0&&macd>=prevMacd; val macdDn=macd<0&&macd<=prevMacd
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
             setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned ${bias1Label}/${bias2Label} uptrend"))
