@@ -406,33 +406,18 @@ internal object BinanceMarketScanner {
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
-    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>): List<TradeIdea> {
+    private fun evaluateModes(
+        t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>,
+        m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
+    ): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
-        val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
-        // For swing mode, the H1 candles become the setup series and M15 candles become execution.
-        val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
-        val coreIdeas = listOfNotNull(
-            scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
-            swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
-        )
-        val btcFour = btcH4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val experimentalPlans = ExperimentalTradeStrategies.evaluate(four, one, fifteen, five, market, btcBias, btcFour)
-        val experimentalIdeas = experimentalPlans.map { plan ->
-            val isScalp = plan.horizon.contains("Scalp", ignoreCase = true)
-            val isSwing = plan.horizon.contains("Swing", ignoreCase = true)
-            val setupRows = when {
-                isScalp -> m5
-                isSwing -> h4
-                else -> m15
-            }
-            val executionRows = if (isSwing) h1 else m5
-            buildIdea(t, plan, setupRows, executionRows, h4, h1, micro, isSwing, runBacktest = false)
-        }
-        return coreIdeas + experimentalIdeas
+        val plan = ConfluenceScannerV4.evaluate(four, one, fifteen, five, market, t.quoteVolume, btcBias)
+            ?: return emptyList()
+        return listOf(buildIdea(t, plan, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false))
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
