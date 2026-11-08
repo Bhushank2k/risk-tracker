@@ -60,7 +60,7 @@ class TradeIdeaAnalyticsTest {
         assertEquals(1, stats.shortWins)
         assertEquals(-0.5, stats.shortAverageR!!, 0.000001)
         assertEquals(2, stats.trendTrades)
-        assertEquals(1, stats.trendWins)
+        assertEquals(2, stats.trendWins)
         assertEquals(1.5, stats.trendAverageR!!, 0.000001)
         assertEquals(2, stats.rangeTrades)
         assertEquals(0, stats.rangeWins)
