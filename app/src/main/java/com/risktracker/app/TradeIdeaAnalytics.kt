@@ -46,6 +46,8 @@ internal data class BacktestCandle(
     val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long
 )
 
+internal data class TradeIdeaReplayOutcome(val side: String, val regime: String, val setupFamily: String, val netR: Double)
+
 internal data class TradeIdeaBacktestStats(
     val trades: Int = 0,
     val wins: Int = 0,
@@ -63,7 +65,10 @@ internal data class TradeIdeaBacktestStats(
     val trendAverageR: Double? = null,
     val rangeTrades: Int = 0,
     val rangeWins: Int = 0,
-    val rangeAverageR: Double? = null
+    val rangeAverageR: Double? = null,
+    val breakoutTrades: Int = 0, val breakoutWins: Int = 0, val breakoutAverageR: Double? = null,
+    val pullbackTrades: Int = 0, val pullbackWins: Int = 0, val pullbackAverageR: Double? = null,
+    val reversalTrades: Int = 0, val reversalWins: Int = 0, val reversalAverageR: Double? = null
 ) {
 
     val losses: Int get() = (trades - wins).coerceAtLeast(0)
@@ -93,10 +98,11 @@ internal data class TradeIdeaBacktestStats(
     companion object {
         const val MINIMUM_ESTIMATE_SAMPLES = 30
 
-        fun fromOutcomes(outcomes: List<Triple<String, String, Double>>): TradeIdeaBacktestStats {
-            val valid = outcomes.filter { it.third.isFinite() && it.first in setOf("LONG", "SHORT") && it.second in setOf("TREND", "RANGE") }
+        fun fromOutcomes(outcomes: List<TradeIdeaReplayOutcome>): TradeIdeaBacktestStats {
+            val valid = outcomes.filter { it.netR.isFinite() && it.side in setOf("LONG", "SHORT") &&
+                it.regime in setOf("TREND", "RANGE") && it.setupFamily in setOf("BREAKOUT", "PULLBACK", "REVERSAL") }
             if (valid.isEmpty()) return TradeIdeaBacktestStats()
-            val values = valid.map { it.third }
+            val values = valid.map { it.netR }
             val grossWins = values.filter { it > 0.0 }.sum()
             val grossLosses = -values.filter { it < 0.0 }.sum()
             var equity = 0.0
@@ -107,10 +113,13 @@ internal data class TradeIdeaBacktestStats(
                 peak = maxOf(peak, equity)
                 maxDrawdown = maxOf(maxDrawdown, peak - equity)
             }
-            val longs = valid.filter { it.first == "LONG" }.map { it.third }
-            val shorts = valid.filter { it.first == "SHORT" }.map { it.third }
-            val trends = valid.filter { it.second == "TREND" }.map { it.third }
-            val ranges = valid.filter { it.second == "RANGE" }.map { it.third }
+            val longs = valid.filter { it.side == "LONG" }.map { it.netR }
+            val shorts = valid.filter { it.side == "SHORT" }.map { it.netR }
+            val trends = valid.filter { it.regime == "TREND" }.map { it.netR }
+            val ranges = valid.filter { it.regime == "RANGE" }.map { it.netR }
+            val breakouts = valid.filter { it.setupFamily == "BREAKOUT" }.map { it.netR }
+            val pullbacks = valid.filter { it.setupFamily == "PULLBACK" }.map { it.netR }
+            val reversals = valid.filter { it.setupFamily == "REVERSAL" }.map { it.netR }
             return TradeIdeaBacktestStats(
                 trades = valid.size,
                 wins = values.count { it > 0.0 },
@@ -128,7 +137,10 @@ internal data class TradeIdeaBacktestStats(
                 trendAverageR = trends.takeIf { it.isNotEmpty() }?.average(),
                 rangeTrades = ranges.size,
                 rangeWins = ranges.count { it > 0.0 },
-                rangeAverageR = ranges.takeIf { it.isNotEmpty() }?.average()
+                rangeAverageR = ranges.takeIf { it.isNotEmpty() }?.average(),
+                breakoutTrades = breakouts.size, breakoutWins = breakouts.count { it > 0.0 }, breakoutAverageR = breakouts.takeIf { it.isNotEmpty() }?.average(),
+                pullbackTrades = pullbacks.size, pullbackWins = pullbacks.count { it > 0.0 }, pullbackAverageR = pullbacks.takeIf { it.isNotEmpty() }?.average(),
+                reversalTrades = reversals.size, reversalWins = reversals.count { it > 0.0 }, reversalAverageR = reversals.takeIf { it.isNotEmpty() }?.average()
             )
         }
     }
