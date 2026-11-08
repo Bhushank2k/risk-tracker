@@ -792,7 +792,7 @@ fun DailyTradeIdeasScreen() {
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("Strict Quality V3", fontWeight = FontWeight.SemiBold)
-                            Text("Strict 4H/1H/5M trend, RSI, ≥1.2× volume, ≥$10M liquidity, fresh 15s order-book depth, funding, signal expiry and paper portfolio limits. Guardrails: 0.5% risk per idea, ≤3× leverage, max 2 positions. No trade is forced.",
+                            Text("Strict 4H/1H/5M trend, RSI, ≥1.2× volume, ≥$10M 24h quote volume, fresh 15s order-book depth, funding, signal expiry and paper portfolio limits. Guardrails: 0.5% risk per idea, ≤3× leverage, max 2 positions. No trade is forced.",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (strictQualityMode) {
                                 Text("$strictReadyCount READY · $strictBlockedCount BLOCKED",
