@@ -562,6 +562,7 @@ fun DailyTradeIdeasScreen() {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
+            paperStats = TradeIdeaPaperJournal.stats(context)
         }
     }
     LaunchedEffect(ideas) {
