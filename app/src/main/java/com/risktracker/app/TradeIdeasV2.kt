@@ -91,10 +91,10 @@ internal object TradeIdeasV2 {
     /** Causal breakout/retest replay. Inputs are horizon-specific higher, setup and execution candles. */
     fun backtest(
         h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
-        maxHoldingBars: Int = 96, setupBarMinutes: Int = 15,
+        maxHoldingBars: Int = 96, setupBarMinutes: Int = 15, executionBarMinutes: Int = 5,
         roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
     ): TradeIdeaBacktestStats {
-        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0) return TradeIdeaBacktestStats()
+        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
@@ -132,7 +132,7 @@ internal object TradeIdeasV2 {
             val executionFast = ema(executionCloses, 9)
             val executionSlow = ema(executionCloses, 21)
             val executionConfirmed = executionBars.isNotEmpty() &&
-                retest.closeTime - executionBars.last().closeTime <= 10 * 60_000L &&
+                retest.closeTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
                 executionFast != null && executionSlow != null &&
                 (if (long) executionBars.last().close > executionFast && executionFast > executionSlow
                 else executionBars.last().close < executionFast && executionFast < executionSlow)
