@@ -590,7 +590,22 @@ fun DailyTradeIdeasScreen() {
     val cachedScan = remember { TradeIdeaCache.load(context) }
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
-    fun readTrackedPlanKeys(): Set<String> = trackingPrefs.all.keys.filter { key -> key.startsWith("plan_") && (trackingPrefs.all[key] as? Float ?: 0f) > 0f }.toSet()
+    fun readTrackedPlanKeys(rows: List<TradeIdea>): Set<String> {
+        val all = trackingPrefs.all
+        val tracked = all.keys.filter { key -> key.startsWith("plan_") && (all[key] as? Float ?: 0f) > 0f }.toMutableSet()
+        rows.groupBy { it.symbol }.forEach { (symbol, plans) ->
+            val legacyKey = "entry_" + symbol
+            val legacyEntry = all[legacyKey] as? Float
+            if (plans.isNotEmpty() && legacyEntry != null && legacyEntry > 0f) {
+                // Old symbol-wide state represented one tracked entry. Migrate once, not to every horizon.
+                val chosen = plans.firstOrNull { it.horizon.startsWith("Intraday", ignoreCase = true) } ?: plans.first()
+                val planKey = "plan_" + tradeIdeaTrackingId(chosen)
+                trackingPrefs.edit().putFloat(planKey, legacyEntry).remove(legacyKey).apply()
+                tracked.add(planKey)
+            }
+        }
+        return tracked
+    }
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(if (cachedScan != null) "Showing saved scan while fresh Binance data loads…" else "Refresh to scan live Binance USDT-M perpetual markets.") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -602,7 +617,7 @@ fun DailyTradeIdeasScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
-    var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys()) }
+    var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
     var partialScanVisible by remember { mutableStateOf(false) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
@@ -645,7 +660,7 @@ fun DailyTradeIdeasScreen() {
                         ideas = partial
                         updatedAt = System.currentTimeMillis()
                         partialScanVisible = true
-                        trackedPlanKeys = readTrackedPlanKeys()
+                        trackedPlanKeys = readTrackedPlanKeys(partial)
                         showingCached = false
                         status = "Partial scan · " + partial.size + " ideas received; scan is still running…"
                     }
@@ -658,7 +673,7 @@ fun DailyTradeIdeasScreen() {
                 updatedAt = scanTime
                 partialScanVisible = false
                 showingCached = false
-                trackedPlanKeys = readTrackedPlanKeys()
+                trackedPlanKeys = readTrackedPlanKeys(partial)
                 paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
@@ -723,7 +738,7 @@ fun DailyTradeIdeasScreen() {
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs)) {
                 TradeIdeaStage.ENTRY_CONFIRMED -> 0
-                TradeIdeaStage.TRACKING -> 1
+                TradeIdeaStage.TRACKING, TradeIdeaStage.TRACKING_STOP_HIT, TradeIdeaStage.TRACKING_TARGET_HIT, TradeIdeaStage.TRACKING_EXPIRED, TradeIdeaStage.TRACKING_INVALID -> 1
                 TradeIdeaStage.MONITOR -> 2
                 TradeIdeaStage.WAIT_CONFIRMATION -> 3
                 TradeIdeaStage.AVOID_CHASING -> 4
@@ -737,7 +752,7 @@ fun DailyTradeIdeasScreen() {
         when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
-            "Tracking" -> stage == TradeIdeaStage.TRACKING
+            "Tracking" -> isPlanTracked(idea)
             "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
             else -> true
         }
