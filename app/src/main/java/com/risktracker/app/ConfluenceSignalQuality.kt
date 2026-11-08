@@ -59,3 +59,7 @@ internal fun confluenceScore(
 internal fun confluenceEntryWithinExtension(entry: Double, setupLevel: Double, atr: Double): Boolean =
     entry.isFinite() && setupLevel.isFinite() && atr.isFinite() && atr > 0.0 &&
         kotlin.math.abs(entry - setupLevel) <= atr * 0.9
+
+/** Minimum relative volume required on the execution candle for this setup family. */
+internal fun confluenceExecutionVolumeThreshold(setup: String): Double =
+    if (setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
