@@ -68,8 +68,10 @@ internal data class EntryRiskCalculation(
 internal fun calculateEntryRiskPlan(idea: TradeIdea, settings: EntryRiskSettings): EntryRiskCalculation? {
     val entry = idea.entry
     val stopDistance = abs(entry - idea.stop)
-    if (settings.accountEquity <= 0.0 || !settings.accountEquity.isFinite() ||
+    if (idea.side !in setOf("LONG", "SHORT") || settings.accountEquity <= 0.0 || !settings.accountEquity.isFinite() ||
         entry <= 0.0 || !entry.isFinite() || stopDistance <= 0.0 || !stopDistance.isFinite()) return null
+    if (idea.side == "LONG" && (idea.stop >= entry || idea.target1 <= entry || idea.target2 <= idea.target1)) return null
+    if (idea.side == "SHORT" && (idea.stop <= entry || idea.target1 >= entry || idea.target2 >= idea.target1)) return null
     val riskAmount = settings.accountEquity * settings.riskPercent / 100.0
     val stopDistancePercent = stopDistance / entry * 100.0
     if (stopDistancePercent <= 0.0) return null
@@ -98,7 +100,7 @@ internal fun EntryRiskPlanSettingsCard(
     )) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Entry & Risk Plan", style = MaterialTheme.typography.titleMedium)
-            Text("Balanced profile · 1% account risk · maximum 5x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
+            Text("Risk profile · ${"%.1f".format(Locale.US, settings.riskPercent)}% account risk · maximum 5x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = if (settings.accountEquity > 0.0) settings.accountEquity.toString() else "",
