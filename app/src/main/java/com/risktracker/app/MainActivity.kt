@@ -187,13 +187,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)
             BinanceDailyWorker.schedule(context)
-            // Refresh daily Spot + Futures P&L on app start when the saved snapshot is stale.
-            if (System.currentTimeMillis() - BinanceSyncData.lastSync(context) >= 15L * 60L * 1000L) {
-                runCatching {
-                    withContext(Dispatchers.IO) { BinanceSyncRunner.sync(context) }
-                    importedPnl = BinanceSyncData.load(context)
-                }
-            }
             runCatching {
                 withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
                 exchangeFills = BinanceAutoJournalStore.load(context)
