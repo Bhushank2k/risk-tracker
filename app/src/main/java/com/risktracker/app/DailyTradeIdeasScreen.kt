@@ -698,18 +698,13 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
-        }
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ScannerStat("READY", readyCount.toString(), Modifier.weight(1f))
-                    ScannerStat("WAIT", monitorCount.toString(), Modifier.weight(1f))
-                    ScannerStat("AVOID", blockedCount.toString(), Modifier.weight(1f))
-                    ScannerStat("TRACKING", trackedCount.toString(), Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("TODAY AT A GLANCE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    SnapshotMetric("READY", readyCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                    SnapshotMetric("WAIT", monitorCount.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                    SnapshotMetric("AVOID", blockedCount.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
+                    SnapshotMetric("TRACKING", trackedCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
                 }
             }
         }
@@ -834,10 +829,15 @@ fun DailyTradeIdeasScreen() {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Tracking", "Avoid").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Tracking", "Avoid", "Scalp", "Intraday", "Swing", "Long", "Short").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
+                Text(
+                    "${visible.size} shown · ranked by entry state, then scanner score",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         if (trackedVisible.isNotEmpty()) {
@@ -892,6 +892,20 @@ fun DailyTradeIdeasScreen() {
             }
         }
 
+    }
+}
+
+@Composable
+private fun SnapshotMetric(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    ) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = accent)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
     }
 }
 
