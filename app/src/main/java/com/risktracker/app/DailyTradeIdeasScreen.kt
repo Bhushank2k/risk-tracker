@@ -433,7 +433,7 @@ internal object BinanceMarketScanner {
                     marketsWithoutPlans++
                 } else {
                     marketsWithPlans++
-                    blockedPlans += marketIdeas.count { it.warning.startsWith("BLOCK:", ignoreCase = true) }
+                    blockedPlans += marketIdeas.count { idea -> idea.riskCodes.any { it.blocksEntry } }
                 }
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
