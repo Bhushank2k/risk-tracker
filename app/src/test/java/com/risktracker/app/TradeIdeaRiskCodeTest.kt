@@ -5,6 +5,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TradeIdeaRiskCodeTest {
+
+    @Test
+    fun missingOrInvalidFundingDataIsNotAccepted() {
+        assertFalse(isFundingDataAcceptable("LONG", null))
+        assertFalse(isFundingDataAcceptable("SHORT", Double.NaN))
+        assertFalse(isFundingDataAcceptable("LONG", Double.POSITIVE_INFINITY))
+        assertFalse(isFundingDataAcceptable("OTHER", 0.0))
+    }
+
+    @Test
+    fun fundingThresholdsAreDirectional() {
+        assertTrue(isFundingDataAcceptable("LONG", 0.001))
+        assertFalse(isFundingDataAcceptable("LONG", 0.0011))
+        assertTrue(isFundingDataAcceptable("SHORT", -0.001))
+        assertFalse(isFundingDataAcceptable("SHORT", -0.0011))
+    }
+
     @Test
     fun validLongPlanPassesWithoutBlockingCodes() {
         assertTrue(isTradeIdeaRiskValid("LONG", 100.0, 95.0, 110.0, 115.0, emptySet()))
