@@ -943,18 +943,22 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
     val volumeOk = idea.volumeRatio >= 1.15
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
+    // Match the scanner's hard liquidity gate: spread alone is insufficient.
+    val bookOk = idea.bookImbalance?.let {
+        it.isFinite() && it in -1.0..1.0 && (if (longSide) it >= -0.15 else it <= 0.15)
+    }
     val riskDistance = abs(idea.entry - idea.stop)
     val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
     val rewardOk = rr >= 1.5
     val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
-        (if (volumeOk) 15 else 0) + (if (spreadOk == true) 10 else 0) +
-        (if (rewardOk) 15 else 0)
+        (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
+        (if (bookOk == true) 5 else 0) + (if (rewardOk) 15 else 0)
     val grade = when {
-        score >= 80 -> "Strong confluence"
-        score >= 65 -> "Good · verify"
-        score >= 45 -> "Mixed conditions"
-        else -> "Weak confluence"
+        score >= 80 -> "Strong checklist"
+        score >= 65 -> "Good checklist · verify"
+        score >= 45 -> "Mixed checklist"
+        else -> "Weak checklist"
     }
     val halfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
     val zoneLow = idea.entry - halfWidth
@@ -987,6 +991,7 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
         ("Relative volume at least 1.15× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
+        "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 1.5R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
     ))
 }
@@ -1017,7 +1022,13 @@ private fun EntryGuidancePanel(idea: TradeIdea) {
             Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
-            Text("Entry quality checks", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            val scannerStage = tradeIdeaStage(idea, tracked = false)
+            if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
+                Text("SCANNER HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            Text("Entry checklist (not trade approval)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             guidance.checks.forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (passed == true) "✓" else "○",
@@ -1027,7 +1038,7 @@ private fun EntryGuidancePanel(idea: TradeIdea) {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Entry quality is a rule-based checklist, not a win probability or trade approval. The READY / WAIT / AVOID decision above is shared with Daily Trade Ideas and takes priority over this score. Scanner qualification (75/100) and hard risk gates are unchanged.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Scanner qualification (75/100) and hard risk gates are unchanged.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
