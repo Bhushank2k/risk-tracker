@@ -589,10 +589,23 @@ fun DailyTradeIdeasScreen() {
     val context = LocalContext.current
     val cachedScan = remember { TradeIdeaCache.load(context) }
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
-    fun readTrackedSymbols(): Set<String> = trackingPrefs.all.keys
-        .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
-        .map { it.removePrefix("entry_") }.toSet()
     var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
+    fun readTrackedPlanKeys(rows: List<TradeIdea>): Set<String> {
+        val all = trackingPrefs.all
+        val tracked = all.keys.filter { key -> key.startsWith("plan_") && (all[key] as? Float ?: 0f) > 0f }.toMutableSet()
+        rows.groupBy { it.symbol }.forEach { (symbol, plans) ->
+            val legacyKey = "entry_" + symbol
+            val legacyEntry = all[legacyKey] as? Float
+            if (plans.isNotEmpty() && legacyEntry != null && legacyEntry > 0f) {
+                // Old symbol-wide state represented one tracked entry. Migrate once, not to every horizon.
+                val chosen = plans.firstOrNull { it.horizon.startsWith("Intraday", ignoreCase = true) } ?: plans.first()
+                val planKey = "plan_" + tradeIdeaTrackingId(chosen)
+                trackingPrefs.edit().putFloat(planKey, legacyEntry).remove(legacyKey).apply()
+                tracked.add(planKey)
+            }
+        }
+        return tracked
+    }
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(if (cachedScan != null) "Showing saved scan while fresh Binance data loads…" else "Refresh to scan live Binance USDT-M perpetual markets.") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -604,7 +617,8 @@ fun DailyTradeIdeasScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
-    var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
+    var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
+    var partialScanVisible by remember { mutableStateOf(false) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
@@ -644,7 +658,11 @@ fun DailyTradeIdeasScreen() {
                     progress = { status = it },
                     onPartialResults = { partial ->
                         ideas = partial
+                        updatedAt = System.currentTimeMillis()
+                        partialScanVisible = true
+                        trackedPlanKeys = readTrackedPlanKeys(partial)
                         showingCached = false
+                        status = "Partial scan · " + partial.size + " ideas received; scan is still running…"
                     }
                 )
                 val scanTime = System.currentTimeMillis()
@@ -653,8 +671,9 @@ fun DailyTradeIdeasScreen() {
                 scanHealth = TradeIdeaScanHealthStore.load(context)
                 ideas = freshIdeas
                 updatedAt = scanTime
+                partialScanVisible = false
                 showingCached = false
-                trackedSymbols = readTrackedSymbols()
+                trackedPlanKeys = readTrackedPlanKeys(freshIdeas)
                 paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
@@ -664,7 +683,8 @@ fun DailyTradeIdeasScreen() {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
                 TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
                 scanHealth = TradeIdeaScanHealthStore.load(context)
-                status = "Scan could not be completed."
+                status = if (partialScanVisible) "Scan incomplete · showing timestamped partial results; no completed snapshot was saved."
+                    else "Scan could not be completed."
             } finally { loading = false }
         }
     }
@@ -709,15 +729,16 @@ fun DailyTradeIdeasScreen() {
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
+    fun isPlanTracked(idea: TradeIdea): Boolean = "plan_" + tradeIdeaTrackingId(idea) in trackedPlanKeys
     // Show every scanner-produced setup, including WAIT and AVOID candidates.
     // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
     val horizonIdeas = liveIdeas.filter { horizonFilter == "All" || it.horizon.startsWith(horizonFilter, ignoreCase = true) }
     val modeIdeas = horizonIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
-            when (tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs)) {
+            when (tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs)) {
                 TradeIdeaStage.ENTRY_CONFIRMED -> 0
-                TradeIdeaStage.TRACKING -> 1
+                TradeIdeaStage.TRACKING, TradeIdeaStage.TRACKING_STOP_HIT, TradeIdeaStage.TRACKING_TARGET_HIT, TradeIdeaStage.TRACKING_EXPIRED, TradeIdeaStage.TRACKING_INVALID -> 1
                 TradeIdeaStage.MONITOR -> 2
                 TradeIdeaStage.WAIT_CONFIRMATION -> 3
                 TradeIdeaStage.AVOID_CHASING -> 4
@@ -726,29 +747,29 @@ fun DailyTradeIdeasScreen() {
         }.thenByDescending { it.score }
     )
     val visible = rankedIdeas.filter { idea ->
-        val stage = tradeIdeaStage(idea, idea.symbol in trackedSymbols, scanSnapshotAgeMs)
+        val stage = tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs)
         val nearSetup = isWithinSetupWatchRange(idea)
         when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
-            "Tracking" -> stage == TradeIdeaStage.TRACKING
+            "Tracking" -> isPlanTracked(idea)
             "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
             else -> true
         }
     }
-    val trackedVisible = visible.filter { it.symbol in trackedSymbols }
-    val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
-    val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
+    val trackedVisible = visible.filter { isPlanTracked(it) }
+    val opportunityVisible = visible.filterNot { isPlanTracked(it) }
+    val readyCount = modeIdeas.count { tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = modeIdeas.count { idea ->
-        tradeIdeaStage(idea, idea.symbol in trackedSymbols, scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
+        tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
             isWithinSetupWatchRange(idea)
     }
-    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
+    val blockedCount = modeIdeas.count { tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
     val longCount = modeIdeas.count { it.side == "LONG" }
     val shortCount = modeIdeas.count { it.side == "SHORT" }
     val waitCount = modeIdeas.count { it.side == "WAIT" }
     val timeLabel = updatedAt?.let {
-        SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
+        (if (partialScanVisible) "Partial · " else "") + SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -883,12 +904,12 @@ fun DailyTradeIdeasScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size, riskSettings) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         } else if (trackedVisible.isEmpty()) {
             item {
@@ -950,12 +971,7 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 private enum class TradeIdeaStage(val title: String, val detail: String) {
-    MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."),
-    WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."),
-    ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."),
-    AVOID_CHASING("AVOID", "Price moved too far from the planned entry. Do not chase; wait for a fresh setup."),
-    TRACKING("Trade being tracked", "Live market price and progress are being monitored."),
-    DO_NOT_ENTER("AVOID", "The setup is invalid or its risk checks failed. Do not enter.")
+    MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."), WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."), ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."), AVOID_CHASING("AVOID", "Price moved too far from the planned entry. Do not chase; wait for a fresh setup."), TRACKING("TRACKING", "Live market price and progress are being monitored."), TRACKING_STOP_HIT("TRACKING · STOP HIT", "Tracked plan has reached its stop. Review the paper tracking record."), TRACKING_TARGET_HIT("TRACKING · TARGET HIT", "Tracked plan has reached target 1. Review the paper tracking record."), TRACKING_EXPIRED("TRACKING · EXPIRED", "The tracked signal has expired. Do not treat it as a fresh entry."), TRACKING_INVALID("TRACKING · INVALID", "The tracked plan no longer passes its risk validation."), DO_NOT_ENTER("AVOID", "The setup is invalid or its risk checks failed. Do not enter.")
 }
 
 private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
@@ -1045,6 +1061,10 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
             else -> "AVOID: scanner risk validation failed. Do not enter this setup."
         }
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
+        TradeIdeaStage.TRACKING_STOP_HIT -> "STOP HIT: the tracked plan has reached its stop."
+        TradeIdeaStage.TRACKING_TARGET_HIT -> "TARGET HIT: target 1 has been reached."
+        TradeIdeaStage.TRACKING_EXPIRED -> "EXPIRED: the tracked plan is stale; do not use it as a fresh entry."
+        TradeIdeaStage.TRACKING_INVALID -> "INVALID: the tracked plan no longer passes risk validation."
     }
     val trigger = if (longSide)
         "LONG: wait for a completed $executionInterval candle with EMA9 above EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
@@ -1129,7 +1149,8 @@ private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: B
     val stage = tradeIdeaStage(idea, tracked = isTracked, snapshotAgeMs = snapshotAgeMs)
     val accent = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
-        TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
+        TradeIdeaStage.TRACKING_STOP_HIT, TradeIdeaStage.TRACKING_INVALID, TradeIdeaStage.TRACKING_EXPIRED, TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
+        TradeIdeaStage.TRACKING_TARGET_HIT -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.tertiary
     }
     val distancePct = if (idea.entry > 0.0) abs(idea.last - idea.entry) / idea.entry * 100.0 else 0.0
@@ -1144,6 +1165,10 @@ private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: B
         TradeIdeaStage.AVOID_CHASING -> "Do not chase this move. Wait for a fresh pullback and a new scanner confirmation."
         TradeIdeaStage.DO_NOT_ENTER -> "Do not enter. " + idea.warning
         TradeIdeaStage.TRACKING -> "This idea is already being tracked; this is not a new-entry signal."
+        TradeIdeaStage.TRACKING_STOP_HIT -> "Tracked plan stop has been reached. Review the paper position."
+        TradeIdeaStage.TRACKING_TARGET_HIT -> "Tracked plan target 1 has been reached. Review the paper position."
+        TradeIdeaStage.TRACKING_EXPIRED -> "Tracked signal expired. Do not use it as a new entry."
+        TradeIdeaStage.TRACKING_INVALID -> "Tracked plan failed risk validation."
     }
     RiskCard(
         Modifier.fillMaxWidth(),
@@ -1205,9 +1230,17 @@ private fun ideaMaxAgeMs(idea: TradeIdea): Long = when {
 }
 
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Long = 0L): TradeIdeaStage {
-    if (tracked) return TradeIdeaStage.TRACKING
-    if (snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)) return TradeIdeaStage.DO_NOT_ENTER
-    if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
+    val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
+    val invalidRisk = idea.side == "WAIT" || !tradeIdeaRiskValid(idea)
+    val stopHit = idea.side in listOf("LONG", "SHORT") && livePriceInvalidatesPlan(idea)
+    if (tracked) return when {
+        stopHit -> TradeIdeaStage.TRACKING_STOP_HIT
+        (idea.side == "LONG" && idea.last >= idea.target1) || (idea.side == "SHORT" && idea.last <= idea.target1) -> TradeIdeaStage.TRACKING_TARGET_HIT
+        expired -> TradeIdeaStage.TRACKING_EXPIRED
+        invalidRisk -> TradeIdeaStage.TRACKING_INVALID
+        else -> TradeIdeaStage.TRACKING
+    }
+    if (expired || invalidRisk || stopHit) return TradeIdeaStage.DO_NOT_ENTER
     // Legacy cache entries without this strategy data are not eligible for READY.
     if (idea.strategyChecks.isEmpty() || idea.strategyChecks.any { it.second != true }) {
         val riskDistance = abs(idea.entry - idea.stop)
@@ -1247,6 +1280,8 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
 
+private fun tradeIdeaTrackingId(idea: TradeIdea): String = idea.symbol + "_" + idea.horizon.replace(Regex("[^A-Za-z0-9]"), "") + "_" + idea.setup.replace(Regex("[^A-Za-z0-9]"), "") + "_" + idea.side + "_" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(idea.entry)) + "_" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(idea.stop))
+
 @Composable
 private fun TradeIdeaCard(
     idea: TradeIdea,
@@ -1259,14 +1294,13 @@ private fun TradeIdeaCard(
 ) {
     val context = LocalContext.current
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
-    val trackedEntryKey = "entry_" + idea.symbol
-    var trackedEntry by remember(idea.symbol) {
-        mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 })
-    }
-    var livePrice by remember(idea.symbol) { mutableStateOf(idea.last) }
+    val trackedPlanId = tradeIdeaTrackingId(idea)
+    val trackedEntryKey = "plan_" + trackedPlanId
+    var trackedEntry by remember(trackedPlanId) { mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 }) }
+    var livePrice by remember(trackedPlanId) { mutableStateOf(idea.last) }
     val trackingScope = rememberCoroutineScope()
-    var expanded by remember(idea.symbol, density) { mutableStateOf(false) }
-    var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
+    var expanded by remember(trackedPlanId, density) { mutableStateOf(false) }
+    var levelsExpanded by remember(trackedPlanId) { mutableStateOf(false) }
     LaunchedEffect(idea.symbol) {
         // Poll only the in-memory WebSocket cache; this loop never makes a REST request.
         while (true) {
@@ -1394,7 +1428,7 @@ private fun TradeIdeaCard(
                 }
             }
 
-            if (stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING) {
+            if (stage == TradeIdeaStage.ENTRY_CONFIRMED || trackedEntry != null) {
                 HorizontalDivider()
                 TextButton(onClick = { levelsExpanded = !levelsExpanded }, modifier = Modifier.align(Alignment.End)) { Text(if (levelsExpanded) "Hide levels" else "Show all levels") }
                 if (levelsExpanded) {
@@ -1411,7 +1445,7 @@ private fun TradeIdeaCard(
                 EntryRiskPlanDetails(idea, riskSettings)
                 }
             }
-            if (stage == TradeIdeaStage.TRACKING && trackedEntry != null) {
+            if (trackedEntry != null) {
                 HorizontalDivider()
                 Text("Live trade tracking", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
                 ScannerMetric("Tracked entry", trackedEntry!!.usd(6))
@@ -1426,7 +1460,7 @@ private fun TradeIdeaCard(
                     trackingPrefs.edit().remove(trackedEntryKey).apply()
                     trackedEntry = null
                     livePrice = idea.last
-                    onTrackingChanged(idea.symbol, false)
+                    onTrackingChanged(trackedEntryKey, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
             } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
                 Text("Risk checks passed.", style = MaterialTheme.typography.bodySmall)
@@ -1437,7 +1471,7 @@ private fun TradeIdeaCard(
                         trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
                         livePrice = entry
                         trackedEntry = entry
-                        onTrackingChanged(idea.symbol, true)
+                        onTrackingChanged(trackedEntryKey, true)
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
             } else if (stage == TradeIdeaStage.MONITOR) {
