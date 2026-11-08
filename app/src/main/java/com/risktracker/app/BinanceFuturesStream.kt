@@ -63,6 +63,7 @@ internal object BinanceFuturesStream {
     private val depthReconnects = AtomicInteger(0)
     private val maxDepthSymbols = 150
     @Volatile private var requestedDepthSymbols: List<String> = emptyList()
+    @Volatile private var depthSubscriptionGeneration = 0
     @Volatile private var marketSocket: WebSocket? = null
     @Volatile private var publicSocket: WebSocket? = null
     @Volatile private var depthSocket: WebSocket? = null
@@ -100,6 +101,7 @@ internal object BinanceFuturesStream {
         val depthSelection = requestedSymbols.asSequence().map { it.lowercase() }.distinct().take(maxDepthSymbols).sorted().toList()
         if (depthSelection.isNotEmpty() && depthSelection != requestedDepthSymbols) {
             requestedDepthSymbols = depthSelection
+            depthSubscriptionGeneration++
             depthSocket?.close(1000, "Updating depth subscriptions")
             pendingDepthSocket?.close(1000, "Updating depth subscriptions")
             depthSocket = null
@@ -133,14 +135,19 @@ internal object BinanceFuturesStream {
             depthConnecting.set(false)
             return
         }
+        val generation = depthSubscriptionGeneration
         val streams = symbols.map { "$it@depth5@100ms" }
-        openDepth(PUBLIC_URL + streams.joinToString("/"))
+        openDepth(PUBLIC_URL + streams.joinToString("/"), generation)
     }
 
-    private fun openDepth(url: String) {
+    private fun openDepth(url: String, generation: Int) {
         val request = Request.Builder().url(url).build()
         pendingDepthSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (generation != depthSubscriptionGeneration) {
+                    webSocket.close(1000, "Obsolete depth subscription")
+                    return
+                }
                 depthSocket = webSocket
                 pendingDepthSocket = null
                 depthConnecting.set(false)
@@ -158,7 +165,7 @@ internal object BinanceFuturesStream {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                disconnectedDepth(webSocket)
+                disconnectedDepth(webSocket, generation)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -167,7 +174,8 @@ internal object BinanceFuturesStream {
         })
     }
 
-    private fun disconnectedDepth(socket: WebSocket) {
+    private fun disconnectedDepth(socket: WebSocket, generation: Int) {
+        if (generation != depthSubscriptionGeneration) return
         if (depthSocket === socket) depthSocket = null
         if (pendingDepthSocket === socket) pendingDepthSocket = null
         depthConnecting.set(false)
@@ -175,7 +183,8 @@ internal object BinanceFuturesStream {
         val backoffMs = (1_000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
         scope.launch {
             delay(backoffMs)
-            if (depthSocket == null && pendingDepthSocket == null && requestedDepthSymbols.isNotEmpty()) connectDepth()
+            if (generation == depthSubscriptionGeneration &&
+                depthSocket == null && pendingDepthSocket == null && requestedDepthSymbols.isNotEmpty()) connectDepth()
         }
     }
 
