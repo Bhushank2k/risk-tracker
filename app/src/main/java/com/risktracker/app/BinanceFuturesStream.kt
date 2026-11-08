@@ -329,14 +329,18 @@ internal object BinanceFuturesStream {
         val book = books[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= MAX_AGE_MS }
         if (book == null) {
             val rate = funding[key]?.let { freshFundingRate(it.rate, it.updatedAt, System.currentTimeMillis()) }
-            return MarketMicrostructure(null, null, rate, null)
+            return MarketMicrostructure(null, null, rate, null, null, null)
         }
         val spread = ((book.ask - book.bid) / ((book.ask + book.bid) / 2.0)) * 10_000.0
         val depthFresh = book.depthUpdatedAt > 0L && System.currentTimeMillis() - book.depthUpdatedAt in 0..MAX_AGE_MS
         val total = book.bidNotional + book.askNotional
         val imbalance = if (depthFresh && total > 0.0) (book.bidNotional - book.askNotional) / total else null
         val rate = funding[key]?.let { freshFundingRate(it.rate, it.updatedAt, System.currentTimeMillis()) }
-        return MarketMicrostructure(spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate, null)
+        return MarketMicrostructure(
+            spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate, null,
+            book.bidNotional.takeIf { depthFresh && it.isFinite() && it > 0.0 },
+            book.askNotional.takeIf { depthFresh && it.isFinite() && it > 0.0 }
+        )
     }
 
     fun connectionStatus(): String = when {
