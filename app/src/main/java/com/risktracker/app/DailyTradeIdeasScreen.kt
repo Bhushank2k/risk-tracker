@@ -466,8 +466,6 @@ fun DailyTradeIdeasScreen() {
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
     val strategyMode = "Daily Picks"
-    val qualityPrefs = remember { context.getSharedPreferences("trade_idea_quality_v3", android.content.Context.MODE_PRIVATE) }
-    var strictQualityMode by remember { mutableStateOf(qualityPrefs.getBoolean("enabled", false)) }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
@@ -577,28 +575,7 @@ fun DailyTradeIdeasScreen() {
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
-    val strictModeIdeas = if (strictQualityMode) liveIdeas.map { idea ->
-        if (idea.symbol in trackedSymbols) idea else {
-            val assessment = TradeIdeasV3.assess(
-                idea, scanSnapshotAgeMs, trackedSymbols.size, false,
-                paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
-            )
-            val strictWarning = when (assessment.state) {
-                "BLOCKED" -> "BLOCK: V3 Strict Quality — " + assessment.blockers.joinToString(" ")
-                "WAIT" -> "Conditional only: V3 checks passed; wait for the entry trigger."
-                else -> "HIGH QUALITY: V3 Strict Quality checks passed. Verify the live market before acting."
-            }
-            idea.copy(
-                score = assessment.score,
-                warning = strictWarning,
-                reasons = idea.reasons + ("Strict Quality V3 score: " + assessment.score + "/100") +
-                    assessment.blockers.takeIf { it.isNotEmpty() }?.joinToString(prefix = " · Blockers: ", separator = " ").orEmpty()
-            )
-        }
-    } else liveIdeas
-    val strictBlockedCount = if (strictQualityMode) strictModeIdeas.count { it.warning.startsWith("BLOCK:", ignoreCase = true) } else 0
-    val strictReadyCount = if (strictQualityMode) strictModeIdeas.count { it.entryTriggered && !it.warning.startsWith("BLOCK:", ignoreCase = true) } else 0
-    val allModeIdeas = strictModeIdeas.filter { idea ->
+    val allModeIdeas = liveIdeas.filter { idea ->
         strategyMode == "All" || strategyMode == "Daily Picks" ||
             (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
             (strategyMode == "Intraday" && idea.horizon.contains("Intraday", ignoreCase = true)) ||
@@ -606,10 +583,7 @@ fun DailyTradeIdeasScreen() {
     }
     val dailyPicks = selectDailyPicks(allModeIdeas, scanSnapshotAgeMs)
     val modeIdeas = if (strategyMode == "Daily Picks") {
-        val selected = if (strictQualityMode && filter == "Avoid") {
-            allModeIdeas.filter { it.warning.startsWith("BLOCK:", ignoreCase = true) }
-        } else dailyPicks
-        (selected + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
+        (dailyPicks + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
     } else allModeIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
@@ -798,31 +772,6 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RiskCard(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Strict quality checks", fontWeight = FontWeight.SemiBold)
-                            Text("Require aligned trends, liquidity, volume, fresh depth and valid risk/reward before an idea can be READY.",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (strictQualityMode) {
-                                Text("$strictReadyCount READY · $strictBlockedCount blocked",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("Paper risk: ${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% daily loss · ${paperRiskStatus.openPositions} open positions",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (paperRiskStatus.dailyStopReached) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Switch(checked = strictQualityMode, onCheckedChange = { enabled ->
-                            strictQualityMode = enabled
-                            qualityPrefs.edit().putBoolean("enabled", enabled).apply()
-                            if (enabled) filter = "All"
-                        })
-                    }
-                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
@@ -848,13 +797,13 @@ fun DailyTradeIdeasScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size, riskSettings) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size, riskSettings) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         } else if (trackedVisible.isEmpty()) {
             item {
@@ -1028,47 +977,20 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
 @Composable
 private fun EntryGuidancePanel(
     idea: TradeIdea,
-    strictMode: Boolean = false,
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
     trackedPositionCount: Int = 0,
     isTracked: Boolean = false,
     riskSettings: EntryRiskSettings = EntryRiskSettings()
 ) {
-    val strictAssessment = if (strictMode) remember(idea, snapshotAgeMs, paperRiskStatus, isTracked) {
-        TradeIdeasV3.assess(
-            idea, snapshotAgeMs, trackedPositionCount, isTracked,
-            paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
-        )
-    } else null
-    val guidance = if (strictAssessment == null) remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) } else {
-        val assessment = strictAssessment
-        EntryGuidance(
-            assessment.score,
-            when (assessment.state) {
-                "READY" -> "Strict gates passed"
-                "WAIT" -> "Wait for trigger"
-                else -> "Hard gate blocked"
-            },
-            when (assessment.state) {
-                "READY" -> "READY: Strict Quality V3 checks passed. Recheck the live quote before acting."
-                "WAIT" -> "WAIT: V3 checks pass; the entry trigger is not confirmed yet."
-                else -> "AVOID: " + assessment.blockers.joinToString(" ")
-            },
-            "Wait for a fresh completed-candle trigger and recheck order-book depth.",
-            "Cancel the setup if price invalidates the stop, liquidity disappears, or the signal expires.",
-            idea.entry - maxOf(idea.entry * 0.00075, abs(idea.entry - idea.stop) * 0.10),
-            idea.entry + maxOf(idea.entry * 0.00075, abs(idea.entry - idea.stop) * 0.10),
-            assessment.checks.map { it.first to it.second }
-        )
-    }
+    val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
     RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (strictMode) "STRICT QUALITY V3" else "IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.SemiBold)
@@ -1101,7 +1023,7 @@ private fun EntryGuidancePanel(
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Scanner qualification (75/100) and hard risk gates are unchanged.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Confluence V4 scoring and its existing hard risk gates determine scanner qualification.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1201,7 +1123,6 @@ private fun selectDailyPicks(ideas: List<TradeIdea>, snapshotAgeMs: Long = 0L): 
 private fun TradeIdeaCard(
     idea: TradeIdea,
     density: String,
-    strictMode: Boolean = false,
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
     trackedPositionCount: Int = 0,
@@ -1406,7 +1327,7 @@ private fun TradeIdeaCard(
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
-                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null, riskSettings)
+                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, snapshotAgeMs)
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
