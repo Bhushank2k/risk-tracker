@@ -527,8 +527,10 @@ internal object BinanceMarketScanner {
         val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
         val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
         val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
-        val retest = plan.setup.contains("breakout", ignoreCase = true) &&
-            plan.setup.contains("retest", ignoreCase = true)
+        val retest = (plan.setup.contains("breakout", ignoreCase = true) &&
+            plan.setup.contains("retest", ignoreCase = true)) ||
+            plan.setup.contains("trend pullback", ignoreCase = true) ||
+            plan.setup.contains("range reversal", ignoreCase = true)
         val candle = executionRows.lastOrNull()
         val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
@@ -548,7 +550,7 @@ internal object BinanceMarketScanner {
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
-            "Entry: breakout / breakdown followed by retest" to retest,
+            "Entry: V4 setup structure confirmed (pullback / breakout retest / range rejection)" to retest,
             "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
             ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
@@ -992,6 +994,15 @@ private fun biasSupportsSide(bias: String, side: String): Boolean {
 /** Advisory entry timing layer. It never overrides scanner qualification or risk gates. */
 private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): EntryGuidance {
     val longSide = idea.side == "LONG"
+    val isScalp = idea.horizon.startsWith("Scalp", ignoreCase = true)
+    val isSwing = idea.horizon.startsWith("Swing", ignoreCase = true)
+    val trendLabels = when {
+        isScalp -> listOf("1H", "15M", "1M")
+        isSwing -> listOf("1D", "4H", "15M")
+        else -> listOf("4H", "1H", "5M")
+    }
+    val setupInterval = if (isScalp) "5M" else if (isSwing) "1H" else "15M"
+    val executionInterval = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
     val trend4h = biasSupportsSide(idea.bias4h, idea.side)
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
     val trend5m = biasSupportsSide(idea.bias5m, idea.side)
@@ -1035,17 +1046,17 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
-        "LONG: wait for a completed 5M candle with EMA9 above EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
+        "LONG: wait for a completed $executionInterval candle with EMA9 above EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
     else
-        "SHORT: wait for a completed 5M candle with EMA9 below EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
+        "SHORT: wait for a completed $executionInterval candle with EMA9 below EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
     val invalidation = if (longSide)
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
     val combinedChecks = listOf(
-        "4H trend aligned" to trend4h,
-        "1H trend aligned" to trend1h,
-        "5M execution trend aligned" to trend5m,
+        ("${trendLabels[0]} trend aligned") to trend4h,
+        ("${trendLabels[1]} trend aligned") to trend1h,
+        ("${trendLabels[2]} execution trend aligned") to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
         ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
@@ -1446,8 +1457,13 @@ private fun TradeIdeaCard(
             if (expanded) {
                 HorizontalDivider()
                 if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, snapshotAgeMs)
-                Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
+                val trendLabels = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) listOf("1H", "15M", "1M")
+                    else if (idea.horizon.startsWith("Swing", ignoreCase = true)) listOf("1D", "4H", "15M")
+                    else listOf("4H", "1H", "5M")
+                val setupInterval = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) "5M"
+                    else if (idea.horizon.startsWith("Swing", ignoreCase = true)) "1H" else "15M"
+                Text("Trend: " + trendLabels[0] + " " + idea.bias4h + " · " + trendLabels[1] + " " + idea.bias1h + " · " + trendLabels[2] + " " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                Text(setupInterval + " RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Depth imbalance", idea.bookImbalance?.let { "%+.2f".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
