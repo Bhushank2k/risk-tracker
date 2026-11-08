@@ -54,3 +54,8 @@ internal fun confluenceScore(
         (if (btcAgainst) 2 else 5) +
         (if (stopGeometryConfirmed) 5 else 0)
 }
+
+/** Reject an execution price that has already run too far from the setup level. */
+internal fun confluenceEntryWithinExtension(entry: Double, setupLevel: Double, atr: Double): Boolean =
+    entry.isFinite() && setupLevel.isFinite() && atr.isFinite() && atr > 0.0 &&
+        kotlin.math.abs(entry - setupLevel) <= atr * 0.9
