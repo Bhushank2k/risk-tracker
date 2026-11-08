@@ -883,7 +883,8 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
     val trend5m = biasSupportsSide(idea.bias5m, idea.side)
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
-    val volumeOk = idea.volumeRatio >= 1.20
+    val volumeThreshold = if (idea.setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
+    val volumeOk = idea.volumeRatio >= volumeThreshold
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
     // Match the scanner's hard liquidity gate: spread alone is insufficient.
     val bookOk = idea.bookImbalance?.let {
@@ -922,9 +923,9 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
-        "LONG: retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
+        "LONG: wait for a completed 5M candle with EMA9 above EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
     else
-        "SHORT: retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
+        "SHORT: wait for a completed 5M candle with EMA9 below EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
     val invalidation = if (longSide)
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
@@ -934,7 +935,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "1H trend aligned" to trend1h,
         "5M execution trend aligned" to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
-        ("Relative volume at least 1.2× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
+        ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
@@ -997,10 +998,10 @@ private fun EntryGuidancePanel(
 }
 
 @Composable
-private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long) {
+private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: Boolean) {
     if (idea.side !in setOf("LONG", "SHORT")) return
     val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
-    val stage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
+    val stage = tradeIdeaStage(idea, tracked = isTracked, snapshotAgeMs = snapshotAgeMs)
     val accent = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
@@ -1173,7 +1174,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    EntryCoachSummary(liveIdea, snapshotAgeMs)
+                    EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
                     Text("EXIT PLAN  ·  1R / 2R / 3R / 4R+  ·  25% each", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
