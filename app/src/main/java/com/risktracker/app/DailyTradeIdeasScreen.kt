@@ -103,7 +103,13 @@ internal object TradeIdeaCache {
                     trendAverageR = stats.optDouble("trendAverageR", Double.NaN).takeIf { it.isFinite() },
                     rangeTrades = stats.optInt("rangeTrades"),
                     rangeWins = stats.optInt("rangeWins"),
-                    rangeAverageR = stats.optDouble("rangeAverageR", Double.NaN).takeIf { it.isFinite() }
+                    rangeAverageR = stats.optDouble("rangeAverageR", Double.NaN).takeIf { it.isFinite() },
+                    breakoutTrades = stats.optInt("breakoutTrades"), breakoutWins = stats.optInt("breakoutWins"),
+                    breakoutAverageR = stats.optDouble("breakoutAverageR", Double.NaN).takeIf { it.isFinite() },
+                    pullbackTrades = stats.optInt("pullbackTrades"), pullbackWins = stats.optInt("pullbackWins"),
+                    pullbackAverageR = stats.optDouble("pullbackAverageR", Double.NaN).takeIf { it.isFinite() },
+                    reversalTrades = stats.optInt("reversalTrades"), reversalWins = stats.optInt("reversalWins"),
+                    reversalAverageR = stats.optDouble("reversalAverageR", Double.NaN).takeIf { it.isFinite() }
                 ),
                 volatilityPct = x.optDouble("volatilityPct", 0.0),
                 strategyChecks = x.optJSONArray("strategyChecks")?.let { checks ->
@@ -145,6 +151,12 @@ internal object TradeIdeaCache {
                     .put("trendAverageR", idea.backtest.trendAverageR ?: JSONObject.NULL)
                     .put("rangeTrades", idea.backtest.rangeTrades).put("rangeWins", idea.backtest.rangeWins)
                     .put("rangeAverageR", idea.backtest.rangeAverageR ?: JSONObject.NULL)
+                    .put("breakoutTrades", idea.backtest.breakoutTrades).put("breakoutWins", idea.backtest.breakoutWins)
+                    .put("breakoutAverageR", idea.backtest.breakoutAverageR ?: JSONObject.NULL)
+                    .put("pullbackTrades", idea.backtest.pullbackTrades).put("pullbackWins", idea.backtest.pullbackWins)
+                    .put("pullbackAverageR", idea.backtest.pullbackAverageR ?: JSONObject.NULL)
+                    .put("reversalTrades", idea.backtest.reversalTrades).put("reversalWins", idea.backtest.reversalWins)
+                    .put("reversalAverageR", idea.backtest.reversalAverageR ?: JSONObject.NULL)
                 val strategyChecks = JSONArray().apply {
                     idea.strategyChecks.forEach { (label, passed) ->
                         put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
@@ -1664,6 +1676,12 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                         (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
                         "  |  RANGE " + stats.rangeTrades + " trades · " +
                         (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "BREAKOUT " + stats.breakoutTrades + " · " + (stats.breakoutAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a") +
+                        "  |  PULLBACK " + stats.pullbackTrades + " · " + (stats.pullbackAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a") +
+                        "  |  REVERSAL " + stats.reversalTrades + " · " + (stats.reversalAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 val lower = stats.winRateLower95 ?: 0.0

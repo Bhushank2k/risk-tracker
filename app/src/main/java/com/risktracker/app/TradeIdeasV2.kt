@@ -146,7 +146,7 @@ internal object TradeIdeasV2 {
         if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
-        val outcomes = mutableListOf<Triple<String, String, Double>>()
+        val outcomes = mutableListOf<TradeIdeaReplayOutcome>()
         var i = 30
         // Require a full forward window to avoid right-edge censoring and sample bias.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
@@ -198,24 +198,28 @@ internal object TradeIdeasV2 {
             val entryCandle: V2Candle
             val entryIndex: Int
             val stopReference: List<V2Candle>
+            val setupFamily: String
             when {
                 breakout && breakoutTouched && breakoutHeld -> {
                     sideLong = long
                     entryCandle = retest
                     entryIndex = i + 1
                     stopReference = listOf(current, retest)
+                    setupFamily = "BREAKOUT"
                 }
                 pullback && relativeVolume >= 1.2 -> {
                     sideLong = long
                     entryCandle = current
                     entryIndex = i
                     stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
+                    setupFamily = "PULLBACK"
                 }
                 (rangeLong || rangeShort) && relativeVolume >= 1.2 -> {
                     sideLong = rangeLong
                     entryCandle = current
                     entryIndex = i
                     stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
+                    setupFamily = "REVERSAL"
                 }
                 else -> { i++; continue }
             }
@@ -255,7 +259,7 @@ internal object TradeIdeasV2 {
             }
             if (exitAt >= 0) {
                 val heldBars = (exitAt - entryIndex).coerceAtLeast(0)
-                outcomes.add(Triple(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND",
+                outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
                     tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
                 i = exitAt + 1
             } else {
@@ -263,7 +267,7 @@ internal object TradeIdeasV2 {
                 val finalIndex = maxExit - 1
                 val openR = (m15[finalIndex].close - entry) / risk * sign
                 val heldBars = (finalIndex - entryIndex).coerceAtLeast(0)
-                outcomes.add(Triple(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND",
+                outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
                     tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
                         entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
                 i = maxOf(entryIndex + 1, maxExit)
