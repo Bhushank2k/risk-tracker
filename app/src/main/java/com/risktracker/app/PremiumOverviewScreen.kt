@@ -47,7 +47,7 @@ fun RiskOverviewScreen(
     var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var balanceRefreshing by remember { mutableStateOf(false) }
     var balanceStatus by remember { mutableStateOf("") }
-    val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
+    var hasBinanceCredentials by remember { mutableStateOf(BinanceCredentialStore(context).read() != null) }
     var liveImportedPnl by remember { mutableStateOf(importedPnl) }
     var livePositions by remember { mutableStateOf(positionsStore.load()) }
     var positionsLoading by remember { mutableStateOf(false) }
@@ -146,17 +146,26 @@ fun RiskOverviewScreen(
         liveImportedPnl = importedPnl
     }
 
-    // WorkManager updates SharedPreferences in the background; observe its latest snapshot
-    // while the dashboard is visible so Today's P&L doesn't remain frozen at screen-open time.
+    // WorkManager updates SharedPreferences in the background; observe the latest P&L
+    // snapshot even when the dashboard was opened before Binance credentials were connected.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            val latestPnl = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
+            if (latestPnl != liveImportedPnl) liveImportedPnl = latestPnl
+            if (!hasBinanceCredentials && BinanceCredentialStore(context).read() != null) {
+                hasBinanceCredentials = true
+            }
+        }
+    }
+
     LaunchedEffect(hasBinanceCredentials) {
         if (hasBinanceCredentials) {
             BinanceDailyWorker.schedule(context)
             refreshLivePositions()
             refreshAccountBalance()
             while (true) {
-                delay(30_000L)
-                val latestPnl = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
-                if (latestPnl != liveImportedPnl) liveImportedPnl = latestPnl
+                delay(60_000L)
                 refreshLivePositions()
                 refreshAccountBalance()
             }
