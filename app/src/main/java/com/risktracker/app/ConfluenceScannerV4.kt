@@ -40,9 +40,9 @@ internal object ConfluenceScannerV4 {
         val macdUp=macd>0&&macd>=prevMacd; val macdDn=macd<0&&macd<=prevMacd
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
-            setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned 4H/1H uptrend"))
+            setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned ${bias1Label}/${bias2Label} uptrend"))
         if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close)
-            setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 pullback rejected in aligned 4H/1H downtrend"))
+            setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 pullback rejected in aligned ${bias1Label}/${bias2Label} downtrend"))
         for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
             val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
             if(av<=0||m15[i].volume/av<1.5)continue
@@ -50,7 +50,7 @@ internal object ConfluenceScannerV4 {
             if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
                 setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.5× volume, then retest and hold"))
             if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
-                setups.add(Setup("Breakout + retest","SHORT",lo,false,"15M 20-bar breakdown on ≥1.5× volume, then retest and hold"))
+                setups.add(Setup("Breakout + retest","SHORT",lo,false,"${setupLabel} 20-bar breakdown on ≥1.5× volume, then retest and hold"))
         }
         if(rangeMode){
             val band=m15.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
@@ -89,18 +89,18 @@ internal object ConfluenceScannerV4 {
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
                 !rr->"BLOCK: Target 1 gross reward/risk is below 2R; deduct actual costs before entry."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
-                !volatility->"BLOCK: 15M ATR% is outside 0.12–3.0%."
+                !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
                 rv<1.2->"BLOCK: Relative volume is below 1.2×."
                 !momentum->"BLOCK: RSI/MACD momentum does not confirm."
                 score<70->"BLOCK: Confluence score is below 70/100."
-                !entryOk->"WAIT: Completed 5M EMA9/21 entry confirmation is missing."
+                !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
                 score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
                 else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
             }
-            val reasons=listOf("Confluence score "+score+"/100: ${bias1Label}+${bias2Label} 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC 5",
-                s.detail,if(s.range)"Range regime: compressed 4H/1H; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
-                if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed 5M EMA9/21 confirmation",
+            val reasons=listOf("Confluence score "+score+"/100: ${bias1Label}+${bias2Label} 25 · structure 20 · ${setupLabel} setup 15 · ${executionLabel} entry 15 · volume 10 · momentum 10 · BTC 5",
+                s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
+                if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · depth "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable"),
