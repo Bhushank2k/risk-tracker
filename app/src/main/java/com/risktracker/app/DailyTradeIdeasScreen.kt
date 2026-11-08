@@ -1049,11 +1049,16 @@ private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: B
     }
 }
 
+/**
+ * A confirmed candle is not permission to chase an already-extended move.
+ * Keep the live quote close to the planned entry; use the same conservative
+ * distance on both sides so a stale trigger cannot become a late READY signal.
+ */
 private fun entryTooFarFromPlan(idea: TradeIdea): Boolean {
     val riskDistance = abs(idea.entry - idea.stop)
     if (riskDistance <= 0.0 || idea.entry <= 0.0 || !idea.last.isFinite()) return true
-    val chaseLimit = minOf(idea.entry * 0.003, riskDistance * 0.50)
-    return abs(idea.last - idea.entry) > chaseLimit
+    val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+    return abs(idea.last - idea.entry) > entryTolerance
 }
 
 private fun livePriceInvalidatesPlan(idea: TradeIdea): Boolean =
@@ -1079,7 +1084,22 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     if (snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.entryTriggered) {
-        return if (entryTooFarFromPlan(idea)) TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.ENTRY_CONFIRMED
+        if (!entryTooFarFromPlan(idea)) return TradeIdeaStage.ENTRY_CONFIRMED
+
+        // If price has already moved in the trade's favour, the entry was missed:
+        // never label that late quote READY. If price has not reached the planned
+        // entry yet, keep it in WAIT/MONITOR rather than treating the candle flag
+        // alone as an executable entry.
+        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
+        val riskDistance = abs(idea.entry - idea.stop)
+        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+        return if (favorableMove > entryTolerance) {
+            TradeIdeaStage.AVOID_CHASING
+        } else {
+            val watchDistance = maxOf(idea.entry * 0.003, riskDistance * 0.50)
+            if (abs(idea.last - idea.entry) <= watchDistance) TradeIdeaStage.MONITOR
+            else TradeIdeaStage.WAIT_CONFIRMATION
+        }
     }
     val riskDistance = abs(idea.entry - idea.stop)
     val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
