@@ -1679,9 +1679,21 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "BREAKOUT " + stats.breakoutTrades + " · " + (stats.breakoutAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a") +
-                        "  |  PULLBACK " + stats.pullbackTrades + " · " + (stats.pullbackAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a") +
-                        "  |  REVERSAL " + stats.reversalTrades + " · " + (stats.reversalAverageR?.let { "%+.2fR".format(Locale.US, it) } ?: "n/a"),
+                    "BREAKOUT " + stats.breakoutTrades + " trades · " +
+                        (stats.breakoutTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.breakoutWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "PULLBACK " + stats.pullbackTrades + " trades · " +
+                        (stats.pullbackTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.pullbackWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "REVERSAL " + stats.reversalTrades + " trades · " +
+                        (stats.reversalTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.reversalWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 val lower = stats.winRateLower95 ?: 0.0
