@@ -210,7 +210,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             } else (6 - plans.size).coerceAtLeast(0)
             alertIdeas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
-                    (!strictModeEnabled || !it.warning.startsWith("BLOCK:", ignoreCase = true)) &&
+                    (!strictModeEnabled || (!it.warning.startsWith("BLOCK:", ignoreCase = true) && it.symbol !in manuallyTrackedSymbols)) &&
                     (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
                     (it.oiChangePct == null || it.oiChangePct > -1.0) &&
                     it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
