@@ -42,6 +42,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
@@ -53,7 +54,8 @@ internal data class TradeIdea(
     val setup: String, val reasons: List<String>, val warning: String, val horizon: String,
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats,
-    val volatilityPct: Double = 0.0
+    val volatilityPct: Double = 0.0,
+    val strategyChecks: List<Pair<String, Boolean?>> = emptyList()
 )
 internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
@@ -84,7 +86,15 @@ internal object TradeIdeaCache {
                 spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
                 fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
                 backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR")),
-                volatilityPct = x.optDouble("volatilityPct", 0.0)
+                volatilityPct = x.optDouble("volatilityPct", 0.0),
+                strategyChecks = x.optJSONArray("strategyChecks")?.let { checks ->
+                    (0 until checks.length()).mapNotNull { index ->
+                        checks.optJSONObject(index)?.let { item ->
+                            val passed: Boolean? = if (!item.has("passed") || item.isNull("passed")) null else item.optBoolean("passed")
+                            item.optString("label").takeIf { it.isNotBlank() }?.let { it to passed }
+                        }
+                    }
+                } ?: emptyList()
             )
         }
         if (timestamp <= 0L) null else timestamp to ideas
@@ -97,6 +107,11 @@ internal object TradeIdeaCache {
                 val reasons = JSONArray().apply { idea.reasons.forEach { put(it) } }
                 val stats = JSONObject().put("trades", idea.backtest.trades)
                     .put("wins", idea.backtest.wins).put("averageR", idea.backtest.averageR)
+                val strategyChecks = JSONArray().apply {
+                    idea.strategyChecks.forEach { (label, passed) ->
+                        put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
+                    }
+                }
                 rows.put(JSONObject()
                     .put("symbol", idea.symbol).put("side", idea.side).put("score", idea.score)
                     .put("volume", idea.volume).put("change", idea.change).put("last", idea.last)
@@ -110,7 +125,7 @@ internal object TradeIdeaCache {
                     .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
                     .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
                     .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
-                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct))
+                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct).put("strategyChecks", strategyChecks))
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
@@ -297,6 +312,7 @@ internal object BinanceMarketScanner {
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
         }.map { it.optString("symbol") }.toSet()
+        report("Found ${allowed.size} active USDT-M perpetual pairs. Loading 24h market statistics…")
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
         val prefiltered = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
@@ -312,11 +328,14 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
+        report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $5M quote-volume requirement.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Measure every eligible active USDT perpetual; ranking changes evaluation order, never market coverage.
-        report("Measuring hourly ATR% and relative volume across all ${prefiltered.size} eligible markets…")
+        report("Loading hourly history for 0/${prefiltered.size} eligible pairs…")
         val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
+        val hourlyCompleted = AtomicInteger(0)
+        val hourlyHistoryFailures = AtomicInteger(0)
         val ranked = prefiltered.map { ticker ->
             async {
                 coroutineContext.ensureActive()
@@ -330,7 +349,13 @@ internal object BinanceMarketScanner {
                     throw e
                 } catch (_: Exception) {
                     // Incomplete hourly history is not eligible for ATR-based ranking.
+                    hourlyHistoryFailures.incrementAndGet()
                     null
+                } finally {
+                    val completed = hourlyCompleted.incrementAndGet()
+                    if (completed % 5 == 0 || completed == prefiltered.size) {
+                        report("Hourly history: ${completed}/${prefiltered.size} pairs · ${hourlyHistoryFailures.get()} unavailable…")
+                    }
                 }
             }
         }.awaitAll().filterNotNull()
@@ -340,7 +365,8 @@ internal object BinanceMarketScanner {
             it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
                 it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
         }
-        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all eligible liquid markets.")
+        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all ${prefiltered.size} liquid pairs.")
+        report("Hourly history ready: ${candidates.size}/${prefiltered.size} pairs. Loading BTC market context…")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
@@ -349,26 +375,38 @@ internal object BinanceMarketScanner {
         val btcH1 = btcH1Job.await()
         val btcBias = btcRegime(btcH4, btcH1)
 
-        // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
-        BinanceFuturesStream.start(candidates.map { it.symbol })
-        delay(2_000)
-        report("Deep-scanning all ${candidates.size} eligible markets; BTC regime: $btcBias…")
+        // The aggregate ticker/book streams cover the whole market. Depth streams are
+        // intentionally subscribed in bounded batches, then awaited before each batch is evaluated.
+        val depthBatchSize = 150
+        report("Deep scan starting: 0/${candidates.size} pairs · BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         var marketsWithPlans = 0
         var marketsWithoutPlans = 0
+        var blockedPlans = 0
+        var marketDataFailures = 0
         var lastMarketFailure: String? = null
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
+            if (index % depthBatchSize == 0) {
+                val depthBatch = candidates.drop(index).take(depthBatchSize).map { it.symbol }
+                BinanceFuturesStream.start(depthBatch)
+                val depthReady = BinanceFuturesStream.awaitDepth(depthBatch, timeoutMs = 5_000L)
+                report("Order-book depth ready: ${depthReady.size}/${depthBatch.size} pairs · scanning ${index + 1}/${candidates.size}…")
+            }
             try {
                 // Fetch each symbol's remaining intervals concurrently; the shared limiter
                 // caps total REST concurrency and spaces request starts to protect Binance.
                 val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
+                val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
                 val m15Job = async { cachedCandles(ticker.symbol, "15m", 500) }
                 val m5Job = async { cachedCandles(ticker.symbol, "5m", 1500) }
+                val m1Job = async { cachedCandles(ticker.symbol, "1m", 300) }
                 val h4 = h4Job.await()
                 val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
+                val d1 = d1Job.await()
                 val m15 = m15Job.await()
                 val m5 = m5Job.await()
+                val m1 = m1Job.await()
                 val micro = BinanceFuturesStream.microstructure(ticker.symbol).copy(
                     oiChangePct = openInterestChangePct(ticker.symbol)
                 )
@@ -378,50 +416,69 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias, btcH4)
-                if (marketIdeas.isEmpty()) marketsWithoutPlans++ else marketsWithPlans++
+                val marketIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                if (marketIdeas.isEmpty()) {
+                    marketsWithoutPlans++
+                } else {
+                    marketsWithPlans++
+                    blockedPlans += marketIdeas.count { it.warning.startsWith("BLOCK:", ignoreCase = true) }
+                }
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
                 throw e
             } catch (e: Exception) {
-                marketsWithoutPlans++
+                marketDataFailures++
                 lastMarketFailure = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
             }
             if (results.isNotEmpty()) {
                 val snapshot = results.toList()
                 withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
             }
-            report("Analyzed ${index + 1}/${candidates.size} markets · ${results.size} plans · ${marketsWithoutPlans} without plans…")
+            report("Scanned ${index + 1}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors…")
         }
         if (results.isEmpty()) {
             val detail = lastMarketFailure?.let { " Last market error: $it" }
                 ?: " Candle history was fetched, but every strategy rejected the available series."
             throw IllegalStateException(
-                "Scan produced no strategy plans from ${candidates.size} shortlisted markets. " +
-                    "Markets with plans: $marketsWithPlans; without plans: $marketsWithoutPlans.$detail"
+                "Scan found no technical setups in ${candidates.size} evaluated pairs (${prefiltered.size} passed the 24h liquidity filter). " +
+                    "Pairs with setups: $marketsWithPlans; no setup: $marketsWithoutPlans; data errors: $marketDataFailures; " +
+                    "hourly history unavailable: ${hourlyHistoryFailures.get()}.$detail"
             )
         }
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
     private fun evaluateModes(
-        t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>,
-        m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
+        t: ScanTicker, d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
+        m15: List<ScanCandle>, m5: List<ScanCandle>, m1: List<ScanCandle>,
+        micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
     ): List<TradeIdea> {
-        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        fun candles(rows: List<ScanCandle>) = rows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
-        val plan = ConfluenceScannerV4.evaluate(four, one, fifteen, five, market, t.quoteVolume, btcBias)
-            ?: return emptyList()
-        return listOf(buildIdea(t, plan, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false))
+        val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
+            market, t.quoteVolume, btcBias, "Scalp")?.let {
+            buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false, runBacktest = false,
+                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H")
+        }
+        val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
+            market, t.quoteVolume, btcBias, "Intraday")?.let {
+            buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false,
+                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H")
+        }
+        val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
+            market, t.quoteVolume, btcBias, "Swing")?.let {
+            buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true, runBacktest = false,
+                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D")
+        }
+        return listOfNotNull(scalp, intraday, swing)
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
-                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true): TradeIdea {
+                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true,
+                          trendRows: List<ScanCandle> = h1, vwapBars: Int = 96, setupInterval: String = "15M",
+                          executionInterval: String = "5M", trendInterval: String = "1H"): TradeIdea {
         val rsiValue = rsi(setupRows.map { it.close }) ?: 50.0
         val priorVolume = setupRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorVolume > 0.0) setupRows.last().volume / priorVolume else 0.0
@@ -439,13 +496,91 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
+        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
-            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct
+            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct,
+            strategyChecks
         )
+    }
+
+    private fun buildStrategyChecks(
+        plan: V2TradePlan,
+        setupRows: List<ScanCandle>,
+        executionRows: List<ScanCandle>,
+        trendRows: List<ScanCandle>,
+        vwapBars: Int,
+        setupInterval: String,
+        executionInterval: String,
+        trendInterval: String
+    ): List<Pair<String, Boolean?>> {
+        val isLong = plan.side == "LONG"
+        if (!isLong && plan.side != "SHORT") return emptyList()
+        val trendAligned = if (isLong) hasHigherHighsAndLows(trendRows) else hasLowerHighsAndLows(trendRows)
+        val closes = setupRows.map { it.close }
+        val ema20 = ema(closes, 20)
+        val lastSetup = setupRows.lastOrNull()
+        val typicalVolume = setupRows.takeLast(vwapBars).sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume }
+        val totalVolume = setupRows.takeLast(vwapBars).sumOf { it.volume }
+        val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
+        val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
+        val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
+        val retest = (plan.setup.contains("breakout", ignoreCase = true) &&
+            plan.setup.contains("retest", ignoreCase = true)) ||
+            plan.setup.contains("trend pullback", ignoreCase = true) ||
+            plan.setup.contains("range reversal", ignoreCase = true)
+        val candle = executionRows.lastOrNull()
+        val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
+        val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
+        val candleAligned = candle?.let {
+            val directionOk = if (isLong) it.close > it.open else it.close < it.open
+            val requiredVolume = if (retest) 1.5 else 1.2
+            directionOk && volumeRatio >= requiredVolume
+        }
+        val recent = executionRows.dropLast(1).takeLast(20)
+        val swingLow = recent.minOfOrNull { it.low }
+        val swingHigh = recent.maxOfOrNull { it.high }
+        val stopAligned = if (isLong) swingLow != null && plan.stop < swingLow
+            else swingHigh != null && plan.stop > swingHigh
+        val risk = abs(plan.entry - plan.stop)
+        val rr = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
+        return listOf(
+            ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
+            ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
+            ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
+            "Entry: V4 setup structure confirmed (pullback / breakout retest / range rejection)" to retest,
+            "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
+            ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
+            ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
+        )
+    }
+
+    private fun hasHigherHighsAndLows(rows: List<ScanCandle>): Boolean =
+        hasOrderedSwingPoints(rows, higher = true)
+
+    private fun hasLowerHighsAndLows(rows: List<ScanCandle>): Boolean =
+        hasOrderedSwingPoints(rows, higher = false)
+
+    private fun hasOrderedSwingPoints(rows: List<ScanCandle>, higher: Boolean): Boolean {
+        if (rows.size < 12) return false
+        val window = rows.takeLast(60)
+        val highs = mutableListOf<Double>()
+        val lows = mutableListOf<Double>()
+        for (i in 2 until window.size - 2) {
+            val current = window[i]
+            if ((i - 2 until i).all { window[it].high < current.high } &&
+                (i + 1..i + 2).all { window[it].high <= current.high }) highs.add(current.high)
+            if ((i - 2 until i).all { window[it].low > current.low } &&
+                (i + 1..i + 2).all { window[it].low >= current.low }) lows.add(current.low)
+        }
+        if (highs.size < 2 || lows.size < 2) return false
+        val lastHighs = highs.takeLast(2)
+        val lastLows = lows.takeLast(2)
+        return if (higher) lastHighs[1] > lastHighs[0] && lastLows[1] > lastLows[0]
+            else lastHighs[1] < lastHighs[0] && lastLows[1] < lastLows[0]
     }
 }
 
@@ -465,7 +600,7 @@ fun DailyTradeIdeasScreen() {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    val strategyMode = "Daily Picks"
+    var horizonFilter by remember { mutableStateOf("All") }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
@@ -574,16 +709,10 @@ fun DailyTradeIdeasScreen() {
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
-    val allModeIdeas = liveIdeas.filter { idea ->
-        strategyMode == "All" || strategyMode == "Daily Picks" ||
-            (strategyMode == "Scalping" && idea.horizon.contains("Scalp", ignoreCase = true)) ||
-            (strategyMode == "Intraday" && idea.horizon.contains("Intraday", ignoreCase = true)) ||
-            (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
-    }
-    val dailyPicks = selectDailyPicks(allModeIdeas, scanSnapshotAgeMs)
-    val modeIdeas = if (strategyMode == "Daily Picks") {
-        (dailyPicks + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
-    } else allModeIdeas
+    // Show every scanner-produced setup, including WAIT and AVOID candidates.
+    // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
+    val horizonIdeas = liveIdeas.filter { horizonFilter == "All" || it.horizon.startsWith(horizonFilter, ignoreCase = true) }
+    val modeIdeas = horizonIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs)) {
@@ -604,8 +733,7 @@ fun DailyTradeIdeasScreen() {
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
-            else -> stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING ||
-                stage == TradeIdeaStage.MONITOR || (stage == TradeIdeaStage.WAIT_CONFIRMATION && nearSetup)
+            else -> true
         }
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
@@ -653,7 +781,10 @@ fun DailyTradeIdeasScreen() {
                     color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 Text("Price alerts are not real-time guarantees.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 else if (showingCached) Text("Showing the last saved scan while fresh market data is unavailable.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -728,6 +859,11 @@ fun DailyTradeIdeasScreen() {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
+                        FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option }, label = { Text(option) })
+                    }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
@@ -766,7 +902,6 @@ fun DailyTradeIdeasScreen() {
                                 filter == "Avoid" -> "No excluded markets to show"
                                 filter == "Ready" -> "No READY setups right now"
                                 filter == "Wait" -> "No setups near an entry right now"
-                                strategyMode == "Daily Picks" -> "No qualifying daily picks right now"
                                 else -> "No trade setups found right now"
                             },
                             fontWeight = FontWeight.SemiBold
@@ -779,7 +914,6 @@ fun DailyTradeIdeasScreen() {
                                 filter == "Avoid" -> "No markets currently meet the excluded status criteria."
                                 filter == "Ready" -> "No setup has a confirmed entry trigger and passed all risk checks. Keep waiting; don't force a trade."
                                 filter == "Wait" -> "No valid setup is close enough to its planned entry zone to monitor. The scanner continues checking markets."
-                                strategyMode == "Daily Picks" -> "No setup passed the existing score, proximity and risk gates. The shortlist stays empty rather than forcing a weak trade."
                                 else -> "No valid setup is currently ready or close enough to its planned entry. The scanner keeps analysing markets; try again after the next scan."
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -861,11 +995,21 @@ private fun biasSupportsSide(bias: String, side: String): Boolean {
 /** Advisory entry timing layer. It never overrides scanner qualification or risk gates. */
 private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): EntryGuidance {
     val longSide = idea.side == "LONG"
+    val isScalp = idea.horizon.startsWith("Scalp", ignoreCase = true)
+    val isSwing = idea.horizon.startsWith("Swing", ignoreCase = true)
+    val trendLabels = when {
+        isScalp -> listOf("1H", "15M", "1M")
+        isSwing -> listOf("1D", "4H", "15M")
+        else -> listOf("4H", "1H", "5M")
+    }
+    val setupInterval = if (isScalp) "5M" else if (isSwing) "1H" else "15M"
+    val executionInterval = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
     val trend4h = biasSupportsSide(idea.bias4h, idea.side)
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
     val trend5m = biasSupportsSide(idea.bias5m, idea.side)
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
-    val volumeOk = idea.volumeRatio >= 1.15
+    val volumeThreshold = if (idea.setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
+    val volumeOk = idea.volumeRatio >= volumeThreshold
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
     // Match the scanner's hard liquidity gate: spread alone is insufficient.
     val bookOk = idea.bookImbalance?.let {
@@ -887,7 +1031,6 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val halfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
     val zoneLow = idea.entry - halfWidth
     val zoneHigh = idea.entry + halfWidth
-    val tooFar = entryTooFarFromPlan(idea)
     val invalidated = livePriceInvalidatesPlan(idea)
     // Share the main card's final state; the coach score is informational only.
     val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
@@ -904,23 +1047,24 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
-        "LONG: retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
+        "LONG: wait for a completed $executionInterval candle with EMA9 above EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
     else
-        "SHORT: retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
+        "SHORT: wait for a completed $executionInterval candle with EMA9 below EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
     val invalidation = if (longSide)
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
-    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, listOf(
-        "4H trend aligned" to trend4h,
-        "1H trend aligned" to trend1h,
-        "5M execution trend aligned" to trend5m,
+    val combinedChecks = listOf(
+        ("${trendLabels[0]} trend aligned") to trend4h,
+        ("${trendLabels[1]} trend aligned") to trend1h,
+        ("${trendLabels[2]} execution trend aligned") to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
-        ("Relative volume at least 1.15× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
+        ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
-    ))
+    ) + idea.strategyChecks
+    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
 }
 
 @Composable
@@ -939,8 +1083,8 @@ private fun EntryGuidancePanel(
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
+                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.SemiBold)
             }
@@ -978,11 +1122,68 @@ private fun EntryGuidancePanel(
     }
 }
 
+@Composable
+private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: Boolean) {
+    if (idea.side !in setOf("LONG", "SHORT")) return
+    val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
+    val stage = tradeIdeaStage(idea, tracked = isTracked, snapshotAgeMs = snapshotAgeMs)
+    val accent = when (stage) {
+        TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
+        TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val distancePct = if (idea.entry > 0.0) abs(idea.last - idea.entry) / idea.entry * 100.0 else 0.0
+    val priceRelation = when {
+        abs(idea.last - idea.entry) < 0.0000001 -> "at planned entry"
+        idea.last > idea.entry -> "%.2f%% above planned entry".format(Locale.US, distancePct)
+        else -> "%.2f%% below planned entry".format(Locale.US, distancePct)
+    }
+    val nextStep = when (stage) {
+        TradeIdeaStage.ENTRY_CONFIRMED -> "The scanner trigger is confirmed. Recheck live price, spread, depth and net reward/risk before acting."
+        TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION -> guidance.trigger
+        TradeIdeaStage.AVOID_CHASING -> "Do not chase this move. Wait for a fresh pullback and a new scanner confirmation."
+        TradeIdeaStage.DO_NOT_ENTER -> "Do not enter. " + idea.warning
+        TradeIdeaStage.TRACKING -> "This idea is already being tracked; this is not a new-entry signal."
+    }
+    RiskCard(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+    ) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Surface(color = accent.copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
+                    Text(stage.title, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text("Planned zone  " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Text("Live price is " + priceRelation, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("NEXT ACTION", style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+            Text(nextStep, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+            if (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) {
+                Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            Text(guidance.checks.count { it.second == true }.toString() + "/" +
+                guidance.checks.count { it.second != null } + " available checklist checks passed · checklist is not trade approval",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * A confirmed candle is not permission to chase an already-extended move.
+ * Keep the live quote close to the planned entry; use the same conservative
+ * distance on both sides so a stale trigger cannot become a late READY signal.
+ */
 private fun entryTooFarFromPlan(idea: TradeIdea): Boolean {
     val riskDistance = abs(idea.entry - idea.stop)
     if (riskDistance <= 0.0 || idea.entry <= 0.0 || !idea.last.isFinite()) return true
-    val chaseLimit = minOf(idea.entry * 0.003, riskDistance * 0.50)
-    return abs(idea.last - idea.entry) > chaseLimit
+    val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+    return abs(idea.last - idea.entry) > entryTolerance
 }
 
 private fun livePriceInvalidatesPlan(idea: TradeIdea): Boolean =
@@ -1007,8 +1208,31 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     if (tracked) return TradeIdeaStage.TRACKING
     if (snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
+    // Legacy cache entries without this strategy data are not eligible for READY.
+    if (idea.strategyChecks.isEmpty() || idea.strategyChecks.any { it.second != true }) {
+        val riskDistance = abs(idea.entry - idea.stop)
+        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
+        return if (idea.entryTriggered && entryTooFarFromPlan(idea) && favorableMove > entryTolerance)
+            TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.WAIT_CONFIRMATION
+    }
     if (idea.entryTriggered) {
-        return if (entryTooFarFromPlan(idea)) TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.ENTRY_CONFIRMED
+        if (!entryTooFarFromPlan(idea)) return TradeIdeaStage.ENTRY_CONFIRMED
+
+        // If price has already moved in the trade's favour, the entry was missed:
+        // never label that late quote READY. If price has not reached the planned
+        // entry yet, keep it in WAIT/MONITOR rather than treating the candle flag
+        // alone as an executable entry.
+        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
+        val riskDistance = abs(idea.entry - idea.stop)
+        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+        return if (favorableMove > entryTolerance) {
+            TradeIdeaStage.AVOID_CHASING
+        } else {
+            val watchDistance = maxOf(idea.entry * 0.003, riskDistance * 0.50)
+            if (abs(idea.last - idea.entry) <= watchDistance) TradeIdeaStage.MONITOR
+            else TradeIdeaStage.WAIT_CONFIRMATION
+        }
     }
     val riskDistance = abs(idea.entry - idea.stop)
     val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
@@ -1022,51 +1246,6 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
 
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
-
-/**
- * A daily shortlist is a target, not a quota: only directional, risk-valid ideas
- * scoring at least 75 are eligible. Prefer confirmed triggers, then stronger
- * scores/volume/liquidity. Keep symbols unique and cap one direction at two picks.
- */
-private fun selectDailyPicks(ideas: List<TradeIdea>, snapshotAgeMs: Long = 0L): List<TradeIdea> {
-    val eligible = ideas.filter { idea ->
-        (snapshotAgeMs <= 0L || snapshotAgeMs <= ideaMaxAgeMs(idea)) &&
-            idea.side in setOf("LONG", "SHORT") &&
-            (idea.entryTriggered || isWithinSetupWatchRange(idea)) &&
-            idea.score >= TradeIdeasV2.MIN_SCORE &&
-            tradeIdeaRiskValid(idea) &&
-            !idea.warning.startsWith("BLOCK:", ignoreCase = true) &&
-            (!idea.entryTriggered || !entryTooFarFromPlan(idea)) &&
-            !livePriceInvalidatesPlan(idea)
-    }.sortedWith(
-        compareByDescending<TradeIdea> { it.entryTriggered }
-            .thenByDescending { it.score }
-            .thenByDescending { it.volumeRatio }
-            .thenBy { it.spreadBps ?: Double.POSITIVE_INFINITY }
-            .thenBy { abs(it.last - it.entry) / it.entry.coerceAtLeast(0.00000001) }
-    )
-
-    val selected = mutableListOf<TradeIdea>()
-    val usedSymbols = mutableSetOf<String>()
-    val directionCounts = mutableMapOf("LONG" to 0, "SHORT" to 0)
-
-    fun addBest(horizon: String, limit: Int) {
-        eligible.asSequence()
-            .filter { it.horizon.contains(horizon, ignoreCase = true) }
-            .filter { it.symbol !in usedSymbols && (directionCounts[it.side] ?: 0) < 2 }
-            .take(limit)
-            .forEach { idea ->
-                selected += idea
-                usedSymbols += idea.symbol
-                directionCounts[idea.side] = (directionCounts[idea.side] ?: 0) + 1
-            }
-    }
-
-    addBest("Scalp", 2)
-    addBest("Intraday", 1)
-    addBest("Swing", 1)
-    return selected
-}
 
 @Composable
 private fun TradeIdeaCard(
@@ -1149,8 +1328,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Next: " + guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
+ } else {
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
@@ -1187,6 +1365,7 @@ private fun TradeIdeaCard(
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            if (!expanded) EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
             if (idea.side == "LONG" || idea.side == "SHORT") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
@@ -1278,8 +1457,13 @@ private fun TradeIdeaCard(
             if (expanded) {
                 HorizontalDivider()
                 if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, snapshotAgeMs)
-                Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
+                val trendLabels = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) listOf("1H", "15M", "1M")
+                    else if (idea.horizon.startsWith("Swing", ignoreCase = true)) listOf("1D", "4H", "15M")
+                    else listOf("4H", "1H", "5M")
+                val setupInterval = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) "5M"
+                    else if (idea.horizon.startsWith("Swing", ignoreCase = true)) "1H" else "15M"
+                Text("Trend: " + trendLabels[0] + " " + idea.bias4h + " · " + trendLabels[1] + " " + idea.bias1h + " · " + trendLabels[2] + " " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                Text(setupInterval + " RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Depth imbalance", idea.bookImbalance?.let { "%+.2f".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
