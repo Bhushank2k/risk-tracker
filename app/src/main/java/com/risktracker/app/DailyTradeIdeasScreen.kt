@@ -1086,7 +1086,7 @@ private fun TradeIdeaCard(
     }
     var livePrice by remember(idea.symbol) { mutableStateOf(idea.last) }
     val trackingScope = rememberCoroutineScope()
-    var expanded by remember(idea.symbol, density) { mutableStateOf(density == "Expanded") }
+    var expanded by remember(idea.symbol, density) { mutableStateOf(false) }
     var levelsExpanded by remember(idea.symbol) { mutableStateOf(false) }
     LaunchedEffect(idea.symbol) {
         // Poll only the in-memory WebSocket cache; this loop never makes a REST request.
@@ -1097,6 +1097,7 @@ private fun TradeIdeaCard(
         }
     }
     val liveIdea = idea.copy(last = livePrice)
+    val guidance = remember(liveIdea, snapshotAgeMs) { buildEntryGuidance(liveIdea, snapshotAgeMs) }
     val stage = tradeIdeaStage(liveIdea, trackedEntry != null, snapshotAgeMs)
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
@@ -1128,7 +1129,7 @@ private fun TradeIdeaCard(
 
     RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(if (density == "Compact" && !expanded) 11.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (density == "Compact" && !expanded) 5.dp else 8.dp)) {
-            if (density == "Compact" && !expanded) {
+            if (!expanded) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(idea.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -1144,16 +1145,16 @@ private fun TradeIdeaCard(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                         SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
-                        SummaryLevel("Target 1", idea.target1.usd(6), Modifier.weight(1f))
+                        SummaryLevel("Target · 2R", idea.target1.usd(6), Modifier.weight(1f))
                         SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("EXIT PLAN  ·  1R / 2R / 3R / 4R+  ·  25% each", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    Text("Next: " + guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
-                    Text("View details")
+                    Text("Why this idea?")
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.ExpandMore, contentDescription = null)
                 }
