@@ -169,7 +169,7 @@ internal object BinanceFuturesStream {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                disconnectedDepth(webSocket)
+                disconnectedDepth(webSocket, generation)
             }
         })
     }
