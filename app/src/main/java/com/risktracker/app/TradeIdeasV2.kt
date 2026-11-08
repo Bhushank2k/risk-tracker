@@ -173,7 +173,10 @@ internal object TradeIdeasV2 {
         changePct: Double,
         swingMode: Boolean = false,
         btcBias: String? = null
-    ): V2TradePlan? = ConfluenceScannerV4.evaluate(h4, h1, m15, m5, micro, quoteVolume, btcBias)
+    ): V2TradePlan? = ConfluenceScannerV4.evaluate(
+        h4, h1, m15, m5, micro, quoteVolume, btcBias,
+        horizon = if (swingMode) "Swing" else "Intraday"
+    )
 
     /** Causal replay for trend pullback, breakout/retest and range reversal setups. */
     fun backtest(
