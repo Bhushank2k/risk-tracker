@@ -591,7 +591,7 @@ fun DailyTradeIdeasScreen() {
         if (idea.symbol in trackedSymbols) idea else {
             val assessment = TradeIdeasV3.assess(
                 idea, scanSnapshotAgeMs, trackedSymbols.size, false,
-                paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions
+                paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
             )
             val strictWarning = when (assessment.state) {
                 "BLOCKED" -> "BLOCK: V3 Strict Quality — " + assessment.blockers.joinToString(" ")
@@ -997,12 +997,13 @@ private fun EntryGuidancePanel(
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
     trackedPositionCount: Int = 0,
-    isTracked: Boolean = false
+    isTracked: Boolean = false,
+    riskSettings: EntryRiskSettings = EntryRiskSettings()
 ) {
     val strictAssessment = if (strictMode) remember(idea, snapshotAgeMs, paperRiskStatus, isTracked) {
         TradeIdeasV3.assess(
             idea, snapshotAgeMs, trackedPositionCount, isTracked,
-            paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions
+            paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
         )
     } else null
     val guidance = if (strictAssessment == null) remember(idea) { buildEntryGuidance(idea) } else {
@@ -1357,7 +1358,7 @@ private fun TradeIdeaCard(
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
-                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null)
+                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null, riskSettings)
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
