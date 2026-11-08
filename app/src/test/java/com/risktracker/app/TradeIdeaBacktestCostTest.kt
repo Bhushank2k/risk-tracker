@@ -53,4 +53,25 @@ class TradeIdeaBacktestCostTest {
         assertTrue(!hasCompleteTradeHorizon(setupIndex = -1, candleCount = 100, maxHoldingBars = 10))
         assertTrue(!hasCompleteTradeHorizon(setupIndex = 10, candleCount = 100, maxHoldingBars = 0))
     }
+    @Test
+    fun trendPullbackPredicateRequiresReclaimAndDirectionalClose() {
+        val previous = V2Candle(102.0, 99.0, 100.0, 100.0, 1L)
+        val reclaimed = V2Candle(103.0, 99.8, 102.0, 120.0, 2L)
+        val failedReclaim = V2Candle(101.0, 99.8, 100.0, 120.0, 2L)
+
+        assertTrue(isReplayTrendPullback(true, reclaimed, previous, 101.0, 2.0))
+        assertTrue(!isReplayTrendPullback(true, failedReclaim, previous, 101.0, 2.0))
+    }
+
+    @Test
+    fun rangeReversalPredicateRequiresRangeEdgeRejectionAndRsi() {
+        val lowerRejection = V2Candle(101.0, 90.0, 99.0, 100.0, 1L, open = 95.0)
+        val upperRejection = V2Candle(110.0, 99.0, 101.0, 100.0, 2L, open = 105.0)
+
+        assertTrue(isReplayRangeReversal(true, true, lowerRejection, 110.0, 90.0, 3.0, 40.0))
+        assertTrue(!isReplayRangeReversal(true, true, lowerRejection, 110.0, 90.0, 3.0, 50.0))
+        assertTrue(isReplayRangeReversal(false, true, upperRejection, 110.0, 90.0, 3.0, 60.0))
+        assertTrue(!isReplayRangeReversal(false, false, upperRejection, 110.0, 90.0, 3.0, 60.0))
+    }
+
 }

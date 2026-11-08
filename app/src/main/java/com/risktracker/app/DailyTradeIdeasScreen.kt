@@ -500,7 +500,7 @@ internal object BinanceMarketScanner {
         val reasons = plan.reasons.toMutableList()
         micro.oiChangePct?.let { reasons.add("Open interest changed " + "%+.2f".format(Locale.US, it) + "% over the latest 15M samples") }
         // Historical replay is supplementary; a replay edge case must never discard a live setup.
-        val replay = if (!runBacktest || !plan.setup.contains("breakout", ignoreCase = true)) TradeIdeaBacktestStats() else runCatching {
+        val replay = if (!runBacktest) TradeIdeaBacktestStats() else runCatching {
             TradeIdeasV2.backtest(
                 h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
                 h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
