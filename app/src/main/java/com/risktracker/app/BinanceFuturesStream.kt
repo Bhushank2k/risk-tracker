@@ -68,6 +68,29 @@ internal object BinanceFuturesStream {
     @Volatile private var depthSocket: WebSocket? = null
     @Volatile private var pendingDepthSocket: WebSocket? = null
 
+    /**
+     * Wait until the currently subscribed symbols have fresh order-book depth.
+     * A timeout returns the subset that is ready; callers must keep missing depth
+     * as a hard liquidity failure rather than silently approving those markets.
+     */
+    suspend fun awaitDepth(symbols: List<String>, timeoutMs: Long = 5_000L): Set<String> {
+        val requested = symbols.map { it.lowercase() }.toSet()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var ready = emptySet<String>()
+        do {
+            val now = System.currentTimeMillis()
+            ready = requested.filterTo(mutableSetOf()) { symbol ->
+                val book = books[symbol]
+                book != null && book.depthUpdatedAt > 0L &&
+                    now - book.depthUpdatedAt in 0..MAX_AGE_MS &&
+                    book.bidNotional + book.askNotional > 0.0
+            }
+            if (ready.size == requested.size) return ready
+            delay(200L)
+        } while (System.currentTimeMillis() < deadline)
+        return ready
+    }
+
     @Synchronized
     fun start(requestedSymbols: List<String>) {
         // Global aggregate streams cover every eligible contract without building
