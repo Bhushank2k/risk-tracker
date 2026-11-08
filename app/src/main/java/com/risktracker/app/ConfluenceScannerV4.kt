@@ -84,6 +84,20 @@ internal object ConfluenceScannerV4 {
             if(!fundingOk)blocks.add("adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(rv<1.2)blocks.add("relative volume"); if(!momentum)blocks.add("RSI/MACD"); if(score<70)blocks.add("score")
             val ready=blocks.isEmpty()&&entryOk&&score>=80
+            val riskCodes = buildSet {
+                if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
+                if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
+                if (!rr) add(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK)
+                if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
+                if (!volatility) add(TradeIdeaRiskCode.VOLATILITY_OUT_OF_RANGE)
+                if (!extended) add(TradeIdeaRiskCode.EXTENDED_ENTRY)
+                if (rv < 1.2) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
+                if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
+                if (score < 70) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
+                if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
+                if (score in 70..79) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
+            }
             val warning=when{
                 !liquid->"BLOCK: Spread must be ≤10 bps and directional order-book depth must be available."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
@@ -112,7 +126,7 @@ internal object ConfluenceScannerV4 {
                 else if (s.range) "Intraday · M15 range / M5 execution"
                 else "Intraday · M15 setup / M5 execution",
                 if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral",if(up1)"Bullish" else if(dn1)"Bearish" else "Neutral",
-                if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons)
+                if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons,riskCodes)
         }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()
     }
     private fun fresh(t:Long,n:Long,m:Long)=t<n&&n-t<=m

@@ -55,7 +55,8 @@ internal data class TradeIdea(
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats,
     val volatilityPct: Double = 0.0,
-    val strategyChecks: List<Pair<String, Boolean?>> = emptyList()
+    val strategyChecks: List<Pair<String, Boolean?>> = emptyList(),
+    val riskCodes: Set<TradeIdeaRiskCode> = emptySet()
 )
 internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
@@ -94,7 +95,16 @@ internal object TradeIdeaCache {
                             item.optString("label").takeIf { it.isNotBlank() }?.let { it to passed }
                         }
                     }
-                } ?: emptyList()
+                } ?: emptyList(),
+                riskCodes = if (x.has("riskCodes")) {
+                    x.optJSONArray("riskCodes")?.let { codes ->
+                        (0 until codes.length()).mapNotNull { index ->
+                            runCatching { TradeIdeaRiskCode.valueOf(codes.optString(index)) }.getOrNull()
+                        }.toSet()
+                    } ?: emptySet()
+                } else if (x.optString("warning").startsWith("BLOCK:", ignoreCase = true)) {
+                    setOf(TradeIdeaRiskCode.LEGACY_BLOCKING_WARNING)
+                } else emptySet()
             )
         }
         if (timestamp <= 0L) null else timestamp to ideas
@@ -112,6 +122,7 @@ internal object TradeIdeaCache {
                         put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
                     }
                 }
+                val riskCodes = JSONArray().apply { idea.riskCodes.forEach { put(it.name) } }
                 rows.put(JSONObject()
                     .put("symbol", idea.symbol).put("side", idea.side).put("score", idea.score)
                     .put("volume", idea.volume).put("change", idea.change).put("last", idea.last)
@@ -125,7 +136,8 @@ internal object TradeIdeaCache {
                     .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
                     .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
                     .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
-                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct).put("strategyChecks", strategyChecks))
+                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct).put("strategyChecks", strategyChecks)
+                    .put("riskCodes", riskCodes))
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
@@ -421,7 +433,7 @@ internal object BinanceMarketScanner {
                     marketsWithoutPlans++
                 } else {
                     marketsWithPlans++
-                    blockedPlans += marketIdeas.count { it.warning.startsWith("BLOCK:", ignoreCase = true) }
+                    blockedPlans += marketIdeas.count { idea -> idea.riskCodes.any { it.blocksEntry } }
                 }
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
@@ -503,7 +515,7 @@ internal object BinanceMarketScanner {
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
             micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct,
-            strategyChecks
+            strategyChecks, plan.riskCodes
         )
     }
 
@@ -974,21 +986,15 @@ private enum class TradeIdeaStage(val title: String, val detail: String) {
     MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."), WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."), ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."), AVOID_CHASING("AVOID", "Price moved too far from the planned entry. Do not chase; wait for a fresh setup."), TRACKING("TRACKING", "Live market price and progress are being monitored."), TRACKING_STOP_HIT("TRACKING · STOP HIT", "Tracked plan has reached its stop. Review the paper tracking record."), TRACKING_TARGET_HIT("TRACKING · TARGET HIT", "Tracked plan has reached target 1. Review the paper tracking record."), TRACKING_EXPIRED("TRACKING · EXPIRED", "The tracked signal has expired. Do not treat it as a fresh entry."), TRACKING_INVALID("TRACKING · INVALID", "The tracked plan no longer passes its risk validation."), DO_NOT_ENTER("AVOID", "The setup is invalid or its risk checks failed. Do not enter.")
 }
 
-private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
-    if (idea.side !in listOf("LONG", "SHORT")) return false
-    if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.target1.isFinite() || !idea.target2.isFinite()) return false
-    if (idea.entry <= 0.0 || idea.stop <= 0.0 || idea.target1 <= 0.0 || idea.target2 <= 0.0) return false
-    val geometryValid = if (idea.side == "LONG") {
-        idea.stop < idea.entry && idea.target1 > idea.entry && idea.target2 > idea.target1
-    } else {
-        idea.stop > idea.entry && idea.target1 < idea.entry && idea.target2 < idea.target1
-    }
-    val warning = idea.warning.lowercase(Locale.US)
-    val warningBlocksEntry = warning.startsWith("block:", ignoreCase = true) || listOf("overbought", "oversold", "elevated", "falling sharply", "weak").any { it in warning }
-    val riskDistance = abs(idea.entry - idea.stop)
-    val rewardRisk = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    return geometryValid && rewardRisk >= 2.0 && !warningBlocksEntry
-}
+private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean =
+    isTradeIdeaRiskValid(
+        side = idea.side,
+        entry = idea.entry,
+        stop = idea.stop,
+        target1 = idea.target1,
+        target2 = idea.target2,
+        riskCodes = idea.riskCodes
+    )
 
 private data class EntryGuidance(
     val score: Int,
