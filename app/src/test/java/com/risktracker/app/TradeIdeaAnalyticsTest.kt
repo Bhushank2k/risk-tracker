@@ -43,7 +43,10 @@ class TradeIdeaAnalyticsTest {
     }
     @Test fun replayMetricsIncludeProfitFactorDrawdownAndSideBreakdown() {
         val stats = TradeIdeaBacktestStats.fromOutcomes(
-            listOf("LONG" to 2.0, "LONG" to -1.0, "SHORT" to 1.0, "SHORT" to -2.0)
+            listOf(
+                Triple("LONG", "TREND", 2.0), Triple("LONG", "RANGE", -1.0),
+                Triple("SHORT", "TREND", 1.0), Triple("SHORT", "RANGE", -2.0)
+            )
         )
 
         assertEquals(1.0, stats.profitFactor!!, 0.000001)
@@ -54,10 +57,16 @@ class TradeIdeaAnalyticsTest {
         assertEquals(2, stats.shortTrades)
         assertEquals(1, stats.shortWins)
         assertEquals(-0.5, stats.shortAverageR!!, 0.000001)
+        assertEquals(2, stats.trendTrades)
+        assertEquals(1, stats.trendWins)
+        assertEquals(1.5, stats.trendAverageR!!, 0.000001)
+        assertEquals(2, stats.rangeTrades)
+        assertEquals(0, stats.rangeWins)
+        assertEquals(-1.5, stats.rangeAverageR!!, 0.000001)
     }
 
     @Test fun profitFactorIsUnavailableWhenThereAreNoLosingTrades() {
-        val stats = TradeIdeaBacktestStats.fromOutcomes(listOf("LONG" to 1.0, "SHORT" to 2.0))
+        val stats = TradeIdeaBacktestStats.fromOutcomes(listOf(Triple("LONG", "TREND", 1.0), Triple("SHORT", "RANGE", 2.0)))
         assertNull(stats.profitFactor)
         assertEquals(0.0, stats.maxDrawdownR, 0.000001)
     }

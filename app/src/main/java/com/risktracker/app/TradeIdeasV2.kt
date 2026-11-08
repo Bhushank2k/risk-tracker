@@ -146,7 +146,7 @@ internal object TradeIdeasV2 {
         if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
-        val outcomes = mutableListOf<Pair<String, Double>>()
+        val outcomes = mutableListOf<Triple<String, String, Double>>()
         var i = 30
         // Require a full forward window to avoid right-edge censoring and sample bias.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
@@ -255,15 +255,17 @@ internal object TradeIdeasV2 {
             }
             if (exitAt >= 0) {
                 val heldBars = (exitAt - entryIndex).coerceAtLeast(0)
-                outcomes.add((if (sideLong) "LONG" else "SHORT") to tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
+                outcomes.add(Triple(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND",
+                    tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
                 i = exitAt + 1
             } else {
                 // The complete window is present by the loop guard; mark any open remainder at its time stop.
                 val finalIndex = maxExit - 1
                 val openR = (m15[finalIndex].close - entry) / risk * sign
                 val heldBars = (finalIndex - entryIndex).coerceAtLeast(0)
-                outcomes.add((if (sideLong) "LONG" else "SHORT") to tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
-                    entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
+                outcomes.add(Triple(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND",
+                    tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
+                        entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
                 i = maxOf(entryIndex + 1, maxExit)
             }
         }
