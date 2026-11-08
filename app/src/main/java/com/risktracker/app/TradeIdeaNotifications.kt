@@ -77,6 +77,8 @@ object TradeIdeaNotifications {
 
     internal fun notify(context: Context, symbol: String, event: String, title: String, detail: String, strategy: String = "") {
         if (!hasPermission(context)) return
+        if (event == "ready" && !isReadyEnabled(context)) return
+        if (event != "ready" && !isEntryEnabled(context)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(NotificationChannel(
@@ -168,7 +170,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
             val readyAlertsEnabled = TradeIdeaNotifications.isReadyEnabled(context)
             val entryAlertsEnabled = TradeIdeaNotifications.isEntryEnabled(context)
-            if (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled)) {
+            if (!strictModeEnabled &&
+                (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled))) {
                 return Result.success()
             }
 
@@ -193,7 +196,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 TradeIdeaReadyAlertStore.clear(context)
             }
 
-            if (!entryAlertsEnabled) return Result.success()
+            // Strict Quality V3 keeps paper-plan outcomes current even when push alerts are opted out.
+            if (!entryAlertsEnabled && !strictModeEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
             alertIdeas.filter {
