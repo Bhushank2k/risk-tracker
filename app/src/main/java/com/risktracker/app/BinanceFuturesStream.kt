@@ -24,6 +24,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * loads historical candles; WebSockets carry subsequent ticker, candle, depth and
  * mark-price/funding updates. No API key or user-data stream is required.
  */
+
+internal fun freshFundingRate(rate: Double, updatedAt: Long, now: Long, maxAgeMs: Long = 60_000L): Double? {
+    if (!rate.isFinite() || maxAgeMs < 0L) return null
+    return rate.takeIf { now - updatedAt in 0..maxAgeMs }
+}
+
 internal object BinanceFuturesStream {
     private const val MARKET_URL = "wss://fstream.binance.com/market/stream?streams="
     private const val PUBLIC_URL = "wss://fstream.binance.com/public/stream?streams="
@@ -321,12 +327,13 @@ internal object BinanceFuturesStream {
     fun microstructure(symbol: String): MarketMicrostructure {
         val key = symbol.lowercase()
         val book = books[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= MAX_AGE_MS }
-            ?: return MarketMicrostructure(null, null, funding[key]?.rate, null)
+            ?: val rate = funding[key]?.let { freshFundingRate(it.rate, it.updatedAt, System.currentTimeMillis()) }
+            return MarketMicrostructure(null, null, rate, null)
         val spread = ((book.ask - book.bid) / ((book.ask + book.bid) / 2.0)) * 10_000.0
         val depthFresh = book.depthUpdatedAt > 0L && System.currentTimeMillis() - book.depthUpdatedAt in 0..MAX_AGE_MS
         val total = book.bidNotional + book.askNotional
         val imbalance = if (depthFresh && total > 0.0) (book.bidNotional - book.askNotional) / total else null
-        val rate = funding[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= 60_000L }?.rate
+        val rate = funding[key]?.let { freshFundingRate(it.rate, it.updatedAt, System.currentTimeMillis()) }
         return MarketMicrostructure(spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate, null)
     }
 
