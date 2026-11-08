@@ -744,7 +744,7 @@ class BinanceDailyWorker(context: Context, params: WorkerParameters) : Coroutine
 
     companion object {
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(24, TimeUnit.HOURS).build()
+            val request = PeriodicWorkRequestBuilder<BinanceDailyWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("binance_daily_trade_sync", ExistingPeriodicWorkPolicy.KEEP, request)
         }
         fun cancel(context: Context) = WorkManager.getInstance(context).cancelUniqueWork("binance_daily_trade_sync")
