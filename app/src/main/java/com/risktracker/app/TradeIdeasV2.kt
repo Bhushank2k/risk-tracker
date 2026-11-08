@@ -115,7 +115,7 @@ internal object TradeIdeasV2 {
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
-        var i = 25
+        var i = 30
         // Require a full forward window to avoid right-edge censoring and sample bias.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
             val time = m15[i].closeTime
@@ -182,13 +182,13 @@ internal object TradeIdeasV2 {
                     entryIndex = i + 1
                     stopReference = listOf(current, retest)
                 }
-                pullback -> {
+                pullback && relativeVolume >= 1.2 -> {
                     sideLong = long
                     entryCandle = current
                     entryIndex = i
                     stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
                 }
-                rangeLong || rangeShort -> {
+                (rangeLong || rangeShort) && relativeVolume >= 1.2 -> {
                     sideLong = rangeLong
                     entryCandle = current
                     entryIndex = i
