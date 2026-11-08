@@ -34,7 +34,8 @@ internal object BinanceFuturesStream {
         val ask: Double,
         val bidNotional: Double,
         val askNotional: Double,
-        val updatedAt: Long
+        val updatedAt: Long,
+        val depthUpdatedAt: Long
     )
     private data class Ticker(
         val last: Double,
@@ -56,10 +57,16 @@ internal object BinanceFuturesStream {
     private val candles = ConcurrentHashMap<String, JSONObject>()
     private val marketConnecting = AtomicBoolean(false)
     private val publicConnecting = AtomicBoolean(false)
+    private val depthConnecting = AtomicBoolean(false)
     private val marketReconnects = AtomicInteger(0)
     private val publicReconnects = AtomicInteger(0)
+    private val depthReconnects = AtomicInteger(0)
+    private val maxDepthSymbols = 150
+    @Volatile private var requestedDepthSymbols: List<String> = emptyList()
     @Volatile private var marketSocket: WebSocket? = null
     @Volatile private var publicSocket: WebSocket? = null
+    @Volatile private var depthSocket: WebSocket? = null
+    @Volatile private var pendingDepthSocket: WebSocket? = null
 
     @Synchronized
     fun start(requestedSymbols: List<String>) {
@@ -67,6 +74,17 @@ internal object BinanceFuturesStream {
         // oversized per-symbol subscription URLs or exceeding stream-count limits.
         if (marketSocket == null && !marketConnecting.get()) connectMarket()
         if (publicSocket == null && !publicConnecting.get()) connectPublic()
+        val depthSelection = requestedSymbols.asSequence().map { it.lowercase() }.distinct().take(maxDepthSymbols).sorted().toList()
+        if (depthSelection.isNotEmpty() && depthSelection != requestedDepthSymbols) {
+            requestedDepthSymbols = depthSelection
+            depthSocket?.close(1000, "Updating depth subscriptions")
+            pendingDepthSocket?.close(1000, "Updating depth subscriptions")
+            depthSocket = null
+            pendingDepthSocket = null
+            depthConnecting.set(false)
+            depthReconnects.set(0)
+        }
+        if (requestedDepthSymbols.isNotEmpty() && depthSocket == null && !depthConnecting.get()) connectDepth()
     }
 
     private fun connectMarket() {
@@ -80,9 +98,62 @@ internal object BinanceFuturesStream {
     private fun connectPublic() {
         if (!publicConnecting.compareAndSet(false, true)) return
         // The all-market book ticker supplies bid/ask spread for every symbol.
-        // Per-symbol depth subscriptions are intentionally omitted for full-universe coverage.
+        // A separate bounded per-symbol stream supplies depth for the highest-ranked scan candidates.
         val streamNames = listOf("!bookTicker")
         open(PUBLIC_URL + streamNames.joinToString("/"), isMarket = false)
+    }
+
+    private fun connectDepth() {
+        if (!depthConnecting.compareAndSet(false, true)) return
+        val symbols = requestedDepthSymbols
+        if (symbols.isEmpty()) {
+            depthConnecting.set(false)
+            return
+        }
+        val streams = symbols.map { "$it@depth5@100ms" }
+        openDepth(PUBLIC_URL + streams.joinToString("/"))
+    }
+
+    private fun openDepth(url: String) {
+        val request = Request.Builder().url(url).build()
+        pendingDepthSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                depthSocket = webSocket
+                pendingDepthSocket = null
+                depthConnecting.set(false)
+                depthReconnects.set(0)
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                runCatching {
+                    val envelope = JSONObject(text)
+                    val batch = envelope.optJSONArray("data")
+                    if (batch != null) {
+                        for (index in 0 until batch.length()) batch.optJSONObject(index)?.let { consume(it) }
+                    } else consume(envelope)
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                disconnectedDepth(webSocket)
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                disconnectedDepth(webSocket)
+            }
+        })
+    }
+
+    private fun disconnectedDepth(socket: WebSocket) {
+        if (depthSocket === socket) depthSocket = null
+        if (pendingDepthSocket === socket) pendingDepthSocket = null
+        depthConnecting.set(false)
+        val attempts = depthReconnects.incrementAndGet()
+        val backoffMs = (1_000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
+        scope.launch {
+            delay(backoffMs)
+            if (depthSocket == null && requestedDepthSymbols.isNotEmpty()) connectDepth()
+        }
     }
 
     private fun open(url: String, isMarket: Boolean) {
@@ -154,7 +225,10 @@ internal object BinanceFuturesStream {
                 val ask = data.optString("a").toDoubleOrNull() ?: return
                 if (bid > 0.0 && ask > bid) {
                     val old = books[symbol]
-                    books[symbol] = Book(bid, ask, old?.bidNotional ?: 0.0, old?.askNotional ?: 0.0, now)
+                    books[symbol] = Book(
+                        bid, ask, old?.bidNotional ?: 0.0, old?.askNotional ?: 0.0,
+                        now, old?.depthUpdatedAt ?: 0L
+                    )
                 }
             }
             "24hrTicker" -> {
@@ -196,7 +270,7 @@ internal object BinanceFuturesStream {
         val askRow = asks.optJSONArray(0) ?: return
         val bid = bidRow.optString(0).toDoubleOrNull() ?: return
         val ask = askRow.optString(0).toDoubleOrNull() ?: return
-        if (bid > 0.0 && ask > bid) books[symbol] = Book(bid, ask, notional(bids), notional(asks), now)
+        if (bid > 0.0 && ask > bid) books[symbol] = Book(bid, ask, notional(bids), notional(asks), now, now)
     }
 
     fun latestTicker(symbol: String): Triple<Double, Double?, Double?>? {
@@ -217,8 +291,9 @@ internal object BinanceFuturesStream {
         val book = books[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= MAX_AGE_MS }
             ?: return MarketMicrostructure(null, null, funding[key]?.rate, null)
         val spread = ((book.ask - book.bid) / ((book.ask + book.bid) / 2.0)) * 10_000.0
+        val depthFresh = book.depthUpdatedAt > 0L && System.currentTimeMillis() - book.depthUpdatedAt in 0..MAX_AGE_MS
         val total = book.bidNotional + book.askNotional
-        val imbalance = if (total > 0.0) (book.bidNotional - book.askNotional) / total else null
+        val imbalance = if (depthFresh && total > 0.0) (book.bidNotional - book.askNotional) / total else null
         val rate = funding[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= 60_000L }?.rate
         return MarketMicrostructure(spread.takeIf { it.isFinite() }, imbalance?.takeIf { it.isFinite() }, rate, null)
     }

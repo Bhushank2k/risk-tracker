@@ -14,6 +14,14 @@ internal data class PaperSetupStats(
     val winRatePercent: Double get() = if (closedTrades == 0) 0.0 else wins.toDouble() / closedTrades * 100.0
 }
 
+internal data class PaperRiskStatus(
+    val dailyLossPercent: Double,
+    val consecutiveLosses: Int,
+    val openPositions: Int
+) {
+    val dailyStopReached: Boolean get() = dailyLossPercent >= 1.5 || consecutiveLosses >= 2
+}
+
 internal object TradeIdeaPaperJournal {
     private const val KEY = "paper_trade_history_v1"
 
@@ -89,5 +97,35 @@ internal object TradeIdeaPaperJournal {
             val r = trades.map { it.optDouble("rMultiple", 0.0) }
             PaperSetupStats(setup, trades.size, r.count { it > 0.0 }, r.average())
         }.sortedByDescending { it.closedTrades }
+    }
+
+    /** Realized paper-journal risk controls; no account balance is assumed. */
+    fun riskStatus(context: Context, now: Long = System.currentTimeMillis()): PaperRiskStatus {
+        val rows = history(context)
+        val dayStart = java.util.Calendar.getInstance().apply {
+            timeInMillis = now
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val closed = (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeIf {
+                it.has("closedAt") && it.optString("outcome") != "INVALIDATED"
+            }
+        }.sortedBy { it.optLong("closedAt", 0L) }
+        val todayClosed = closed.filter { it.optLong("closedAt", 0L) >= dayStart }
+        val todayR = todayClosed.sumOf { it.optDouble("rMultiple", 0.0) }
+        val consecutiveLosses = todayClosed.asReversed().takeWhile { it.optDouble("rMultiple", 0.0) <= 0.0 }.size
+        val openPositions = (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeIf { !it.has("closedAt") }?.let {
+                it.optString("symbol") + "|" + it.optString("strategyKey", "")
+            }
+        }.distinct().size
+        return PaperRiskStatus(
+            dailyLossPercent = (-todayR * 0.5).coerceAtLeast(0.0),
+            consecutiveLosses = consecutiveLosses,
+            openPositions = openPositions
+        )
     }
 }
