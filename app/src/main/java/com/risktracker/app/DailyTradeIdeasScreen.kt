@@ -673,7 +673,7 @@ fun DailyTradeIdeasScreen() {
                 updatedAt = scanTime
                 partialScanVisible = false
                 showingCached = false
-                trackedPlanKeys = readTrackedPlanKeys(partial)
+                trackedPlanKeys = readTrackedPlanKeys(freshIdeas)
                 paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
@@ -681,10 +681,10 @@ fun DailyTradeIdeasScreen() {
                 throw e
             } catch (e: Exception) {
                 error = e.message ?: "Market scan failed. Check your connection and retry."
-                if (partialScanVisible) status = "Scan incomplete · showing timestamped partial results; no completed snapshot was saved."
                 TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
                 scanHealth = TradeIdeaScanHealthStore.load(context)
-                status = "Scan could not be completed."
+                status = if (partialScanVisible) "Scan incomplete · showing timestamped partial results; no completed snapshot was saved."
+                    else "Scan could not be completed."
             } finally { loading = false }
         }
     }
