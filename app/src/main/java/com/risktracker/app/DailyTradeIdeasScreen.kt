@@ -1044,7 +1044,7 @@ private fun EntryGuidancePanel(
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.SemiBold)
