@@ -47,7 +47,8 @@ fun RiskOverviewScreen(
     var snapshot by remember { mutableStateOf(BinanceAccountSnapshotStore(context).load()) }
     var balanceRefreshing by remember { mutableStateOf(false) }
     var balanceStatus by remember { mutableStateOf("") }
-    val hasBinanceCredentials = remember { BinanceCredentialStore(context).read() != null }
+    var hasBinanceCredentials by remember { mutableStateOf(BinanceCredentialStore(context).read() != null) }
+    var liveImportedPnl by remember { mutableStateOf(importedPnl) }
     var livePositions by remember { mutableStateOf(positionsStore.load()) }
     var positionsLoading by remember { mutableStateOf(false) }
     var positionsStatus by remember {
@@ -141,8 +142,26 @@ fun RiskOverviewScreen(
         }
     }
 
+    LaunchedEffect(importedPnl) {
+        liveImportedPnl = importedPnl
+    }
+
+    // WorkManager updates SharedPreferences in the background; observe the latest P&L
+    // snapshot even when the dashboard was opened before Binance credentials were connected.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            val latestPnl = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
+            if (latestPnl != liveImportedPnl) liveImportedPnl = latestPnl
+            if (!hasBinanceCredentials && BinanceCredentialStore(context).read() != null) {
+                hasBinanceCredentials = true
+            }
+        }
+    }
+
     LaunchedEffect(hasBinanceCredentials) {
         if (hasBinanceCredentials) {
+            BinanceDailyWorker.schedule(context)
             refreshLivePositions()
             refreshAccountBalance()
             while (true) {
@@ -174,8 +193,8 @@ fun RiskOverviewScreen(
 
     val accountEquity = snapshot?.let { it.spot.valueUsdt + it.futures.totalEquity }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-    val daily = remember(entries, importedPnl, trades) {
-        reconcileDailyPnl(entries, importedPnl, trades).sortedBy { it.date }
+    val daily = remember(entries, liveImportedPnl, trades) {
+        reconcileDailyPnl(entries, liveImportedPnl, trades).sortedBy { it.date }
     }
     val todayPnl = daily.lastOrNull { it.date == today }?.selectedPnl
     val netPnl = daily.sumOf { it.selectedPnl }

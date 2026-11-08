@@ -186,6 +186,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         TradeIdeaNotifications.schedule(context)
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)
+            BinanceDailyWorker.schedule(context)
             runCatching {
                 withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
                 exchangeFills = BinanceAutoJournalStore.load(context)
@@ -194,8 +195,19 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         }
     }
     LaunchedEffect(tab) {
+        val credentialsAvailable = BinanceCredentialStore(context).read() != null
+        if (credentialsAvailable) BinanceDailyWorker.schedule(context)
+        if (tab == 0 && credentialsAvailable &&
+            System.currentTimeMillis() - BinanceSyncData.lastSync(context) >= 15L * 60L * 1000L) {
+            appScope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) { BinanceSyncRunner.sync(context) }
+                    importedPnl = BinanceSyncData.load(context)
+                }
+            }
+        }
         val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-        if ((tab == 1 || tab == 20) && BinanceCredentialStore(context).read() != null &&
+        if ((tab == 1 || tab == 20) && credentialsAvailable &&
             shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
             appScope.launch {
                 runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
