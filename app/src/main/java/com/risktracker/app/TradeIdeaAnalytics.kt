@@ -59,7 +59,34 @@ internal data class TradeIdeaBacktestStats(
     val shortWins: Int = 0,
     val shortAverageR: Double? = null
 ) {
+
+    val losses: Int get() = (trades - wins).coerceAtLeast(0)
+    val winRatePercent: Double get() = if (trades == 0) 0.0 else wins.toDouble() / trades * 100.0
+    val lossRatePercent: Double get() = if (trades == 0) 0.0 else losses.toDouble() / trades * 100.0
+    val hasUsableEstimate: Boolean get() = trades >= MINIMUM_ESTIMATE_SAMPLES
+    val confidenceLabel: String get() = when {
+        trades < MINIMUM_ESTIMATE_SAMPLES -> "Insufficient data"
+        trades < 50 -> "Preliminary · build 50+ samples"
+        else -> "Historical estimate · 50+ samples"
+    }
+    val winRateLower95: Double? get() = wilsonBounds()?.first
+    val winRateUpper95: Double? get() = wilsonBounds()?.second
+
+    private fun wilsonBounds(): Pair<Double, Double>? {
+        if (!hasUsableEstimate) return null
+        val n = trades.toDouble()
+        val p = wins.toDouble() / n
+        val z = 1.96
+        val denominator = 1.0 + z * z / n
+        val center = (p + z * z / (2.0 * n)) / denominator
+        val margin = z * kotlin.math.sqrt((p * (1.0 - p) / n) + (z * z / (4.0 * n * n))) / denominator
+        return ((center - margin) * 100.0).coerceIn(0.0, 100.0) to
+            ((center + margin) * 100.0).coerceIn(0.0, 100.0)
+    }
+
     companion object {
+        const val MINIMUM_ESTIMATE_SAMPLES = 30
+
         fun fromOutcomes(outcomes: List<Pair<String, Double>>): TradeIdeaBacktestStats {
             val valid = outcomes.filter { it.second.isFinite() && it.first in setOf("LONG", "SHORT") }
             if (valid.isEmpty()) return TradeIdeaBacktestStats()
@@ -90,34 +117,6 @@ internal data class TradeIdeaBacktestStats(
                 shortAverageR = shorts.takeIf { it.isNotEmpty() }?.average()
             )
         }
-    }
-
-    val losses: Int get() = (trades - wins).coerceAtLeast(0)
-    val winRatePercent: Double get() = if (trades == 0) 0.0 else wins.toDouble() / trades * 100.0
-    val lossRatePercent: Double get() = if (trades == 0) 0.0 else losses.toDouble() / trades * 100.0
-    val hasUsableEstimate: Boolean get() = trades >= MINIMUM_ESTIMATE_SAMPLES
-    val confidenceLabel: String get() = when {
-        trades < MINIMUM_ESTIMATE_SAMPLES -> "Insufficient data"
-        trades < 50 -> "Preliminary · build 50+ samples"
-        else -> "Historical estimate · 50+ samples"
-    }
-    val winRateLower95: Double? get() = wilsonBounds()?.first
-    val winRateUpper95: Double? get() = wilsonBounds()?.second
-
-    private fun wilsonBounds(): Pair<Double, Double>? {
-        if (!hasUsableEstimate) return null
-        val n = trades.toDouble()
-        val p = wins.toDouble() / n
-        val z = 1.96
-        val denominator = 1.0 + z * z / n
-        val center = (p + z * z / (2.0 * n)) / denominator
-        val margin = z * kotlin.math.sqrt((p * (1.0 - p) / n) + (z * z / (4.0 * n * n))) / denominator
-        return ((center - margin) * 100.0).coerceIn(0.0, 100.0) to
-            ((center + margin) * 100.0).coerceIn(0.0, 100.0)
-    }
-
-    companion object {
-        const val MINIMUM_ESTIMATE_SAMPLES = 30
     }
 }
 
