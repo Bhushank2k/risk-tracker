@@ -6,6 +6,19 @@ import org.junit.Test
 
 class TradeIdeaBacktestCostTest {
 
+
+    @Test
+    fun replayUsesOnlyCandlesClosedByTheDecisionTime() {
+        val candles = listOf(
+            V2Candle(101.0, 99.0, 100.0, 1.0, 1_000L),
+            V2Candle(102.0, 100.0, 101.0, 1.0, 2_000L),
+            V2Candle(103.0, 101.0, 102.0, 1.0, 3_000L)
+        )
+        val available = closedReplayCandlesAtOrBefore(candles, 2_000L)
+        assertEquals(listOf(1_000L, 2_000L), available.map { it.closeTime })
+        assertEquals(2, available.size)
+    }
+
     @Test
     fun stopWinsWhenLongBarTouchesStopAndTargets() {
         val candle = V2Candle(107.0, 97.0, 102.0, 1.0, 1L)
