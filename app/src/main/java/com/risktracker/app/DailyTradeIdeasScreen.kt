@@ -950,7 +950,6 @@ private data class EntryGuidance(
     val action: String,
     val trigger: String,
     val invalidation: String,
-    val strategyChecks: List<Pair<String, Boolean?>>,
     val zoneLow: Double,
     val zoneHigh: Double,
     val checks: List<Pair<String, Boolean?>>
@@ -993,7 +992,6 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val halfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
     val zoneLow = idea.entry - halfWidth
     val zoneHigh = idea.entry + halfWidth
-    val tooFar = entryTooFarFromPlan(idea)
     val invalidated = livePriceInvalidatesPlan(idea)
     // Share the main card's final state; the coach score is informational only.
     val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
@@ -1027,7 +1025,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
     ) + idea.strategyChecks
-    return EntryGuidance(score, grade, action, trigger, invalidation, combinedChecks, zoneLow, zoneHigh, combinedChecks)
+    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
 }
 
 @Composable
