@@ -545,6 +545,10 @@ fun DailyTradeIdeasScreen() {
     }
     LaunchedEffect(Unit) {
         BinanceMarketScanner.initialize(context)
+        // Keep the shared market-scan worker scheduled even when notification alerts are disabled.
+        // The worker always refreshes the cached Daily Trade Ideas snapshot; notification permission
+        // and alert opt-ins gate only notifications, never market-data refreshes.
+        TradeIdeaNotifications.schedule(context)
         // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
         BinanceFuturesStream.start(emptyList())
         paperStats = TradeIdeaPaperJournal.stats(context)
