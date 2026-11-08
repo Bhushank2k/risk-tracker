@@ -1680,19 +1680,19 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 )
                 Text(
                     "BREAKOUT " + stats.breakoutTrades + " trades · " +
-                        (stats.breakoutTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.breakoutWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        (setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades)) +
                         " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     "PULLBACK " + stats.pullbackTrades + " trades · " +
-                        (stats.pullbackTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.pullbackWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        (setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades)) +
                         " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     "REVERSAL " + stats.reversalTrades + " trades · " +
-                        (stats.reversalTrades.takeIf { it > 0 }?.let { "%.0f%% win".format(Locale.US, stats.reversalWins.toDouble() / it * 100.0) } ?: "no samples") +
+                        (setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades)) +
                         " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

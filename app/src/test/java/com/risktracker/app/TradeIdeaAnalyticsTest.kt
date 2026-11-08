@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TradeIdeaAnalyticsTest {
+
+    @Test fun setupFamilyWinRateIsWithheldForSmallSamples() {
+        assertEquals("no samples", setupFamilyWinRateLabel(0, 0))
+        assertEquals("win rate withheld (<30 samples)", setupFamilyWinRateLabel(8, 12))
+        assertEquals("60% win", setupFamilyWinRateLabel(18, 30))
+        assertEquals("invalid sample counts", setupFamilyWinRateLabel(31, 30))
+    }
+
     @Test fun positionSizeRespectsHalfPercentRisk() {
         val result = TradeSizing.calculate(10_000.0, 100.0, 99.0)!!
         assertEquals(50.0, result.riskAmount, 0.000001)

@@ -10,6 +10,15 @@ internal data class TradeSizingResult(
     val actualRiskPercent: Double
 )
 
+
+/** Suppress noisy setup-family win rates until that family has enough independent replay samples. */
+internal fun setupFamilyWinRateLabel(wins: Int, trades: Int): String = when {
+    trades == 0 -> "no samples"
+    wins !in 0..trades -> "invalid sample counts"
+    trades < TradeIdeaBacktestStats.MINIMUM_ESTIMATE_SAMPLES -> "win rate withheld (<30 samples)"
+    else -> "%.0f%% win".format(java.util.Locale.US, wins.toDouble() / trades * 100.0)
+}
+
 internal object TradeSizing {
     fun calculate(
         equityUsdt: Double,
