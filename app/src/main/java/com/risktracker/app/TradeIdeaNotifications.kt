@@ -266,14 +266,14 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     }
                     target2Hit -> {
                         TradeIdeaNotifications.notify(context, symbol, "target2", "Target 2 reached: $symbol",
-                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 1.5R and closes the remainder at 2.5R (2.0R total). No order placed.", plan.horizon + "|" + plan.setup)
+                            "Latest price ~${price}; target 2 reference ~${managedPlan.target2}. The paper plan books 50% at 2R and closes the remainder at 3R (2.5R total). No order placed.", plan.horizon + "|" + plan.setup)
                         TradeIdeaPaperJournal.recordExit(context, symbol, managedPlan.target2, "TARGET2", managedPlan.riskDistance, if (plan.horizon.isBlank()) "" else planKey)
                         plans.remove(planKey)
                     }
                     !managedPlan.target1Reached && target1Hit -> {
                         TradeIdeaPaperJournal.recordPartial(context, symbol, strategyKey = if (plan.horizon.isBlank()) "" else planKey)
                         TradeIdeaNotifications.notify(context, symbol, "target1", "Target 1 reached: $symbol",
-                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (1.5R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon + "|" + plan.setup)
+                            "Latest price ~${price}; 50% scale-out reference ~${managedPlan.target1} (2R). The remaining plan's stop moves to breakeven, then trails 1R behind the best observed price. No order placed.", plan.horizon + "|" + plan.setup)
                         plans[planKey] = managedPlan.copy(target1Reached = true, stop = managedPlan.entry, bestPrice = price)
                     }
                 }
