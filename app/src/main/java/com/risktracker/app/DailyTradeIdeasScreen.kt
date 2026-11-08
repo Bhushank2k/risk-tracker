@@ -565,7 +565,7 @@ fun DailyTradeIdeasScreen() {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
-            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
+            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)
         }
     }
     LaunchedEffect(ideas) {
