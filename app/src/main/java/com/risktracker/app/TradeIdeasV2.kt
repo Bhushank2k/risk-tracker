@@ -7,7 +7,14 @@ import kotlin.math.min
 internal data class V2Candle(
     val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close
 )
-internal data class V2Microstructure(val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double? = null, val oiChangePct: Double? = null)
+internal data class V2Microstructure(
+    val spreadBps: Double?,
+    val bookImbalance: Double?,
+    val fundingRate: Double? = null,
+    val oiChangePct: Double? = null,
+    val bidDepthUsd: Double? = null,
+    val askDepthUsd: Double? = null
+)
 
 internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     LOW_LIQUIDITY(true),
@@ -154,7 +161,7 @@ internal object TradeIdeasV2 {
     const val MAX_LEVERAGE = 3.0
     const val MAX_SPREAD_BPS = 10.0
     const val MIN_SCORE = 70
-    private const val MIN_QUOTE_VOLUME = 5_000_000.0
+    private const val MIN_QUOTE_VOLUME = MIN_TRADE_QUOTE_VOLUME_USD
 
     fun evaluate(
         h4: List<V2Candle>,

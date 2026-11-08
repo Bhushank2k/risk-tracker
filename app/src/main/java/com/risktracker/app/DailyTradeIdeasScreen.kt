@@ -75,7 +75,8 @@ internal data class TradeIdea(
     val riskCodes: Set<TradeIdeaRiskCode> = emptySet()
 )
 internal data class MarketMicrostructure(
-    val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
+    val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?,
+    val bidDepthUsd: Double? = null, val askDepthUsd: Double? = null
 )
 
 internal object TradeIdeaCache {
@@ -401,7 +402,7 @@ internal object BinanceMarketScanner {
             val symbol = x.optString("symbol")
             val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
-            if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
+            if (symbol !in allowed || !isTradeIdeaVolumeEligible(quote) || last <= 0.0) null
             else {
                 val change = x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
                 val high = x.optString("highPrice").toDoubleOrNull() ?: last
@@ -410,7 +411,7 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-        report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $5M quote-volume requirement.")
+        report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $2M quote-volume floor; spread and two-sided depth remain hard gates.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Measure every eligible active USDT perpetual; ranking changes evaluation order, never market coverage.
@@ -541,7 +542,7 @@ internal object BinanceMarketScanner {
         micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
     ): List<TradeIdea> {
         fun candles(rows: List<ScanCandle>) = rows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
+        val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct, micro.bidDepthUsd, micro.askDepthUsd)
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
             market, t.quoteVolume, btcBias, "Scalp")?.let {
             buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,

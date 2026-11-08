@@ -4,12 +4,38 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+internal const val MIN_TRADE_QUOTE_VOLUME_USD = 2_000_000.0
+internal const val MIN_BOOK_SIDE_DEPTH_USD = 15_000.0
+internal const val MAX_TRADE_SPREAD_BPS = 10.0
+
+internal fun isTradeIdeaVolumeEligible(quoteVolume: Double): Boolean =
+    quoteVolume.isFinite() && quoteVolume >= MIN_TRADE_QUOTE_VOLUME_USD
+
+internal fun isTradeIdeaLiquidityAcceptable(
+    side: String, spreadBps: Double?, bookImbalance: Double?,
+    bidDepthUsd: Double?, askDepthUsd: Double?
+): Boolean {
+    if (side !in setOf("LONG", "SHORT")) return false
+    if (spreadBps == null || !spreadBps.isFinite() || spreadBps !in 0.0..MAX_TRADE_SPREAD_BPS) return false
+    if (bookImbalance == null || !bookImbalance.isFinite() || bookImbalance !in -1.0..1.0) return false
+    if (bidDepthUsd == null || !bidDepthUsd.isFinite() || bidDepthUsd < MIN_BOOK_SIDE_DEPTH_USD) return false
+    if (askDepthUsd == null || !askDepthUsd.isFinite() || askDepthUsd < MIN_BOOK_SIDE_DEPTH_USD) return false
+    return if (side == "LONG") bookImbalance >= -0.15 else bookImbalance <= 0.15
+}
+
+internal fun isConfluenceReady(
+    liquid: Boolean, geometry: Boolean, rewardRisk: Boolean, funding: Boolean,
+    volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
+    entryConfirmed: Boolean, score: Int
+): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
+    notExtended && volume && momentum && entryConfirmed && score >= 80
+
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
-        if (h4.size < 200 || h1.size < 200 || m15.size < 45 || m5.size < 30 || quoteVolume < 5_000_000.0) return null
+        if (h4.size < 200 || h1.size < 200 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
         val freshness = when (horizon) {
@@ -63,11 +89,11 @@ internal object ConfluenceScannerV4 {
         }
         if(setups.isEmpty())return null
         val spread=micro.spreadBps; val depth=micro.bookImbalance; val funding=micro.fundingRate
-        val liquidityData=spread!=null&&spread.isFinite()&&spread in 0.0..10.0&&depth!=null&&depth.isFinite()&&depth in -1.0..1.0
+        val bidDepth=micro.bidDepthUsd; val askDepth=micro.askDepthUsd
         return setups.mapNotNull{s->
             val long=s.side=="LONG"; val sign=if(long)1.0 else -1.0
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
-            val liquid=liquidityData&&(if(long)depth!!>=-.15 else depth!!<=.15)
+            val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
             val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
@@ -92,7 +118,10 @@ internal object ConfluenceScannerV4 {
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(rv<1.2)blocks.add("relative volume"); if(!momentum)blocks.add("RSI/MACD"); if(score<70)blocks.add("score")
-            val ready=blocks.isEmpty()&&entryOk&&score>=80
+            val ready=isConfluenceReady(
+                liquid, geometry, rr, fundingOk, volatility, extended, rv>=1.2,
+                momentum, entryOk, score
+            )
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
@@ -109,7 +138,7 @@ internal object ConfluenceScannerV4 {
                 add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
             }
             val warning=when{
-                !liquid->"BLOCK: Spread must be ≤10 bps and directional order-book depth must be available."
+                !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
                 !rr->"BLOCK: Target 1 gross reward/risk is below 2R; deduct actual costs before entry."
                 fundingUnavailable->"BLOCK: A valid funding rate is unavailable; verify funding data before entry."
@@ -128,7 +157,7 @@ internal object ConfluenceScannerV4 {
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
-                "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · depth "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable"),
+                "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
