@@ -161,7 +161,7 @@ internal object TradeIdeasV2 {
     const val MAX_LEVERAGE = 3.0
     const val MAX_SPREAD_BPS = 10.0
     const val MIN_SCORE = 70
-    private const val MIN_QUOTE_VOLUME = 5_000_000.0
+    private const val MIN_QUOTE_VOLUME = MIN_TRADE_QUOTE_VOLUME_USD
 
     fun evaluate(
         h4: List<V2Candle>,
