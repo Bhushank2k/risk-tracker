@@ -86,7 +86,19 @@ internal object TradeIdeaCache {
                 bias5m = x.getString("bias5m"),
                 spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
                 fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
-                backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR")),
+                backtest = TradeIdeaBacktestStats(
+                    trades = stats.optInt("trades"),
+                    wins = stats.optInt("wins"),
+                    averageR = stats.optDouble("averageR"),
+                    profitFactor = stats.optDouble("profitFactor", Double.NaN).takeIf { it.isFinite() },
+                    maxDrawdownR = stats.optDouble("maxDrawdownR", 0.0),
+                    longTrades = stats.optInt("longTrades"),
+                    longWins = stats.optInt("longWins"),
+                    longAverageR = stats.optDouble("longAverageR", Double.NaN).takeIf { it.isFinite() },
+                    shortTrades = stats.optInt("shortTrades"),
+                    shortWins = stats.optInt("shortWins"),
+                    shortAverageR = stats.optDouble("shortAverageR", Double.NaN).takeIf { it.isFinite() }
+                ),
                 volatilityPct = x.optDouble("volatilityPct", 0.0),
                 strategyChecks = x.optJSONArray("strategyChecks")?.let { checks ->
                     (0 until checks.length()).mapNotNull { index ->
@@ -117,6 +129,12 @@ internal object TradeIdeaCache {
                 val reasons = JSONArray().apply { idea.reasons.forEach { put(it) } }
                 val stats = JSONObject().put("trades", idea.backtest.trades)
                     .put("wins", idea.backtest.wins).put("averageR", idea.backtest.averageR)
+                    .put("profitFactor", idea.backtest.profitFactor ?: JSONObject.NULL)
+                    .put("maxDrawdownR", idea.backtest.maxDrawdownR)
+                    .put("longTrades", idea.backtest.longTrades).put("longWins", idea.backtest.longWins)
+                    .put("longAverageR", idea.backtest.longAverageR ?: JSONObject.NULL)
+                    .put("shortTrades", idea.backtest.shortTrades).put("shortWins", idea.backtest.shortWins)
+                    .put("shortAverageR", idea.backtest.shortAverageR ?: JSONObject.NULL)
                 val strategyChecks = JSONArray().apply {
                     idea.strategyChecks.forEach { (label, passed) ->
                         put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
@@ -1619,6 +1637,18 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                         Text("%.1f%%".format(Locale.US, stats.lossRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     }
                 }
+                Text(
+                    "Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
+                        " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "LONG " + stats.longTrades + " trades · " +
+                        (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                        "  |  SHORT " + stats.shortTrades + " trades · " +
+                        (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 val lower = stats.winRateLower95 ?: 0.0
                 val upper = stats.winRateUpper95 ?: 100.0
                 Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
