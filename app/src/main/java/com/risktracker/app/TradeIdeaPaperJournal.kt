@@ -19,7 +19,7 @@ internal data class PaperRiskStatus(
     val consecutiveLosses: Int,
     val openPositions: Int
 ) {
-    val dailyStopReached: Boolean get() = dailyLossPercent >= 1.5 || consecutiveLosses >= 2
+    val dailyStopReached: Boolean get() = dailyLossPercent >= 3.0 || consecutiveLosses >= 2
 }
 
 internal object TradeIdeaPaperJournal {
@@ -100,7 +100,7 @@ internal object TradeIdeaPaperJournal {
     }
 
     /** Realized paper-journal risk controls; no account balance is assumed. */
-    fun riskStatus(context: Context, now: Long = System.currentTimeMillis()): PaperRiskStatus {
+    fun riskStatus(context: Context, riskPerTradePercent: Double = 1.0, now: Long = System.currentTimeMillis()): PaperRiskStatus {
         val rows = history(context)
         val dayStart = java.util.Calendar.getInstance().apply {
             timeInMillis = now
@@ -123,7 +123,7 @@ internal object TradeIdeaPaperJournal {
             }
         }.distinct().size
         return PaperRiskStatus(
-            dailyLossPercent = (-todayR * 0.5).coerceAtLeast(0.0),
+            dailyLossPercent = (-todayR * riskPerTradePercent.coerceIn(0.5, 2.0)).coerceAtLeast(0.0),
             consecutiveLosses = consecutiveLosses,
             openPositions = openPositions
         )

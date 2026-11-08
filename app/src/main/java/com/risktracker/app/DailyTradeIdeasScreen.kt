@@ -483,11 +483,17 @@ fun DailyTradeIdeasScreen() {
     val strategyMode = "Daily Picks"
     val qualityPrefs = remember { context.getSharedPreferences("trade_idea_quality_v3", android.content.Context.MODE_PRIVATE) }
     var strictQualityMode by remember { mutableStateOf(qualityPrefs.getBoolean("enabled", false)) }
+    var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context)) }
+    var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)) }
+    fun updateRiskSettings(next: EntryRiskSettings) {
+        riskSettings = next
+        EntryRiskSettingsStore.save(context, next)
+        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, next.riskPercent)
+    }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
     val scope = rememberCoroutineScope()
@@ -531,7 +537,7 @@ fun DailyTradeIdeasScreen() {
                 updatedAt = scanTime
                 showingCached = false
                 trackedSymbols = readTrackedSymbols()
-                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
+                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
             } catch (e: CancellationException) {
@@ -559,7 +565,7 @@ fun DailyTradeIdeasScreen() {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
-            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
+            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)
         }
     }
     LaunchedEffect(ideas) {
@@ -589,7 +595,7 @@ fun DailyTradeIdeasScreen() {
         if (idea.symbol in trackedSymbols) idea else {
             val assessment = TradeIdeasV3.assess(
                 idea, scanSnapshotAgeMs, trackedSymbols.size, false,
-                paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions
+                paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
             )
             val strictWarning = when (assessment.state) {
                 "BLOCKED" -> "BLOCK: V3 Strict Quality — " + assessment.blockers.joinToString(" ")
@@ -809,6 +815,7 @@ fun DailyTradeIdeasScreen() {
                         })
                     }
                 }
+                EntryRiskPlanSettingsCard(settings = riskSettings, onSettingsChanged = ::updateRiskSettings)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
@@ -829,7 +836,7 @@ fun DailyTradeIdeasScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size, riskSettings) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
@@ -904,7 +911,9 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
     }
     val warning = idea.warning.lowercase(Locale.US)
     val warningBlocksEntry = warning.startsWith("block:", ignoreCase = true) || listOf("overbought", "oversold", "elevated", "falling sharply", "weak").any { it in warning }
-    return geometryValid && !warningBlocksEntry
+    val riskDistance = abs(idea.entry - idea.stop)
+    val rewardRisk = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
+    return geometryValid && rewardRisk >= 2.0 && !warningBlocksEntry
 }
 
 private data class EntryGuidance(
@@ -940,7 +949,7 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
     }
     val riskDistance = abs(idea.entry - idea.stop)
     val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    val rewardOk = rr >= 1.5
+    val rewardOk = rr >= 2.0
     val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
@@ -983,7 +992,7 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
         ("Relative volume at least 1.15× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
-        ("Target 1 offers at least 1.5R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
+        ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
     ))
 }
 
@@ -994,12 +1003,13 @@ private fun EntryGuidancePanel(
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
     trackedPositionCount: Int = 0,
-    isTracked: Boolean = false
+    isTracked: Boolean = false,
+    riskSettings: EntryRiskSettings = EntryRiskSettings()
 ) {
     val strictAssessment = if (strictMode) remember(idea, snapshotAgeMs, paperRiskStatus, isTracked) {
         TradeIdeasV3.assess(
             idea, snapshotAgeMs, trackedPositionCount, isTracked,
-            paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions
+            paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
         )
     } else null
     val guidance = if (strictAssessment == null) remember(idea) { buildEntryGuidance(idea) } else {
@@ -1158,6 +1168,7 @@ private fun TradeIdeaCard(
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
     trackedPositionCount: Int = 0,
+    riskSettings: EntryRiskSettings = EntryRiskSettings(),
     onTrackingChanged: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -1306,8 +1317,8 @@ private fun TradeIdeaCard(
                 IdeaLevel("Target 1", idea.target1)
                 IdeaLevel("Target 2", idea.target2)
                 ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
-                ScannerMetric("Exit plan", "TP1 50% at 1.5R · TP2 30% at 2.5R · trail 20% by 1 ATR")
-                ScannerMetric("Risk budget", "0.5% equity · max 3× leverage")
+                ScannerMetric("Exit plan", "TP1 40% at target 1 · TP2 30% at target 2 · trail 30%")
+                EntryRiskPlanDetails(idea, riskSettings)
                 }
             }
             if (stage == TradeIdeaStage.TRACKING && trackedEntry != null) {
@@ -1353,7 +1364,7 @@ private fun TradeIdeaCard(
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
-                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null)
+                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null, riskSettings)
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
