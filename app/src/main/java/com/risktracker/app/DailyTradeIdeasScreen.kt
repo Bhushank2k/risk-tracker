@@ -592,7 +592,7 @@ internal object BinanceMarketScanner {
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
         val candleAligned = candle?.let {
             val directionOk = if (isLong) it.close > it.open else it.close < it.open
-            val requiredVolume = if (retest) 1.5 else 1.2
+            val requiredVolume = confluenceExecutionVolumeThreshold(plan.setup)
             directionOk && volumeRatio >= requiredVolume
         }
         val recent = executionRows.dropLast(1).takeLast(20)
