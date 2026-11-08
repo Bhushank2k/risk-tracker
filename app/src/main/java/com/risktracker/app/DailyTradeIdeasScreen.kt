@@ -471,17 +471,17 @@ internal object BinanceMarketScanner {
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
             market, t.quoteVolume, btcBias, "Scalp")?.let {
-            buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false, runBacktest = false,
+            buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,
                 trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H", runBacktest = true)
         }
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
             market, t.quoteVolume, btcBias, "Intraday")?.let {
-            buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false,
+            buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false,
                 trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H", runBacktest = true)
         }
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
             market, t.quoteVolume, btcBias, "Swing")?.let {
-            buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true, runBacktest = false,
+            buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true,
                 trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D", runBacktest = true)
         }
         return listOfNotNull(scalp, intraday, swing)
@@ -517,7 +517,7 @@ internal object BinanceMarketScanner {
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
-            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct,
+            micro.oiChangePct, replay, t.volatilityPct,
             strategyChecks, plan.riskCodes
         )
     }
