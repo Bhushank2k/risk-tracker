@@ -56,8 +56,8 @@ class TradeIdeaBacktestCostTest {
     @Test
     fun trendPullbackPredicateRequiresReclaimAndDirectionalClose() {
         val previous = V2Candle(102.0, 99.0, 100.0, 100.0, 1L)
-        val reclaimed = V2Candle(103.0, 99.5, 102.0, 120.0, 2L)
-        val failedReclaim = V2Candle(101.0, 99.5, 100.0, 120.0, 2L)
+        val reclaimed = V2Candle(103.0, 99.8, 102.0, 120.0, 2L)
+        val failedReclaim = V2Candle(101.0, 99.8, 100.0, 120.0, 2L)
 
         assertTrue(isReplayTrendPullback(true, reclaimed, previous, 101.0, 2.0))
         assertTrue(!isReplayTrendPullback(true, failedReclaim, previous, 101.0, 2.0))
