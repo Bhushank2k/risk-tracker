@@ -21,6 +21,10 @@ internal object ExperimentalTradeStrategies {
         if (h4.size < 30 || h1.size < 50 || m15.size < 30 || m5.size < 30) return emptyList()
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return emptyList()
         val plans = mutableListOf<V2TradePlan>()
+        val h4Fast = ema(h4.map { it.close }, 20)
+        val h4Slow = ema(h4.map { it.close }, 50)
+        val h4Long = h4Fast != null && h4Slow != null && h4.last().close > h4Fast && h4Fast > h4Slow
+        val h4Short = h4Fast != null && h4Slow != null && h4.last().close < h4Fast && h4Fast < h4Slow
 
         // 5m rolling VWAP reclaim/rejection: a close crosses the rolling volume-weighted mean.
         val priorVwap = vwap(m5.dropLast(1).takeLast(20))
@@ -30,8 +34,8 @@ internal object ExperimentalTradeStrategies {
         val h1Fast = ema(h1.map { it.close }, 20)
         val h1Slow = ema(h1.map { it.close }, 50)
         if (priorVwap != null && currentVwap != null && h1Fast != null && h1Slow != null) {
-            val longTrend = h1.last().close > h1Fast && h1Fast > h1Slow
-            val shortTrend = h1.last().close < h1Fast && h1Fast < h1Slow
+            val longTrend = h4Long && h1.last().close > h1Fast && h1Fast > h1Slow
+            val shortTrend = h4Short && h1.last().close < h1Fast && h1Fast < h1Slow
             val vwapPlan = when {
                 prior5.close <= priorVwap && current5.close > currentVwap && longTrend ->
                     makePlan("VWAP reclaim", "Scalp · M5 VWAP reclaim", "LONG", m5, m5, currentVwap,
@@ -58,8 +62,8 @@ internal object ExperimentalTradeStrategies {
             val volumeRatio = if (avgVol > 0.0) current5.volume / avgVol else 0.0
             val priorHigh = prior5Rows.maxOf { it.high }
             val priorLow = prior5Rows.minOf { it.low }
-            val long = current5.close > priorHigh && h1.last().close > h1Fast && h1Fast > h1Slow
-            val short = current5.close < priorLow && h1.last().close < h1Fast && h1Fast < h1Slow
+            val long = current5.close > priorHigh && h4Long && h1.last().close > h1Fast && h1Fast > h1Slow
+            val short = current5.close < priorLow && h4Short && h1.last().close < h1Fast && h1Fast < h1Slow
             if (compressed && expanded && volumeRatio >= 1.5) {
                 when {
                     long -> makePlan("Volatility expansion", "Scalp · M5 volatility expansion", "LONG",
@@ -83,12 +87,12 @@ internal object ExperimentalTradeStrategies {
             val avgVol = range15.map { it.volume }.average()
             val ratio = if (avgVol > 0.0) current15.volume / avgVol else 0.0
             when {
-                current15.close > top && ratio >= 1.3 && h1.last().close > h1Fast && h1Fast > h1Slow &&
+                current15.close > top && ratio >= 1.3 && h4Long && h1.last().close > h1Fast && h1Fast > h1Slow &&
                     m5.last().close > execFast && execFast > execSlow ->
                     makePlan("Intraday range breakout", "Intraday · M15 range breakout", "LONG",
                         m15, m5, top, micro, "15m close broke the prior 12-bar range; 1h trend and 5m momentum confirm",
                         btcBias, minVolume = 1.3)?.let { plans.add(it) }
-                current15.close < bottom && ratio >= 1.3 && h1.last().close < h1Fast && h1Fast < h1Slow &&
+                current15.close < bottom && ratio >= 1.3 && h4Short && h1.last().close < h1Fast && h1Fast < h1Slow &&
                     m5.last().close < execFast && execFast < execSlow ->
                     makePlan("Intraday range breakdown", "Intraday · M15 range breakdown", "SHORT",
                         m15, m5, bottom, micro, "15m close broke below the prior 12-bar range; 1h trend and 5m momentum confirm",
