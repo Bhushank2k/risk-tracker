@@ -148,11 +148,6 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaCache.save(context, scanCompletedAt, allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
 
-            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt)
-            val trackingPrefs = context.getSharedPreferences("trade_idea_tracking_v1", Context.MODE_PRIVATE)
-            val manuallyTrackedSymbols = trackingPrefs.all.keys
-                .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
-                .map { it.removePrefix("entry_") }.toSet()
             val alertIdeas = allIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
