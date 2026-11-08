@@ -36,11 +36,11 @@ internal object ExperimentalTradeStrategies {
                 prior5.close <= priorVwap && current5.close > currentVwap && longTrend ->
                     makePlan("VWAP reclaim", "Scalp · M5 VWAP reclaim", "LONG", m5, m5, currentVwap,
                         micro, "5m close reclaimed its rolling 20-bar VWAP; 1h trend agrees",
-                        btcBias, minVolume = 1.0)
+                        btcBias, minVolume = 1.2)
                 prior5.close >= priorVwap && current5.close < currentVwap && shortTrend ->
                     makePlan("VWAP rejection", "Scalp · M5 VWAP rejection", "SHORT", m5, m5, currentVwap,
                         micro, "5m close lost its rolling 20-bar VWAP; 1h trend agrees",
-                        btcBias, minVolume = 1.0)
+                        btcBias, minVolume = 1.2)
                 else -> null
             }
             vwapPlan?.let { plans.add(it) }
@@ -129,12 +129,12 @@ internal object ExperimentalTradeStrategies {
                     makePlan("Relative-strength momentum", "Swing · Relative strength", "LONG",
                         h4, h1, e4Fast ?: current4.close, micro,
                         "Coin's 6-bar 4h return is outperforming the BTC proxy; own 4h/1h trends agree",
-                        btcBias, minVolume = 1.0)?.let { plans.add(it) }
+                        btcBias, minVolume = 1.2)?.let { plans.add(it) }
                 } else if (relative <= -1.5 && e4Short && h1.last().close < h1Fast && h1Fast < h1Slow) {
                     makePlan("Relative-weakness momentum", "Swing · Relative strength", "SHORT",
                         h4, h1, e4Fast ?: current4.close, micro,
                         "Coin's 6-bar 4h return is underperforming the BTC proxy; own 4h/1h trends agree",
-                        btcBias, minVolume = 1.0)?.let { plans.add(it) }
+                        btcBias, minVolume = 1.2)?.let { plans.add(it) }
                 }
             }
         }
@@ -224,8 +224,8 @@ internal object ExperimentalTradeStrategies {
         )
         return V2TradePlan(
             side, score, entry, stop,
-            if (geometry) entry + sign * risk * 1.5 else 0.0,
-            if (geometry) entry + sign * risk * 2.5 else 0.0,
+            if (geometry) entry + sign * risk * 2.0 else 0.0,
+            if (geometry) entry + sign * risk * 3.0 else 0.0,
             triggered, setup, warning, horizon,
             if (side == "LONG") "Bullish" else "Bearish",
             if (side == "LONG") "Bullish" else "Bearish",
