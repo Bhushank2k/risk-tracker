@@ -81,7 +81,7 @@ internal object TradeIdeasV3 {
         val checks = listOf(
             "4H trend agrees with direction" to trend4h,
             "1H trend agrees with direction" to trend1h,
-            "5M execution trend agrees" to executionTrend,
+            "Execution-timeframe trend agrees" to executionTrend,
             "24h quote volume ≥ $10M" to volumeOk,
             "Relative volume ≥ 1.2×" to relativeVolumeOk,
             "RSI in non-extended zone" to rsiOk,
