@@ -496,7 +496,7 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
-        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval)
+        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
@@ -514,7 +514,8 @@ internal object BinanceMarketScanner {
         trendRows: List<ScanCandle>,
         vwapBars: Int,
         setupInterval: String,
-        executionInterval: String
+        executionInterval: String,
+        trendInterval: String
     ): List<Pair<String, Boolean?>> {
         val isLong = plan.side == "LONG"
         if (!isLong && plan.side != "SHORT") return emptyList()
