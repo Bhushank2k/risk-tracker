@@ -907,7 +907,9 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean {
     }
     val warning = idea.warning.lowercase(Locale.US)
     val warningBlocksEntry = warning.startsWith("block:", ignoreCase = true) || listOf("overbought", "oversold", "elevated", "falling sharply", "weak").any { it in warning }
-    return geometryValid && !warningBlocksEntry
+    val riskDistance = abs(idea.entry - idea.stop)
+    val rewardRisk = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
+    return geometryValid && rewardRisk >= 2.0 && !warningBlocksEntry
 }
 
 private data class EntryGuidance(
