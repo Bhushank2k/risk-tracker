@@ -883,7 +883,8 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
     val trend5m = biasSupportsSide(idea.bias5m, idea.side)
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
-    val volumeOk = idea.volumeRatio >= 1.15
+    val volumeThreshold = if (idea.setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
+    val volumeOk = idea.volumeRatio >= volumeThreshold
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
     // Match the scanner's hard liquidity gate: spread alone is insufficient.
     val bookOk = idea.bookImbalance?.let {
@@ -922,9 +923,9 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
-        "LONG: retest the zone, form a 5M higher low or bullish rejection, then close back above the zone. Prefer 15M confirmation."
+        "LONG: wait for a completed 5M candle with EMA9 above EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
     else
-        "SHORT: retest the zone, form a 5M lower high or bearish rejection, then close back below the zone. Prefer 15M confirmation."
+        "SHORT: wait for a completed 5M candle with EMA9 below EMA21. Recheck that the 15M setup and liquidity gates still hold; do not enter on an unclosed candle."
     val invalidation = if (longSide)
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
@@ -934,7 +935,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "1H trend aligned" to trend1h,
         "5M execution trend aligned" to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
-        ("Relative volume at least 1.15× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
+        ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
@@ -958,7 +959,7 @@ private fun EntryGuidancePanel(
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.score.toString() + "/100 · " + guidance.grade, style = MaterialTheme.typography.labelSmall,
+                Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.SemiBold)
             }
@@ -991,6 +992,58 @@ private fun EntryGuidancePanel(
                 }
             }
             Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Confluence V4 scoring and its existing hard risk gates determine scanner qualification.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: Boolean) {
+    if (idea.side !in setOf("LONG", "SHORT")) return
+    val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
+    val stage = tradeIdeaStage(idea, tracked = isTracked, snapshotAgeMs = snapshotAgeMs)
+    val accent = when (stage) {
+        TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
+        TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val distancePct = if (idea.entry > 0.0) abs(idea.last - idea.entry) / idea.entry * 100.0 else 0.0
+    val priceRelation = when {
+        abs(idea.last - idea.entry) < 0.0000001 -> "at planned entry"
+        idea.last > idea.entry -> "%.2f%% above planned entry".format(Locale.US, distancePct)
+        else -> "%.2f%% below planned entry".format(Locale.US, distancePct)
+    }
+    val nextStep = when (stage) {
+        TradeIdeaStage.ENTRY_CONFIRMED -> "The scanner trigger is confirmed. Recheck live price, spread, depth and net reward/risk before acting."
+        TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION -> guidance.trigger
+        TradeIdeaStage.AVOID_CHASING -> "Do not chase this move. Wait for a fresh pullback and a new scanner confirmation."
+        TradeIdeaStage.DO_NOT_ENTER -> "Do not enter. " + idea.warning
+        TradeIdeaStage.TRACKING -> "This idea is already being tracked; this is not a new-entry signal."
+    }
+    RiskCard(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+    ) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Surface(color = accent.copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
+                    Text(stage.title, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text("Planned zone  " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Text("Live price is " + priceRelation, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("NEXT ACTION", style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+            Text(nextStep, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+            if (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) {
+                Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            Text(guidance.checks.count { it.second == true }.toString() + "/" +
+                guidance.checks.count { it.second != null } + " available checklist checks passed · checklist is not trade approval",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1121,6 +1174,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
                     Text("EXIT PLAN  ·  1R / 2R / 3R / 4R+  ·  25% each", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1159,6 +1213,7 @@ private fun TradeIdeaCard(
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            if (!expanded) EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
             if (idea.side == "LONG" || idea.side == "SHORT") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
