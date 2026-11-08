@@ -42,6 +42,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
@@ -297,6 +298,7 @@ internal object BinanceMarketScanner {
         val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
             it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
         }.map { it.optString("symbol") }.toSet()
+        report("Found ${allowed.size} active USDT-M perpetual pairs. Loading 24h market statistics…")
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
         val prefiltered = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
@@ -312,11 +314,14 @@ internal object BinanceMarketScanner {
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
         }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
+        report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $5M quote-volume requirement.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Measure every eligible active USDT perpetual; ranking changes evaluation order, never market coverage.
-        report("Measuring hourly ATR% and relative volume across all ${prefiltered.size} eligible markets…")
+        report("Loading hourly history for 0/${prefiltered.size} eligible pairs…")
         val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
+        val hourlyCompleted = AtomicInteger(0)
+        val hourlyHistoryFailures = AtomicInteger(0)
         val ranked = prefiltered.map { ticker ->
             async {
                 coroutineContext.ensureActive()
@@ -330,7 +335,13 @@ internal object BinanceMarketScanner {
                     throw e
                 } catch (_: Exception) {
                     // Incomplete hourly history is not eligible for ATR-based ranking.
+                    hourlyHistoryFailures.incrementAndGet()
                     null
+                } finally {
+                    val completed = hourlyCompleted.incrementAndGet()
+                    if (completed % 5 == 0 || completed == prefiltered.size) {
+                        report("Hourly history: ${completed}/${prefiltered.size} pairs · ${hourlyHistoryFailures.get()} unavailable…")
+                    }
                 }
             }
         }.awaitAll().filterNotNull()
@@ -340,7 +351,8 @@ internal object BinanceMarketScanner {
             it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
                 it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
         }
-        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all eligible liquid markets.")
+        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all ${prefiltered.size} liquid pairs.")
+        report("Hourly history ready: ${candidates.size}/${prefiltered.size} pairs. Loading BTC market context…")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
@@ -349,16 +361,24 @@ internal object BinanceMarketScanner {
         val btcH1 = btcH1Job.await()
         val btcBias = btcRegime(btcH4, btcH1)
 
-        // Market-wide aggregate sockets provide live data without per-symbol stream subscriptions.
-        BinanceFuturesStream.start(candidates.map { it.symbol })
-        delay(2_000)
-        report("Deep-scanning all ${candidates.size} eligible markets; BTC regime: $btcBias…")
+        // The aggregate ticker/book streams cover the whole market. Depth streams are
+        // intentionally subscribed in bounded batches, then awaited before each batch is evaluated.
+        val depthBatchSize = 150
+        report("Deep scan starting: 0/${candidates.size} pairs · BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         var marketsWithPlans = 0
         var marketsWithoutPlans = 0
+        var blockedPlans = 0
+        var marketDataFailures = 0
         var lastMarketFailure: String? = null
         for ((index, ticker) in candidates.withIndex()) {
             coroutineContext.ensureActive()
+            if (index % depthBatchSize == 0) {
+                val depthBatch = candidates.drop(index).take(depthBatchSize).map { it.symbol }
+                BinanceFuturesStream.start(depthBatch)
+                val depthReady = BinanceFuturesStream.awaitDepth(depthBatch, timeoutMs = 5_000L)
+                report("Order-book depth ready: ${depthReady.size}/${depthBatch.size} pairs · scanning ${index + 1}/${candidates.size}…")
+            }
             try {
                 // Fetch each symbol's remaining intervals concurrently; the shared limiter
                 // caps total REST concurrency and spaces request starts to protect Binance.
@@ -379,28 +399,34 @@ internal object BinanceMarketScanner {
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
                 val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias, btcH4)
-                if (marketIdeas.isEmpty()) marketsWithoutPlans++ else marketsWithPlans++
+                if (marketIdeas.isEmpty()) {
+                    marketsWithoutPlans++
+                } else {
+                    marketsWithPlans++
+                    blockedPlans += marketIdeas.count { it.warning.startsWith("BLOCK:", ignoreCase = true) }
+                }
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: BinanceRateLimitException) {
                 throw e
             } catch (e: Exception) {
-                marketsWithoutPlans++
+                marketDataFailures++
                 lastMarketFailure = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
             }
             if (results.isNotEmpty()) {
                 val snapshot = results.toList()
                 withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
             }
-            report("Analyzed ${index + 1}/${candidates.size} markets · ${results.size} plans · ${marketsWithoutPlans} without plans…")
+            report("Scanned ${index + 1}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors…")
         }
         if (results.isEmpty()) {
             val detail = lastMarketFailure?.let { " Last market error: $it" }
                 ?: " Candle history was fetched, but every strategy rejected the available series."
             throw IllegalStateException(
-                "Scan produced no strategy plans from ${candidates.size} shortlisted markets. " +
-                    "Markets with plans: $marketsWithPlans; without plans: $marketsWithoutPlans.$detail"
+                "Scan found no technical setups in ${candidates.size} evaluated pairs (${prefiltered.size} passed the 24h liquidity filter). " +
+                    "Pairs with setups: $marketsWithPlans; no setup: $marketsWithoutPlans; data errors: $marketDataFailures; " +
+                    "hourly history unavailable: ${hourlyHistoryFailures.get()}.$detail"
             )
         }
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
