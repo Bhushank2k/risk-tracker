@@ -69,7 +69,8 @@ internal object ConfluenceScannerV4 {
             val long=s.side=="LONG"; val sign=if(long)1.0 else -1.0
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
             val liquid=liquidityData&&(if(long)depth!!>=-.15 else depth!!<=.15)
-            val fundingOk=funding==null||!funding.isFinite()||(if(long)funding<=.001 else funding>=-.001)
+            val fundingOk=isFundingDataAcceptable(s.side, funding)
+            val fundingUnavailable=funding==null||!funding.isFinite()
             val momentum=if(long)rsi in 38.0..72.0&&macdUp else rsi in 28.0..62.0&&macdDn
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
             val extended=abs(cur.close-s.level)<=atr*.9
@@ -81,14 +82,15 @@ internal object ConfluenceScannerV4 {
                 (if(momentum)10 else if(if(long)rsi<78 else rsi>22)5 else 0)+(if(btcBias==null||btcBias=="Neutral"||!btcAgainst)5 else 2))
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
-            if(!fundingOk)blocks.add("adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
+            if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(rv<1.2)blocks.add("relative volume"); if(!momentum)blocks.add("RSI/MACD"); if(score<70)blocks.add("score")
             val ready=blocks.isEmpty()&&entryOk&&score>=80
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
                 if (!rr) add(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK)
-                if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
+                if (fundingUnavailable) add(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE)
+                else if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
                 if (!volatility) add(TradeIdeaRiskCode.VOLATILITY_OUT_OF_RANGE)
                 if (!extended) add(TradeIdeaRiskCode.EXTENDED_ENTRY)
                 if (rv < 1.2) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
@@ -102,6 +104,7 @@ internal object ConfluenceScannerV4 {
                 !liquid->"BLOCK: Spread must be ≤10 bps and directional order-book depth must be available."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
                 !rr->"BLOCK: Target 1 gross reward/risk is below 2R; deduct actual costs before entry."
+                fundingUnavailable->"BLOCK: A valid funding rate is unavailable; verify funding data before entry."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
