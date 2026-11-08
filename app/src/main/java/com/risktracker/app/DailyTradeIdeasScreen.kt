@@ -1411,7 +1411,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                         SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
                         SummaryLevel("Target · 2R", idea.target1.usd(6), Modifier.weight(1f))
-                        SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
+                        SummaryLevel("Gross R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
  } else {
@@ -1457,8 +1457,9 @@ private fun TradeIdeaCard(
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
                     SummaryLevel("TP2 · 2R", idea.target1.usd(6), Modifier.weight(1f))
-                    SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
+                    SummaryLevel("Gross R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                 }
+                Text("Gross R:R is before fees, funding and slippage; verify net reward/risk remains at least 2R before entry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (density != "Compact") TargetLadder(idea)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
