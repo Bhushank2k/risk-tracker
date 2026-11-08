@@ -1,0 +1,175 @@
+package com.risktracker.app
+
+import android.content.Context
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import java.util.Locale
+import kotlin.math.abs
+
+/** User-configurable, advisory-only risk settings. No exchange orders are submitted. */
+internal data class EntryRiskSettings(
+    val accountEquity: Double = 0.0,
+    val riskPercent: Double = 1.0,
+    val maxLeverage: Int = 5,
+    val maxRiskPerTradePercent: Double = 2.0,
+    val maxCombinedOpenRiskPercent: Double = 2.0,
+    val minRewardRisk: Double = 2.0,
+    val maxActivePositions: Int = 2,
+    val dailyLossLimitPercent: Double = 3.0,
+    val maxConsecutiveLosses: Int = 2,
+    val tp1Percent: Int = 40,
+    val tp2Percent: Int = 30,
+    val tp3Percent: Int = 30
+)
+
+internal object EntryRiskSettingsStore {
+    private const val PREFS = "entry_risk_plan_v1"
+
+    fun load(context: Context): EntryRiskSettings {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return EntryRiskSettings(
+            accountEquity = p.getString("equity", "0")?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0,
+            riskPercent = p.getFloat("risk_percent", 1f).toDouble().coerceIn(0.5, 2.0),
+            maxLeverage = p.getInt("max_leverage", 5).coerceIn(1, 5),
+            maxRiskPerTradePercent = 2.0,
+            maxCombinedOpenRiskPercent = 2.0,
+            minRewardRisk = 2.0,
+            maxActivePositions = 2,
+            dailyLossLimitPercent = 3.0,
+            maxConsecutiveLosses = 2,
+            tp1Percent = 40, tp2Percent = 30, tp3Percent = 30
+        )
+    }
+
+    fun save(context: Context, settings: EntryRiskSettings) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("equity", settings.accountEquity.toString())
+            .putFloat("risk_percent", settings.riskPercent.toFloat())
+            .putInt("max_leverage", settings.maxLeverage)
+            .apply()
+    }
+}
+
+internal data class EntryRiskCalculation(
+    val riskAmount: Double,
+    val stopDistancePercent: Double,
+    val positionNotional: Double,
+    val quantity: Double,
+    val estimatedInitialMargin: Double,
+    val target1Profit: Double,
+    val target2Profit: Double
+)
+
+internal fun calculateEntryRiskPlan(idea: TradeIdea, settings: EntryRiskSettings): EntryRiskCalculation? {
+    val entry = idea.entry
+    val stopDistance = abs(entry - idea.stop)
+    if (settings.accountEquity <= 0.0 || !settings.accountEquity.isFinite() ||
+        entry <= 0.0 || !entry.isFinite() || stopDistance <= 0.0 || !stopDistance.isFinite()) return null
+    val riskAmount = settings.accountEquity * settings.riskPercent / 100.0
+    val stopDistancePercent = stopDistance / entry * 100.0
+    if (stopDistancePercent <= 0.0) return null
+    val notional = riskAmount / (stopDistancePercent / 100.0)
+    if (!notional.isFinite() || notional <= 0.0) return null
+    val reward1R = abs(idea.target1 - entry) / stopDistance
+    val reward2R = abs(idea.target2 - entry) / stopDistance
+    return EntryRiskCalculation(
+        riskAmount = riskAmount,
+        stopDistancePercent = stopDistancePercent,
+        positionNotional = notional,
+        quantity = notional / entry,
+        estimatedInitialMargin = notional / settings.maxLeverage.coerceAtLeast(1),
+        target1Profit = riskAmount * reward1R,
+        target2Profit = riskAmount * reward2R
+    )
+}
+
+@Composable
+internal fun EntryRiskPlanSettingsCard(
+    settings: EntryRiskSettings,
+    onSettingsChanged: (EntryRiskSettings) -> Unit
+) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+    )) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("Entry & Risk Plan", style = MaterialTheme.typography.titleMedium)
+            Text("Balanced profile · 1% account risk · maximum 5x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = if (settings.accountEquity > 0.0) settings.accountEquity.toString() else "",
+                onValueChange = { raw ->
+                    val parsed = raw.replace(",", "").toDoubleOrNull()
+                    if (raw.isBlank()) onSettingsChanged(settings.copy(accountEquity = 0.0))
+                    else if (parsed != null && parsed.isFinite() && parsed >= 0.0) onSettingsChanged(settings.copy(accountEquity = parsed))
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Account equity (USDT)") },
+                placeholder = { Text("Enter your equity to calculate size") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+            Text("Risk per trade: ${"%.1f".format(Locale.US, settings.riskPercent)}% of equity",
+                style = MaterialTheme.typography.bodyMedium)
+            Slider(
+                value = settings.riskPercent.toFloat(),
+                onValueChange = { onSettingsChanged(settings.copy(riskPercent = it.toDouble())) },
+                valueRange = 0.5f..2.0f,
+                steps = 2
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Leverage cap", style = MaterialTheme.typography.bodyMedium)
+                Text("${settings.maxLeverage}x", style = MaterialTheme.typography.bodyMedium)
+            }
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                (1..5).forEachIndexed { index, value ->
+                    SegmentedButton(
+                        selected = settings.maxLeverage == value,
+                        onClick = { onSettingsChanged(settings.copy(maxLeverage = value)) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 5)
+                    ) { Text("${value}x") }
+                }
+            }
+            HorizontalDivider()
+            RiskSettingRow("Maximum risk per trade", "2%")
+            RiskSettingRow("Maximum combined open risk", "2%")
+            RiskSettingRow("Minimum reward / risk", "1:2")
+            RiskSettingRow("Maximum active positions", "2")
+            RiskSettingRow("Daily loss limit", "3%")
+            RiskSettingRow("Loss-streak lockout", "2 consecutive losses")
+            RiskSettingRow("Margin mode", "Isolated")
+            RiskSettingRow("Profit-taking", "40% / 30% / 30%")
+            Text("These are planning limits, not guarantees. Estimates exclude fees, funding, slippage, maintenance margin and liquidation effects. No orders are placed.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RiskSettingRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+internal fun EntryRiskPlanDetails(idea: TradeIdea, settings: EntryRiskSettings) {
+    val plan = calculateEntryRiskPlan(idea, settings)
+    if (plan == null) {
+        Text("Enter account equity above to calculate position quantity, risk amount and estimated margin.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    ScannerMetric("Account risk at stop", "${plan.riskAmount.usd(2)} (${"%.2f".format(Locale.US, settings.riskPercent)}%)")
+    ScannerMetric("Stop distance", "${"%.2f".format(Locale.US, plan.stopDistancePercent)}%")
+    ScannerMetric("Position notional", plan.positionNotional.usd(2))
+    ScannerMetric("Estimated quantity", "${"%.6f".format(Locale.US, plan.quantity)}")
+    ScannerMetric("Estimated initial margin", plan.estimatedInitialMargin.usd(2) + " at ${settings.maxLeverage}x")
+    ScannerMetric("Target 1 gross P&L", "+" + plan.target1Profit.usd(2))
+    ScannerMetric("Target 2 gross P&L", "+" + plan.target2Profit.usd(2))
+}
