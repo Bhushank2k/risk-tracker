@@ -460,17 +460,17 @@ internal object BinanceMarketScanner {
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
             market, t.quoteVolume, btcBias, "Scalp")?.let {
             buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false, runBacktest = false,
-                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M")
+                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H")
         }
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
             market, t.quoteVolume, btcBias, "Intraday")?.let {
             buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false,
-                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M")
+                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H")
         }
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
             market, t.quoteVolume, btcBias, "Swing")?.let {
             buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true, runBacktest = false,
-                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M")
+                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D")
         }
         return listOfNotNull(scalp, intraday, swing)
     }
@@ -478,7 +478,7 @@ internal object BinanceMarketScanner {
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
                           h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true,
                           trendRows: List<ScanCandle> = h1, vwapBars: Int = 96, setupInterval: String = "15M",
-                          executionInterval: String = "5M"): TradeIdea {
+                          executionInterval: String = "5M", trendInterval: String = "1H"): TradeIdea {
         val rsiValue = rsi(setupRows.map { it.close }) ?: 50.0
         val priorVolume = setupRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorVolume > 0.0) setupRows.last().volume / priorVolume else 0.0
@@ -545,7 +545,7 @@ internal object BinanceMarketScanner {
         val risk = abs(plan.entry - plan.stop)
         val rr = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
         return listOf(
-            ("$setupInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
+            ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "Entry: breakout / breakdown followed by retest" to retest,
