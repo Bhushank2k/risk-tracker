@@ -144,6 +144,11 @@ internal fun resolveTradeReplayBar(
     return TradeReplayBarResult(reachedTarget1 = target1Hit && !partial)
 }
 
+
+/** Only candles whose close is known at the decision timestamp may inform replay signals. */
+internal fun closedReplayCandlesAtOrBefore(candles: List<V2Candle>, decisionCloseTime: Long): List<V2Candle> =
+    candles.filter { it.closeTime <= decisionCloseTime }
+
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
@@ -177,8 +182,8 @@ internal object TradeIdeasV2 {
         // Require a full forward window to avoid right-edge censoring and sample bias.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
             val time = m15[i].closeTime
-            val four = h4.filter { it.closeTime <= time }
-            val one = h1.filter { it.closeTime <= time }
+            val four = closedReplayCandlesAtOrBefore(h4, time)
+            val one = closedReplayCandlesAtOrBefore(h1, time)
             if (four.size < 200 || one.size < 50) { i++; continue }
             val f4 = four.map { it.close }
             val f1 = one.map { it.close }
@@ -249,7 +254,7 @@ internal object TradeIdeasV2 {
                 }
                 else -> { i++; continue }
             }
-            val executionBars = m5.filter { it.closeTime <= entryCandle.closeTime }
+            val executionBars = closedReplayCandlesAtOrBefore(m5, entryCandle.closeTime)
             val executionCloses = executionBars.map { it.close }
             val executionFast = ema(executionCloses, 9)
             val executionSlow = ema(executionCloses, 21)
