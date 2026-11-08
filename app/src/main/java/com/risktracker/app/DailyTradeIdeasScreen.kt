@@ -397,12 +397,16 @@ internal object BinanceMarketScanner {
                 // Fetch each symbol's remaining intervals concurrently; the shared limiter
                 // caps total REST concurrency and spaces request starts to protect Binance.
                 val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
+                val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
                 val m15Job = async { cachedCandles(ticker.symbol, "15m", 500) }
                 val m5Job = async { cachedCandles(ticker.symbol, "5m", 1500) }
+                val m1Job = async { cachedCandles(ticker.symbol, "1m", 300) }
                 val h4 = h4Job.await()
                 val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
+                val d1 = d1Job.await()
                 val m15 = m15Job.await()
                 val m5 = m5Job.await()
+                val m1 = m1Job.await()
                 val micro = BinanceFuturesStream.microstructure(ticker.symbol).copy(
                     oiChangePct = openInterestChangePct(ticker.symbol)
                 )
@@ -412,7 +416,7 @@ internal object BinanceMarketScanner {
                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                     changePct = liveTicker?.third ?: ticker.changePct
                 )
-                val marketIdeas = evaluateModes(live, h4, h1, m15, m5, micro, btcBias, btcH4)
+                val marketIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
                 if (marketIdeas.isEmpty()) {
                     marketsWithoutPlans++
                 } else {
@@ -447,21 +451,34 @@ internal object BinanceMarketScanner {
     } }
 
     private fun evaluateModes(
-        t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>,
-        m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
+        t: ScanTicker, d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
+        m15: List<ScanCandle>, m5: List<ScanCandle>, m1: List<ScanCandle>,
+        micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
     ): List<TradeIdea> {
-        val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
+        fun candles(rows: List<ScanCandle>) = rows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
-        val plan = ConfluenceScannerV4.evaluate(four, one, fifteen, five, market, t.quoteVolume, btcBias)
-            ?: return emptyList()
-        return listOf(buildIdea(t, plan, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false))
+        val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
+            market, t.quoteVolume, btcBias, "Scalp")?.let {
+            buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false, runBacktest = false,
+                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M")
+        }
+        val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
+            market, t.quoteVolume, btcBias, "Intraday")?.let {
+            buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false,
+                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M")
+        }
+        val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
+            market, t.quoteVolume, btcBias, "Swing")?.let {
+            buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true, runBacktest = false,
+                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M")
+        }
+        return listOfNotNull(scalp, intraday, swing)
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
-                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true): TradeIdea {
+                          h4: List<ScanCandle>, h1: List<ScanCandle>, micro: MarketMicrostructure, swingMode: Boolean, runBacktest: Boolean = true,
+                          trendRows: List<ScanCandle> = h1, vwapBars: Int = 96, setupInterval: String = "15M",
+                          executionInterval: String = "5M"): TradeIdea {
         val rsiValue = rsi(setupRows.map { it.close }) ?: 50.0
         val priorVolume = setupRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorVolume > 0.0) setupRows.last().volume / priorVolume else 0.0
@@ -479,7 +496,7 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
-        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, h1)
+        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval)
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
@@ -494,7 +511,10 @@ internal object BinanceMarketScanner {
         plan: V2TradePlan,
         setupRows: List<ScanCandle>,
         executionRows: List<ScanCandle>,
-        trendRows: List<ScanCandle>
+        trendRows: List<ScanCandle>,
+        vwapBars: Int,
+        setupInterval: String,
+        executionInterval: String
     ): List<Pair<String, Boolean?>> {
         val isLong = plan.side == "LONG"
         if (!isLong && plan.side != "SHORT") return emptyList()
@@ -502,8 +522,8 @@ internal object BinanceMarketScanner {
         val closes = setupRows.map { it.close }
         val ema20 = ema(closes, 20)
         val lastSetup = setupRows.lastOrNull()
-        val typicalVolume = setupRows.takeLast(96).sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume }
-        val totalVolume = setupRows.takeLast(96).sumOf { it.volume }
+        val typicalVolume = setupRows.takeLast(vwapBars).sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume }
+        val totalVolume = setupRows.takeLast(vwapBars).sumOf { it.volume }
         val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
         val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
         val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
@@ -525,12 +545,12 @@ internal object BinanceMarketScanner {
         val risk = abs(plan.entry - plan.stop)
         val rr = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
         return listOf(
-            ("1H market structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
-            ("15M VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
-            ("15M EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
+            ("$setupInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
+            ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
+            ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "Entry: breakout / breakdown followed by retest" to retest,
-            "5M confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
-            ("Stop-loss beyond recent 5M swing " + (if (isLong) "low" else "high")) to stopAligned,
+            "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
+            ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
             ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
         )
     }
@@ -577,6 +597,7 @@ fun DailyTradeIdeasScreen() {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
+    var horizonFilter by remember { mutableStateOf("All") }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
@@ -687,7 +708,8 @@ fun DailyTradeIdeasScreen() {
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
     // Show every scanner-produced setup, including WAIT and AVOID candidates.
     // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
-    val modeIdeas = liveIdeas
+    val horizonIdeas = liveIdeas.filter { horizonFilter == "All" || it.horizon.startsWith(horizonFilter, ignoreCase = true) }
+    val modeIdeas = horizonIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
             when (tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs)) {
@@ -832,6 +854,11 @@ fun DailyTradeIdeasScreen() {
                     Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
+                        FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option }, label = { Text(option) })
+                    }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
