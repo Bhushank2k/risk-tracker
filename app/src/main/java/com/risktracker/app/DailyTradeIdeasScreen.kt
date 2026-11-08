@@ -435,6 +435,7 @@ internal object BinanceMarketScanner {
         var marketsWithPlans = 0
         var marketsWithoutPlans = 0
         var blockedPlans = 0
+        var gateDiagnostics = ScanGateDiagnostics()
         var marketDataFailures = 0
         var lastMarketFailure: String? = null
         for ((index, ticker) in candidates.withIndex()) {
@@ -473,7 +474,8 @@ internal object BinanceMarketScanner {
                     marketsWithoutPlans++
                 } else {
                     marketsWithPlans++
-                    blockedPlans += marketIdeas.count { idea -> idea.riskCodes.any { it.blocksEntry } }
+                    gateDiagnostics = gateDiagnostics.record(marketIdeas)
+                    blockedPlans = gateDiagnostics.blockedPlans
                 }
                 results.addAll(marketIdeas)
             } catch (e: CancellationException) {
@@ -488,7 +490,7 @@ internal object BinanceMarketScanner {
                 val snapshot = results.toList()
                 withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
             }
-            report("Scanned ${index + 1}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors…")
+            report("Scanned ${index + 1}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors · gates: ${gateDiagnostics.topGateSummary()}…")
         }
         if (results.isEmpty()) {
             val detail = lastMarketFailure?.let { " Last market error: $it" }
@@ -499,6 +501,7 @@ internal object BinanceMarketScanner {
                     "hourly history unavailable: ${hourlyHistoryFailures.get()}.$detail"
             )
         }
+        report("Scan complete · ${results.size} plans · ${gateDiagnostics.blockedPlans} blocked · ${marketsWithoutPlans} no setup · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols.")
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
