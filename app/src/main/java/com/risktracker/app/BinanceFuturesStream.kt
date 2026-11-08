@@ -152,7 +152,7 @@ internal object BinanceFuturesStream {
         val backoffMs = (1_000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
         scope.launch {
             delay(backoffMs)
-            if (depthSocket == null && requestedDepthSymbols.isNotEmpty()) connectDepth()
+            if (depthSocket == null && pendingDepthSocket == null && requestedDepthSymbols.isNotEmpty()) connectDepth()
         }
     }
 

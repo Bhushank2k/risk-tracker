@@ -480,15 +480,13 @@ fun DailyTradeIdeasScreen() {
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
-    var strategyMode by remember { mutableStateOf("Daily Picks") }
+    val strategyMode = "Daily Picks"
     val qualityPrefs = remember { context.getSharedPreferences("trade_idea_quality_v3", android.content.Context.MODE_PRIVATE) }
     var strictQualityMode by remember { mutableStateOf(qualityPrefs.getBoolean("enabled", false)) }
-    var density by remember { mutableStateOf("Compact") }
+    val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var equityInput by remember { mutableStateOf("") }
-    var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context)) }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
@@ -533,7 +531,6 @@ fun DailyTradeIdeasScreen() {
                 updatedAt = scanTime
                 showingCached = false
                 trackedSymbols = readTrackedSymbols()
-                paperStats = TradeIdeaPaperJournal.stats(context)
                 paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
@@ -555,7 +552,6 @@ fun DailyTradeIdeasScreen() {
         TradeIdeaNotifications.schedule(context)
         // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
         BinanceFuturesStream.start(emptyList())
-        paperStats = TradeIdeaPaperJournal.stats(context)
         val cacheAge = cachedScan?.first?.let { System.currentTimeMillis() - it } ?: Long.MAX_VALUE
         if (cacheAge > 10 * 60_000L) refresh()
     }
@@ -563,7 +559,6 @@ fun DailyTradeIdeasScreen() {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
-            paperStats = TradeIdeaPaperJournal.stats(context)
             paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
         }
     }
@@ -579,7 +574,16 @@ fun DailyTradeIdeasScreen() {
             delay(2_000)
         }
     }
-    val liveIdeas = ideas.map { idea -> idea.copy(last = livePrices[idea.symbol] ?: idea.last) }
+    val liveIdeas = ideas.map { idea ->
+        val micro = BinanceFuturesStream.microstructure(idea.symbol)
+        idea.copy(
+            last = livePrices[idea.symbol] ?: idea.last,
+            spreadBps = micro.spreadBps,
+            bookImbalance = micro.bookImbalance,
+            fundingRate = micro.fundingRate,
+            oiChangePct = micro.oiChangePct
+        )
+    }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
     val strictModeIdeas = if (strictQualityMode) liveIdeas.map { idea ->
         if (idea.symbol in trackedSymbols) idea else {
@@ -610,7 +614,7 @@ fun DailyTradeIdeasScreen() {
     }
     val dailyPicks = selectDailyPicks(allModeIdeas)
     val modeIdeas = if (strategyMode == "Daily Picks") {
-        val selected = if (strictQualityMode && filter == "Excluded") {
+        val selected = if (strictQualityMode && filter == "Avoid") {
             allModeIdeas.filter { it.warning.startsWith("BLOCK:", ignoreCase = true) }
         } else dailyPicks
         (selected + allModeIdeas.filter { it.symbol in trackedSymbols }).distinctBy { it.symbol + "|" + it.horizon }
@@ -634,7 +638,7 @@ fun DailyTradeIdeasScreen() {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> stage == TradeIdeaStage.TRACKING
-            "Excluded" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
+            "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
             "Scalp" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
                 (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("scalp", ignoreCase = true)
             "Intraday" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
@@ -666,11 +670,8 @@ fun DailyTradeIdeasScreen() {
     } ?: "Not scanned yet"
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { TradeSessionTimingCard() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("Live prices and order-book updates use Binance WebSocket; REST is reserved for initial history and recovery.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(50),
@@ -705,8 +706,6 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
-            Text("READY = entry confirmed · WAIT = confirmation missing · AVOID = invalid or too extended. Review the plan before placing any trade.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
@@ -785,7 +784,6 @@ fun DailyTradeIdeasScreen() {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Strategy mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 RiskCard(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -793,14 +791,15 @@ fun DailyTradeIdeasScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Strict Quality V3", fontWeight = FontWeight.SemiBold)
-                            Text("Strict 4H/1H/execution-timeframe trend, RSI, ≥1.2× volume, ≥$10M 24h quote volume, fresh 15s order-book depth, funding, signal expiry and paper portfolio limits. Guardrails: 0.5% risk per idea, ≤3× leverage, max 2 positions. No trade is forced.",
+                            Text("Strict quality checks", fontWeight = FontWeight.SemiBold)
+                            Text("Require aligned trends, liquidity, volume, fresh depth and valid risk/reward before an idea can be READY.",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (strictQualityMode) {
-                                Text("$strictReadyCount READY · $strictBlockedCount BLOCKED",
+                                Text("$strictReadyCount READY · $strictBlockedCount blocked",
                                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                Text("Paper risk: ${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% daily loss · ${paperRiskStatus.consecutiveLosses} consecutive losses · ${paperRiskStatus.openPositions} open positions",
-                                    style = MaterialTheme.typography.labelSmall, color = if (paperRiskStatus.dailyStopReached) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Paper risk: ${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% daily loss · ${paperRiskStatus.openPositions} open positions",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (paperRiskStatus.dailyStopReached) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Switch(checked = strictQualityMode, onCheckedChange = { enabled ->
@@ -810,39 +809,14 @@ fun DailyTradeIdeasScreen() {
                         })
                     }
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Daily Picks", "Scalping", "Intraday", "Swing", "All").forEach { mode ->
-                        FilterChip(selected = strategyMode == mode, onClick = { strategyMode = mode },
-                            label = { Text(mode) })
-                    }
-                }
-                Text(
-                    when (strategyMode) {
-                        "Daily Picks" -> "Up to 2 scalp setups (M15/M5) + 1 intraday setup (H1/M15), ranked by quality. Fewer may qualify."
-                        "Scalping" -> "M5 VWAP reclaim and volatility expansion, plus existing M15/M5 setups"
-                        "Intraday" -> "M15 rolling-range breakouts with 5m confirmation, plus existing H1/M15 setups"
-                        "Swing" -> "4H consolidation breakouts and relative-strength momentum with 1H confirmation"
-                        else -> "Showing all qualifying scalp, intraday and swing strategy results."
-                    },
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (strategyMode == "Daily Picks") Text(
-                    "Selected ${dailyPicks.size}/4 · ${dailyPicks.count { it.horizon.contains("Scalp", ignoreCase = true) }} scalp · ${dailyPicks.count { it.horizon.contains("Intraday", ignoreCase = true) }} intraday · ${dailyPicks.count { it.horizon.contains("Swing", ignoreCase = true) }} swing. No quota is forced.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Trade decisions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Tracking", "Excluded", "Scalp", "Intraday", "Swing", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Tracking", "Avoid").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("View", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        listOf("Compact", "Standard", "Expanded").forEach { option ->
-                            FilterChip(selected = density == option, onClick = { density = option }, label = { Text(option, maxLines = 1, softWrap = false) })
-                        }
                     }
                 }
             }
@@ -872,7 +846,7 @@ fun DailyTradeIdeasScreen() {
                                 loading && ideas.isEmpty() -> "Scanning Binance markets…"
                                 error != null && ideas.isEmpty() -> "Could not complete the market scan"
                                 ideas.isEmpty() -> "No scan results yet"
-                                filter == "Excluded" -> "No excluded markets to show"
+                                filter == "Avoid" -> "No excluded markets to show"
                                 filter == "Ready" -> "No READY setups right now"
                                 filter == "Wait" -> "No setups near an entry right now"
                                 strategyMode == "Daily Picks" -> "No qualifying daily picks right now"
@@ -885,7 +859,7 @@ fun DailyTradeIdeasScreen() {
                                 loading && ideas.isEmpty() -> "The scanner is checking eligible Binance USDT perpetual markets. Results will appear when valid setups are found."
                                 error != null && ideas.isEmpty() -> "Check your connection or Binance availability, then refresh the scan."
                                 ideas.isEmpty() -> "Refresh the market scan to look for new setups."
-                                filter == "Excluded" -> "No markets currently meet the excluded status criteria."
+                                filter == "Avoid" -> "No markets currently meet the excluded status criteria."
                                 filter == "Ready" -> "No setup has a confirmed entry trigger and passed all risk checks. Keep waiting; don't force a trade."
                                 filter == "Wait" -> "No valid setup is close enough to its planned entry zone to monitor. The scanner continues checking markets."
                                 strategyMode == "Daily Picks" -> "No setup passed the existing score, proximity and risk gates. The shortlist stays empty rather than forcing a weak trade."
@@ -898,45 +872,7 @@ fun DailyTradeIdeasScreen() {
                 }
             }
         }
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Position size calculator", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val sizingIdea = ideas.firstOrNull { it.symbol !in trackedSymbols && tradeIdeaStage(it, tracked = false) == TradeIdeaStage.ENTRY_CONFIRMED }
-                    val sizing = sizingIdea?.let { TradeSizing.calculate(equityInput.toDoubleOrNull() ?: 0.0, it.entry, it.stop) }
-                    OutlinedTextField(value = equityInput, onValueChange = { equityInput = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account equity (USDT)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    if (sizingIdea != null && sizing != null) {
-                        Text(sizingIdea.symbol + " · " + sizingIdea.side + " · 0.5% risk", fontWeight = FontWeight.SemiBold)
-                        ScannerMetric("Suggested quantity", "%.6f".format(Locale.US, sizing.quantity))
-                        ScannerMetric("Notional value", "$" + "%,.2f".format(Locale.US, sizing.notional))
-                        ScannerMetric("Approx. margin at 3×", "$" + "%,.2f".format(Locale.US, sizing.marginAtMaxLeverage))
-                        ScannerMetric("Planned loss at stop", "$" + "%,.2f".format(Locale.US, sizing.riskAmount) + " (" + "%.2f".format(Locale.US, sizing.actualRiskPercent) + "%)")
-                        Text("Estimate excludes fees, funding, slippage and exchange quantity/step-size filters.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        if (paperStats.isNotEmpty()) {
-            item {
-                RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Performance validation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Paper-trade results are historical observations, not a forecast. Replay excludes fees, funding, slippage and exchange execution effects.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        paperStats.forEach { stat ->
-                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(stat.setup, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                ScannerMetric("Completed samples", stat.closedTrades.toString() + " / 50")
-                                ScannerMetric("Win rate", "%.1f%%".format(Locale.US, stat.winRatePercent))
-                                ScannerMetric("Average result", "%+.2fR".format(Locale.US, stat.averageR))
-                                LinearProgressIndicator(progress = { (stat.closedTrades / 50f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-                    }
-                }
-            }
-        }
+
     }
 }
 
