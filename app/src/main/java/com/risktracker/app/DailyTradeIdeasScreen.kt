@@ -587,10 +587,6 @@ internal object BinanceMarketScanner {
         val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
         val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
         val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
-        val retest = (plan.setup.contains("breakout", ignoreCase = true) &&
-            plan.setup.contains("retest", ignoreCase = true)) ||
-            plan.setup.contains("trend pullback", ignoreCase = true) ||
-            plan.setup.contains("range reversal", ignoreCase = true)
         val candle = executionRows.lastOrNull()
         val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
@@ -610,7 +606,6 @@ internal object BinanceMarketScanner {
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
-            "Entry: V4 setup structure confirmed (pullback / breakout retest / range rejection)" to retest,
             "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
             ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
