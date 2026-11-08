@@ -72,8 +72,9 @@ internal object ConfluenceScannerV4 {
             val fundingUnavailable=funding==null||!funding.isFinite()
             val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
-            val extended=abs(cur.close-s.level)<=atr*.9
-            val entry=exec.close; val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
+            val entry=exec.close
+            val extended=confluenceEntryWithinExtension(entry, s.level, atr)
+            val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
             val t1=entry+sign*risk*2; val t2=entry+sign*risk*3; val rr=geometry&&risk>0&&abs(t1-entry)/risk>=2
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
@@ -126,7 +127,7 @@ internal object ConfluenceScannerV4 {
                 s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
-                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
+                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · depth "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
