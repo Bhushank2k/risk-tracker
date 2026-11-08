@@ -69,6 +69,18 @@ internal data class V2TradePlan(
  * Advisory-only strategy rules. It never submits, edits, or cancels exchange orders.
  * Strategy selection and confluence scoring are owned by ConfluenceScannerV4.
  */
+internal fun tradeIdeaNetReturnR(
+    grossR: Double, entry: Double, riskDistance: Double, heldBars: Int, setupBarMinutes: Int,
+    roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
+): Double {
+    if (!grossR.isFinite() || !entry.isFinite() || !riskDistance.isFinite() || entry <= 0.0 || riskDistance <= 0.0 ||
+        heldBars < 0 || setupBarMinutes <= 0 ||
+        listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return Double.NaN
+    val holdingHours = heldBars.toDouble() * setupBarMinutes / 60.0
+    val costBps = roundTripFeeBps + slippageBps + fundingBpsPer8h * (holdingHours / 8.0)
+    return grossR - entry * costBps / 10_000.0 / riskDistance
+}
+
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
@@ -88,10 +100,15 @@ internal object TradeIdeasV2 {
         btcBias: String? = null
     ): V2TradePlan? = ConfluenceScannerV4.evaluate(h4, h1, m15, m5, micro, quoteVolume, btcBias)
 
-    /** Causal 15m replay with 5m execution confirmation and a 24h maximum holding window. */
-    fun backtest(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>): TradeIdeaBacktestStats {
-        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100) return TradeIdeaBacktestStats()
+    /** Causal breakout/retest replay. Inputs are horizon-specific higher, setup and execution candles. */
+    fun backtest(
+        h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
+        maxHoldingBars: Int = 96, setupBarMinutes: Int = 15, executionBarMinutes: Int = 5,
+        roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
+    ): TradeIdeaBacktestStats {
+        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
+        if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
         var i = 25
         while (i < m15.lastIndex - 1) {
@@ -127,7 +144,7 @@ internal object TradeIdeasV2 {
             val executionFast = ema(executionCloses, 9)
             val executionSlow = ema(executionCloses, 21)
             val executionConfirmed = executionBars.isNotEmpty() &&
-                retest.closeTime - executionBars.last().closeTime <= 10 * 60_000L &&
+                retest.closeTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
                 executionFast != null && executionSlow != null &&
                 (if (long) executionBars.last().close > executionFast && executionFast > executionSlow
                 else executionBars.last().close < executionFast && executionFast < executionSlow)
@@ -142,7 +159,7 @@ internal object TradeIdeasV2 {
             var partial = false
             var result = -1.0
             var exitAt = -1
-            val maxExit = min(i + 2 + 96, m15.size)
+            val maxExit = min(i + 2 + maxHoldingBars, m15.size)
             for (j in i + 2 until maxExit) {
                 val c = m15[j]
                 // Match the paper plan: after the first scale-out, the remaining stop moves to breakeven.
@@ -155,14 +172,16 @@ internal object TradeIdeasV2 {
                 if (t1Hit && !partial) { partial = true; result = 1.0 }
             }
             if (exitAt >= 0) {
-                outcomes.add(result)
+                val heldBars = (exitAt - (i + 1)).coerceAtLeast(0)
+                outcomes.add(tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = exitAt + 1
             } else if (maxExit - 1 < m15.lastIndex) {
-                // Time stop: close any remaining position after 24h instead of silently
+                // Horizon-specific time stop: close remaining exposure instead of silently
                 // dropping unresolved trades (which biases the historical sample).
                 val finalClose = m15[maxExit - 1].close
                 val openR = (finalClose - entry) / risk * sign
-                outcomes.add(if (partial) 1.0 + openR * 0.5 else openR)
+                val heldBars = (maxExit - 1 - (i + 1)).coerceAtLeast(0)
+                outcomes.add(tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = maxExit
             } else i++
         }
