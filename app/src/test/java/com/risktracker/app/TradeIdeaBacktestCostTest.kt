@@ -41,4 +41,16 @@ class TradeIdeaBacktestCostTest {
 
         assertTrue(result.isNaN())
     }
+
+    @Test
+    fun incompleteForwardWindowIsExcludedFromReplay() {
+        assertTrue(hasCompleteTradeHorizon(setupIndex = 10, candleCount = 30, maxHoldingBars = 18))
+        assertTrue(!hasCompleteTradeHorizon(setupIndex = 10, candleCount = 29, maxHoldingBars = 18))
+    }
+
+    @Test
+    fun invalidHorizonBoundsAreRejected() {
+        assertTrue(!hasCompleteTradeHorizon(setupIndex = -1, candleCount = 100, maxHoldingBars = 10))
+        assertTrue(!hasCompleteTradeHorizon(setupIndex = 10, candleCount = 100, maxHoldingBars = 0))
+    }
 }
