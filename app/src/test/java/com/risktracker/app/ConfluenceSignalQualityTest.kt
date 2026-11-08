@@ -33,6 +33,13 @@ class ConfluenceSignalQualityTest {
     @Test fun scoreReflectsPartialVolumeAndBtcHeadwind() {
         assertEquals(79, confluenceScore(true, true, false, 1.3, true, true, true, true))
     }
+    @Test fun extensionIsMeasuredFromActualExecutionPrice() {
+        assertTrue(confluenceEntryWithinExtension(100.8, 100.0, 1.0))
+        assertFalse(confluenceEntryWithinExtension(101.1, 100.0, 1.0))
+        assertFalse(confluenceEntryWithinExtension(Double.NaN, 100.0, 1.0))
+        assertFalse(confluenceEntryWithinExtension(100.0, 100.0, 0.0))
+    }
+
     @Test fun unavailableVolumeDoesNotEarnVolumePoints() {
         assertEquals(90, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
     }
