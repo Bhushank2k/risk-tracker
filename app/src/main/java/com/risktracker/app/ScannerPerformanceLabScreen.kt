@@ -103,12 +103,13 @@ fun ScannerPerformanceLabScreen() {
             Card {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("Historical replay coverage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    MetricLine("Breakout retest scalp", "Replay implemented; aggregate validated result not established")
-                    MetricLine("Trend pullback", "Not yet strategy-specifically replayed")
-                    MetricLine("Liquidity sweep reclaim", "Not yet strategy-specifically replayed")
-                    MetricLine("Swing setups", "Not covered by current replay")
+                    MetricLine("Breakout + retest", "Included in causal replay; aggregate validation pending")
+                    MetricLine("Trend pullback", "Included in causal replay; aggregate validation pending")
+                    MetricLine("Range reversal", "Included in causal replay; aggregate validation pending")
+                    MetricLine("Liquidity sweep reclaim", "Not implemented as a separate replay setup")
+                    MetricLine("Scalp / Intraday / Swing", "Horizon-specific candle intervals are replayed; comparative validation pending")
                     Text(
-                        "The current candle replay is limited to breakout-retest scalp setups. Its stored per-idea sample counts are not a complete portfolio backtest.",
+                        "The causal replay covers breakout-retest, trend-pullback and range-reversal setups using each idea's configured intervals. Per-idea replay statistics are supplementary samples, not a validated portfolio backtest or proof of profitability.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
