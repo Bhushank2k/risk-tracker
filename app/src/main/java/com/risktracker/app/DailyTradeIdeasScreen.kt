@@ -815,7 +815,6 @@ fun DailyTradeIdeasScreen() {
                         })
                     }
                 }
-                EntryRiskPlanSettingsCard(settings = riskSettings, onSettingsChanged = ::updateRiskSettings)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
