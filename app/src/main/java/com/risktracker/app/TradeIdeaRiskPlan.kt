@@ -165,11 +165,21 @@ internal fun EntryRiskPlanDetails(idea: TradeIdea, settings: EntryRiskSettings) 
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    ScannerMetric("Account risk at stop", "${plan.riskAmount.usd(2)} (${"%.2f".format(Locale.US, settings.riskPercent)}%)")
-    ScannerMetric("Stop distance", "${"%.2f".format(Locale.US, plan.stopDistancePercent)}%")
-    ScannerMetric("Position notional", plan.positionNotional.usd(2))
-    ScannerMetric("Estimated quantity", "${"%.6f".format(Locale.US, plan.quantity)}")
-    ScannerMetric("Estimated initial margin", plan.estimatedInitialMargin.usd(2) + " at ${settings.maxLeverage}x")
-    ScannerMetric("Target 1 gross P&L", "+" + plan.target1Profit.usd(2))
-    ScannerMetric("Target 2 gross P&L", "+" + plan.target2Profit.usd(2))
+    RiskPlanMetric("Account risk at stop", formatRiskUsd(plan.riskAmount) + " (${"%.2f".format(Locale.US, settings.riskPercent)}%)")
+    RiskPlanMetric("Stop distance", "${"%.2f".format(Locale.US, plan.stopDistancePercent)}%")
+    RiskPlanMetric("Position notional", formatRiskUsd(plan.positionNotional))
+    RiskPlanMetric("Estimated quantity", "${"%.6f".format(Locale.US, plan.quantity)}")
+    RiskPlanMetric("Estimated initial margin", formatRiskUsd(plan.estimatedInitialMargin) + " at ${settings.maxLeverage}x")
+    RiskPlanMetric("Target 1 gross P&L", "+" + formatRiskUsd(plan.target1Profit))
+    RiskPlanMetric("Target 2 gross P&L", "+" + formatRiskUsd(plan.target2Profit))
 }
+
+@Composable
+private fun RiskPlanMetric(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+    }
+}
+
+private fun formatRiskUsd(value: Double): String = String.format(Locale.US, "\$%,.2f", value)
