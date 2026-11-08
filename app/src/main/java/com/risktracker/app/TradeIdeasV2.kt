@@ -105,7 +105,7 @@ internal object TradeIdeasV2 {
         btcBias: String? = null
     ): V2TradePlan? = ConfluenceScannerV4.evaluate(h4, h1, m15, m5, micro, quoteVolume, btcBias)
 
-    /** Causal breakout/retest replay. Inputs are horizon-specific higher, setup and execution candles. */
+    /** Causal replay for trend pullback, breakout/retest and range reversal setups. */
     fun backtest(
         h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         maxHoldingBars: Int = 96, setupBarMinutes: Int = 15, executionBarMinutes: Int = 5,
@@ -116,7 +116,7 @@ internal object TradeIdeasV2 {
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
         var i = 25
-        // Exclude late setups unless every candle in their full holding window is available.
+        // Require a full forward window to avoid right-edge censoring and sample bias.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
             val time = m15[i].closeTime
             val four = h4.filter { it.closeTime <= time }
@@ -131,63 +131,117 @@ internal object TradeIdeasV2 {
                 one.last().close > e1_50 && e1_20 > e1_50
             val short = four.last().close < e200 && e20 < e50 && e50 < e200 &&
                 one.last().close < e1_50 && e1_20 < e1_50
-            if (!long && !short) { i++; continue }
-            val sign = if (long) 1.0 else -1.0
+            val rangeMode = !long && !short &&
+                abs(e20 - e50) / four.last().close * 100.0 <= 1.2 &&
+                abs(e1_20 - e1_50) / one.last().close * 100.0 <= 0.8
             val history = m15.subList(i - 20, i)
-            val level = if (long) history.maxOf { it.high } else history.minOf { it.low }
-            val breakout = if (long) m15[i].close > level else m15[i].close < level
-            val avg = history.map { it.volume }.average()
-            if (!breakout || avg <= 0.0 || m15[i].volume / avg < 1.5) { i++; continue }
-            val retest = m15[i + 1]
-            val atrValue = atr(m15.subList(0, i + 2))
-            if (atrValue == null) { i++; continue }
+            val avgVolume = history.map { it.volume }.average()
+            val relativeVolume = if (avgVolume > 0.0) m15[i].volume / avgVolume else 0.0
+            val atrValue = atr(m15.subList(0, i + 1))
+            val setupEma = ema(m15.subList(0, i + 1).map { it.close }, 20)
+            val setupRsi = rsi(m15.subList(0, i + 1).map { it.close })
+            if (atrValue == null || setupEma == null || setupRsi == null) { i++; continue }
             val atr = atrValue
-            val touched = if (long) retest.low <= level + atr * 0.25 else retest.high >= level - atr * 0.25
-            val held = if (long) retest.close >= level && retest.close >= m15[i].close
-                else retest.close <= level && retest.close <= m15[i].close
-            val executionBars = m5.filter { it.closeTime <= retest.closeTime }
+            val previous = m15[i - 1]
+            val current = m15[i]
+            val breakoutLevel = if (long) history.maxOf { it.high } else history.minOf { it.low }
+            val breakout = (long || short) && relativeVolume >= 1.5 &&
+                (if (long) current.close > breakoutLevel else current.close < breakoutLevel)
+            val retest = if (i + 1 < m15.size) m15[i + 1] else current
+            val breakoutTouched = if (long) retest.low <= breakoutLevel + atr * 0.25
+                else retest.high >= breakoutLevel - atr * 0.25
+            val breakoutHeld = if (long) retest.close >= breakoutLevel && retest.close >= current.close
+                else retest.close <= breakoutLevel && retest.close <= current.close
+
+            val pullback = (long && current.low in (setupEma - atr * 0.7)..(setupEma + atr * 0.2) &&
+                current.close > setupEma && current.close > previous.close) ||
+                (short && current.high in (setupEma - atr * 0.2)..(setupEma + atr * 0.7) &&
+                    current.close < setupEma && current.close < previous.close)
+
+            val rangeBars = m15.subList(i - 29, i)
+            val rangeHigh = rangeBars.maxOf { it.high }
+            val rangeLow = rangeBars.minOf { it.low }
+            val rangeWidth = rangeHigh - rangeLow
+            val lowerWick = min(current.open, current.close) - current.low
+            val upperWick = current.high - max(current.open, current.close)
+            val rangeLong = rangeMode && rangeWidth > atr * 2.0 &&
+                current.low <= rangeLow + rangeWidth * 0.12 && current.close > rangeLow &&
+                lowerWick >= abs(current.close - current.open) * 0.8 && setupRsi <= 42.0
+            val rangeShort = rangeMode && rangeWidth > atr * 2.0 &&
+                current.high >= rangeHigh - rangeWidth * 0.12 && current.close < rangeHigh &&
+                upperWick >= abs(current.close - current.open) * 0.8 && setupRsi >= 58.0
+
+            val sideLong: Boolean
+            val entryCandle: V2Candle
+            val entryIndex: Int
+            val stopReference: List<V2Candle>
+            when {
+                breakout && breakoutTouched && breakoutHeld -> {
+                    sideLong = long
+                    entryCandle = retest
+                    entryIndex = i + 1
+                    stopReference = listOf(current, retest)
+                }
+                pullback -> {
+                    sideLong = long
+                    entryCandle = current
+                    entryIndex = i
+                    stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
+                }
+                rangeLong || rangeShort -> {
+                    sideLong = rangeLong
+                    entryCandle = current
+                    entryIndex = i
+                    stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
+                }
+                else -> { i++; continue }
+            }
+            val executionBars = m5.filter { it.closeTime <= entryCandle.closeTime }
             val executionCloses = executionBars.map { it.close }
             val executionFast = ema(executionCloses, 9)
             val executionSlow = ema(executionCloses, 21)
             val executionConfirmed = executionBars.isNotEmpty() &&
-                retest.closeTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
+                entryCandle.closeTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
                 executionFast != null && executionSlow != null &&
-                (if (long) executionBars.last().close > executionFast && executionFast > executionSlow
+                (if (sideLong) executionBars.last().close > executionFast && executionFast > executionSlow
                 else executionBars.last().close < executionFast && executionFast < executionSlow)
-            if (!touched || !held || !executionConfirmed) { i++; continue }
-            val entry = retest.close
-            val stop = if (long) min(retest.low, m15[i].low) - atr * 0.20
-                else max(retest.high, m15[i].high) + atr * 0.20
+            if (!executionConfirmed) { i++; continue }
+
+            val sign = if (sideLong) 1.0 else -1.0
+            val entry = entryCandle.close
+            val stop = if (sideLong) stopReference.minOf { it.low } - atr * 0.20
+                else stopReference.maxOf { it.high } + atr * 0.20
             val risk = abs(entry - stop)
             if (risk < atr * 0.35 || risk > atr * 2.5) { i++; continue }
-            val t1 = entry + sign * risk * 2.0
-            val t2 = entry + sign * risk * 3.0
+
             var partial = false
             var result = -1.0
             var exitAt = -1
-            val maxExit = min(i + 2 + maxHoldingBars, m15.size)
-            for (j in i + 2 until maxExit) {
-                val c = m15[j]
-                // Match the paper plan: after the first scale-out, the remaining stop moves to breakeven.
+            val maxExit = min(entryIndex + 1 + maxHoldingBars, m15.size)
+            for (j in entryIndex + 1 until maxExit) {
+                val candle = m15[j]
                 val activeStop = if (partial) entry else stop
-                val stopHit = if (long) c.low <= activeStop else c.high >= activeStop
-                val t1Hit = if (long) c.high >= t1 else c.low <= t1
-                val t2Hit = if (long) c.high >= t2 else c.low <= t2
+                val stopHit = if (sideLong) candle.low <= activeStop else candle.high >= activeStop
+                val target1Hit = if (sideLong) candle.high >= entry + sign * risk * 2.0
+                    else candle.low <= entry - risk * 2.0
+                val target2Hit = if (sideLong) candle.high >= entry + sign * risk * 3.0
+                    else candle.low <= entry - risk * 3.0
                 if (stopHit) { result = if (partial) 1.0 else -1.0; exitAt = j; break }
-                if (t2Hit) { result = 2.5; exitAt = j; break }
-                if (t1Hit && !partial) { partial = true; result = 1.0 }
+                if (target2Hit) { result = 2.5; exitAt = j; break }
+                if (target1Hit && !partial) { partial = true; result = 1.0 }
             }
             if (exitAt >= 0) {
-                val heldBars = (exitAt - (i + 1)).coerceAtLeast(0)
+                val heldBars = (exitAt - entryIndex).coerceAtLeast(0)
                 outcomes.add(tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = exitAt + 1
-            } else if (maxExit - 1 <= m15.lastIndex) {
-                // Horizon-specific time stop: mark remaining exposure at the final available candle.
-                val finalClose = m15[maxExit - 1].close
-                val openR = (finalClose - entry) / risk * sign
-                val heldBars = (maxExit - 1 - (i + 1)).coerceAtLeast(0)
-                outcomes.add(tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
-                i = maxExit
+            } else {
+                // The complete window is present by the loop guard; mark any open remainder at its time stop.
+                val finalIndex = maxExit - 1
+                val openR = (m15[finalIndex].close - entry) / risk * sign
+                val heldBars = (finalIndex - entryIndex).coerceAtLeast(0)
+                outcomes.add(tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
+                    entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
+                i = maxOf(entryIndex + 1, maxExit)
             }
         }
         return if (outcomes.isEmpty()) TradeIdeaBacktestStats()
