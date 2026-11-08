@@ -69,6 +69,18 @@ internal data class V2TradePlan(
  * Advisory-only strategy rules. It never submits, edits, or cancels exchange orders.
  * Strategy selection and confluence scoring are owned by ConfluenceScannerV4.
  */
+internal fun tradeIdeaNetReturnR(
+    grossR: Double, entry: Double, riskDistance: Double, heldBars: Int, setupBarMinutes: Int,
+    roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
+): Double {
+    if (!grossR.isFinite() || !entry.isFinite() || !riskDistance.isFinite() || entry <= 0.0 || riskDistance <= 0.0 ||
+        heldBars < 0 || setupBarMinutes <= 0 ||
+        listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return Double.NaN
+    val holdingHours = heldBars.toDouble() * setupBarMinutes / 60.0
+    val costBps = roundTripFeeBps + slippageBps + fundingBpsPer8h * (holdingHours / 8.0)
+    return grossR - entry * costBps / 10_000.0 / riskDistance
+}
+
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
@@ -161,9 +173,7 @@ internal object TradeIdeasV2 {
             }
             if (exitAt >= 0) {
                 val heldBars = (exitAt - (i + 1)).coerceAtLeast(0)
-                val costBps = roundTripFeeBps + slippageBps + fundingBpsPer8h * (heldBars.toDouble() * setupBarMinutes / 480.0)
-                val costR = entry * costBps / 10_000.0 / risk
-                outcomes.add(result - costR)
+                outcomes.add(tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = exitAt + 1
             } else if (maxExit - 1 < m15.lastIndex) {
                 // Time stop: close any remaining position after 24h instead of silently
@@ -171,9 +181,7 @@ internal object TradeIdeasV2 {
                 val finalClose = m15[maxExit - 1].close
                 val openR = (finalClose - entry) / risk * sign
                 val heldBars = (maxExit - 1 - (i + 1)).coerceAtLeast(0)
-                val costBps = roundTripFeeBps + slippageBps + fundingBpsPer8h * (heldBars.toDouble() * setupBarMinutes / 480.0)
-                val costR = entry * costBps / 10_000.0 / risk
-                outcomes.add((if (partial) 1.0 + openR * 0.5 else openR) - costR)
+                outcomes.add(tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = maxExit
             } else i++
         }
