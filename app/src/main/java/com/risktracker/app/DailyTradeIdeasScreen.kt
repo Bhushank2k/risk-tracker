@@ -1264,6 +1264,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("EXIT PLAN  ·  1R / 2R / 3R / 4R+  ·  25% each", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -1305,9 +1306,10 @@ private fun TradeIdeaCard(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
-                    SummaryLevel("Target 1", idea.target1.usd(6), Modifier.weight(1f))
+                    SummaryLevel("TP2 · 2R", idea.target1.usd(6), Modifier.weight(1f))
                     SummaryLevel("R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                 }
+                if (density != "Compact") TargetLadder(idea)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1337,10 +1339,11 @@ private fun TradeIdeaCard(
                 IdeaLevel("Entry trigger", idea.entry)
                 IdeaLevel("Entry zone high", zoneHigh)
                 IdeaLevel("Stop-loss", idea.stop)
-                IdeaLevel("Target 1", idea.target1)
-                IdeaLevel("Target 2", idea.target2)
-                ScannerMetric("Target 1 reward / risk", "%.2fR".format(Locale.US, rewardRisk))
-                ScannerMetric("Exit plan", "TP1 40% at target 1 · TP2 30% at target 2 · trail 30%")
+                Text("MULTI-TARGET EXIT PLAN", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                TargetLadder(idea)
+                ScannerMetric("Scanner qualification", "Existing V4 gate: gross target 1 ≥ 2R")
+                ScannerMetric("Allocation", "25% · 25% · 25% · 25%")
+                Text("Illustrative paper plan only. Targets are calculated from initial entry risk; no exchange orders or partial fills are managed.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 EntryRiskPlanDetails(idea, riskSettings)
                 }
             }
@@ -1409,6 +1412,42 @@ private fun TradeIdeaCard(
         }
     }
 }
+@Composable
+private fun TargetLadder(idea: TradeIdea) {
+    val risk = abs(idea.entry - idea.stop)
+    if (risk <= 0.0 || !risk.isFinite() || idea.side !in setOf("LONG", "SHORT")) return
+    val direction = if (idea.side == "LONG") 1.0 else -1.0
+    val targets = listOf(
+        Triple("TP1", 1.0, "25% · bank first profit"),
+        Triple("TP2", 2.0, "25% · reduce downside"),
+        Triple("TP3", 3.0, "25% · secure extension"),
+        Triple("TP4", 4.0, "25% · runner / trail")
+    )
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f), RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("TARGET LADDER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text("25% at each level", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        targets.forEach { (label, multiple, note) ->
+            val price = idea.entry + direction * risk * multiple
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, modifier = Modifier.width(38.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("%.0fR".format(Locale.US, multiple), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    Text(note, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(price.usd(6), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Text("Move stop to breakeven only after TP2; trail the final runner after TP3. Adjust for fees, funding and slippage.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
