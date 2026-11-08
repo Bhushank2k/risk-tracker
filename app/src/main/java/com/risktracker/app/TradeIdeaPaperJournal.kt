@@ -19,7 +19,7 @@ internal data class PaperRiskStatus(
     val consecutiveLosses: Int,
     val openPositions: Int
 ) {
-    val dailyStopReached: Boolean get() = dailyLossPercent >= 1.5 || consecutiveLosses >= 2
+    val dailyStopReached: Boolean get() = dailyLossPercent >= 3.0 || consecutiveLosses >= 2
 }
 
 internal object TradeIdeaPaperJournal {
@@ -123,7 +123,7 @@ internal object TradeIdeaPaperJournal {
             }
         }.distinct().size
         return PaperRiskStatus(
-            dailyLossPercent = (-todayR * 0.5).coerceAtLeast(0.0),
+            dailyLossPercent = (-todayR * 1.0).coerceAtLeast(0.0),
             consecutiveLosses = consecutiveLosses,
             openPositions = openPositions
         )
