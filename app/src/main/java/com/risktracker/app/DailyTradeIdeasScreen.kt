@@ -670,7 +670,10 @@ fun DailyTradeIdeasScreen() {
                     color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 Text("Price alerts are not real-time guarantees.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (loading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 else if (showingCached) Text("Showing the last saved scan while fresh market data is unavailable.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
