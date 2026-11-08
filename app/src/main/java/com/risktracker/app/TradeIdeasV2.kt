@@ -28,13 +28,13 @@ internal data class V2TradePlan(
 
 /**
  * Advisory-only strategy rules. It never submits, edits, or cancels exchange orders.
- * Scalping uses a 15m breakout/retest with 5m confirmation; Swing uses 1h setup with 15m confirmation.
+ * Strategy selection and confluence scoring are owned by ConfluenceScannerV4.
  */
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
     const val MAX_SPREAD_BPS = 10.0
-    const val MIN_SCORE = 75
+    const val MIN_SCORE = 70
     private const val MIN_QUOTE_VOLUME = 5_000_000.0
 
     fun evaluate(
