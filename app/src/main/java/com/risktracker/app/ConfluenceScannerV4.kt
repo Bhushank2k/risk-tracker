@@ -20,6 +20,10 @@ internal object ConfluenceScannerV4 {
         if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
             !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
+        val bias1Label = if (horizon == "Scalp") "1H" else if (horizon == "Swing") "1D" else "4H"
+        val bias2Label = if (horizon == "Scalp") "15M" else if (horizon == "Swing") "4H" else "1H"
+        val setupLabel = if (horizon == "Scalp") "5M" else if (horizon == "Swing") "1H" else "15M"
+        val executionLabel = if (horizon == "Scalp") "1M" else if (horizon == "Swing") "15M" else "5M"
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)?:return null; val e4200=ema(c4,200)?:return null
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null; val e1200=ema(c1,200)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
@@ -36,15 +40,15 @@ internal object ConfluenceScannerV4 {
         val macdUp=macd>0&&macd>=prevMacd; val macdDn=macd<0&&macd<=prevMacd
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
-            setups.add(Setup("Trend pullback","LONG",e1520,false,"15M EMA20 pullback reclaimed in aligned 4H/1H uptrend"))
+            setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned 4H/1H uptrend"))
         if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close)
-            setups.add(Setup("Trend pullback","SHORT",e1520,false,"15M EMA20 pullback rejected in aligned 4H/1H downtrend"))
+            setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 pullback rejected in aligned 4H/1H downtrend"))
         for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
             val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
             if(av<=0||m15[i].volume/av<1.5)continue
             val hi=hist.maxOf{it.high}; val lo=hist.minOf{it.low}
             if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
-                setups.add(Setup("Breakout + retest","LONG",hi,false,"15M 20-bar breakout on ≥1.5× volume, then retest and hold"))
+                setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.5× volume, then retest and hold"))
             if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
                 setups.add(Setup("Breakout + retest","SHORT",lo,false,"15M 20-bar breakdown on ≥1.5× volume, then retest and hold"))
         }
@@ -53,9 +57,9 @@ internal object ConfluenceScannerV4 {
             if(width>atr*2){
                 val lw=min(cur.open,cur.close)-cur.low; val uw=cur.high-max(cur.open,cur.close)
                 if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42)
-                    setups.add(Setup("Range reversal","LONG",lo,true,"Neutral 4H/1H regime; lower range rejection and RSI reclaim"))
+                    setups.add(Setup("Range reversal","LONG",lo,true,"Neutral ${bias1Label}/${bias2Label} regime; lower range rejection and RSI reclaim"))
                 if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58)
-                    setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral 4H/1H regime; upper range rejection and RSI rollover"))
+                    setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral ${bias1Label}/${bias2Label} regime; upper range rejection and RSI rollover"))
             }
         }
         if(setups.isEmpty())return null
@@ -94,11 +98,11 @@ internal object ConfluenceScannerV4 {
                 score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
                 else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
             }
-            val reasons=listOf("Confluence score "+score+"/100: 4H+1H 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC 5",
-                s.detail,if(s.range)"Range regime: compressed 4H/1H; reversal restricted to range edges" else "4H and 1H EMA20/50/200 aligned "+s.side,
-                if(entryOk)"5M EMA9/21 confirms entry" else "Waiting for completed 5M EMA9/21 confirmation",
-                "15M relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
-                "15M RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
+            val reasons=listOf("Confluence score "+score+"/100: ${bias1Label}+${bias2Label} 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC 5",
+                s.detail,if(s.range)"Range regime: compressed 4H/1H; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
+                if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed 5M EMA9/21 confirmation",
+                "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
+                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · depth "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
