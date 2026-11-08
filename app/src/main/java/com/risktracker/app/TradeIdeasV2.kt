@@ -332,7 +332,9 @@ internal object TradeIdeasV2 {
             val maxExit = min(i + 2 + 96, m15.size)
             for (j in i + 2 until maxExit) {
                 val c = m15[j]
-                val stopHit = if (long) c.low <= stop else c.high >= stop
+                // Match the paper plan: after the first scale-out, the remaining stop moves to breakeven.
+                val activeStop = if (partial) entry else stop
+                val stopHit = if (long) c.low <= activeStop else c.high >= activeStop
                 val t1Hit = if (long) c.high >= t1 else c.low <= t1
                 val t2Hit = if (long) c.high >= t2 else c.low <= t2
                 if (stopHit) { result = if (partial) 1.0 else -1.0; exitAt = j; break }
