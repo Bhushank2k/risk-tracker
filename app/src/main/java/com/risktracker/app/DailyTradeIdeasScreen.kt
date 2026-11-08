@@ -54,7 +54,8 @@ internal data class TradeIdea(
     val setup: String, val reasons: List<String>, val warning: String, val horizon: String,
     val bias5m: String, val spreadBps: Double?, val bookImbalance: Double?,
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats,
-    val volatilityPct: Double = 0.0
+    val volatilityPct: Double = 0.0,
+    val strategyChecks: List<Pair<String, Boolean?>> = emptyList()
 )
 internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?
@@ -85,7 +86,15 @@ internal object TradeIdeaCache {
                 spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
                 fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
                 backtest = TradeIdeaBacktestStats(stats.optInt("trades"), stats.optInt("wins"), stats.optDouble("averageR")),
-                volatilityPct = x.optDouble("volatilityPct", 0.0)
+                volatilityPct = x.optDouble("volatilityPct", 0.0),
+                strategyChecks = x.optJSONArray("strategyChecks")?.let { checks ->
+                    (0 until checks.length()).mapNotNull { index ->
+                        checks.optJSONObject(index)?.let { item ->
+                            val passed: Boolean? = if (!item.has("passed") || item.isNull("passed")) null else item.optBoolean("passed")
+                            item.optString("label").takeIf { it.isNotBlank() }?.let { it to passed }
+                        }
+                    }
+                } ?: emptyList()
             )
         }
         if (timestamp <= 0L) null else timestamp to ideas
@@ -98,6 +107,11 @@ internal object TradeIdeaCache {
                 val reasons = JSONArray().apply { idea.reasons.forEach { put(it) } }
                 val stats = JSONObject().put("trades", idea.backtest.trades)
                     .put("wins", idea.backtest.wins).put("averageR", idea.backtest.averageR)
+                val strategyChecks = JSONArray().apply {
+                    idea.strategyChecks.forEach { (label, passed) ->
+                        put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
+                    }
+                }
                 rows.put(JSONObject()
                     .put("symbol", idea.symbol).put("side", idea.side).put("score", idea.score)
                     .put("volume", idea.volume).put("change", idea.change).put("last", idea.last)
@@ -111,7 +125,7 @@ internal object TradeIdeaCache {
                     .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
                     .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
                     .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
-                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct))
+                    .put("backtest", stats).put("volatilityPct", idea.volatilityPct).put("strategyChecks", strategyChecks))
             }
             val root = JSONObject().put("updatedAt", updatedAt).put("ideas", rows)
             context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
@@ -465,13 +479,85 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
             )
         }.getOrDefault(TradeIdeaBacktestStats())
+        val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, h1)
         return TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
-            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct
+            micro.oiChangePct, if (swingMode) TradeIdeaBacktestStats() else replay, t.volatilityPct,
+            strategyChecks
         )
+    }
+
+    private fun buildStrategyChecks(
+        plan: V2TradePlan,
+        setupRows: List<ScanCandle>,
+        executionRows: List<ScanCandle>,
+        trendRows: List<ScanCandle>
+    ): List<Pair<String, Boolean?>> {
+        val isLong = plan.side == "LONG"
+        if (!isLong && plan.side != "SHORT") return emptyList()
+        val trendAligned = if (isLong) hasHigherHighsAndLows(trendRows) else hasLowerHighsAndLows(trendRows)
+        val closes = setupRows.map { it.close }
+        val ema20 = ema(closes, 20)
+        val lastSetup = setupRows.lastOrNull()
+        val typicalVolume = setupRows.takeLast(96).sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume }
+        val totalVolume = setupRows.takeLast(96).sumOf { it.volume }
+        val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
+        val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
+        val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
+        val retest = plan.setup.contains("breakout", ignoreCase = true) &&
+            plan.setup.contains("retest", ignoreCase = true)
+        val candle = executionRows.lastOrNull()
+        val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
+        val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
+        val candleAligned = candle?.let {
+            val directionOk = if (isLong) it.close > it.open else it.close < it.open
+            val requiredVolume = if (retest) 1.5 else 1.2
+            directionOk && volumeRatio >= requiredVolume
+        }
+        val recent = executionRows.dropLast(1).takeLast(20)
+        val swingLow = recent.minOfOrNull { it.low }
+        val swingHigh = recent.maxOfOrNull { it.high }
+        val stopAligned = if (isLong) swingLow != null && plan.stop < swingLow
+            else swingHigh != null && plan.stop > swingHigh
+        val risk = abs(plan.entry - plan.stop)
+        val rr = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
+        return listOf(
+            ("1H market structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
+            ("15M VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
+            ("15M EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
+            "Entry: breakout / breakdown followed by retest" to retest,
+            "5M confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
+            ("Stop-loss beyond recent 5M swing " + (if (isLong) "low" else "high")) to stopAligned,
+            ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
+        )
+    }
+
+    private fun hasHigherHighsAndLows(rows: List<ScanCandle>): Boolean =
+        hasOrderedSwingPoints(rows, higher = true)
+
+    private fun hasLowerHighsAndLows(rows: List<ScanCandle>): Boolean =
+        hasOrderedSwingPoints(rows, higher = false)
+
+    private fun hasOrderedSwingPoints(rows: List<ScanCandle>, higher: Boolean): Boolean {
+        if (rows.size < 12) return false
+        val window = rows.takeLast(60)
+        val highs = mutableListOf<Double>()
+        val lows = mutableListOf<Double>()
+        for (i in 2 until window.size - 2) {
+            val current = window[i]
+            if ((i - 2 until i).all { window[it].high < current.high } &&
+                (i + 1..i + 2).all { window[it].high <= current.high }) highs.add(current.high)
+            if ((i - 2 until i).all { window[it].low > current.low } &&
+                (i + 1..i + 2).all { window[it].low >= current.low }) lows.add(current.low)
+        }
+        if (highs.size < 2 || lows.size < 2) return false
+        val lastHighs = highs.takeLast(2)
+        val lastLows = lows.takeLast(2)
+        return if (higher) lastHighs[1] > lastHighs[0] && lastLows[1] > lastLows[0]
+            else lastHighs[1] < lastHighs[0] && lastLows[1] < lastLows[0]
     }
 }
 
@@ -906,7 +992,6 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val halfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
     val zoneLow = idea.entry - halfWidth
     val zoneHigh = idea.entry + halfWidth
-    val tooFar = entryTooFarFromPlan(idea)
     val invalidated = livePriceInvalidatesPlan(idea)
     // Share the main card's final state; the coach score is informational only.
     val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
@@ -930,7 +1015,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
-    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, listOf(
+    val combinedChecks = listOf(
         "4H trend aligned" to trend4h,
         "1H trend aligned" to trend1h,
         "5M execution trend aligned" to trend5m,
@@ -939,7 +1024,8 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
         ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
-    ))
+    ) + idea.strategyChecks
+    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
 }
 
 @Composable
@@ -958,7 +1044,7 @@ private fun EntryGuidancePanel(
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.SemiBold)
@@ -1083,6 +1169,14 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     if (tracked) return TradeIdeaStage.TRACKING
     if (snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
+    // Legacy cache entries without this strategy data are not eligible for READY.
+    if (idea.strategyChecks.isEmpty() || idea.strategyChecks.any { it.second != true }) {
+        val riskDistance = abs(idea.entry - idea.stop)
+        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
+        return if (idea.entryTriggered && entryTooFarFromPlan(idea) && favorableMove > entryTolerance)
+            TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.WAIT_CONFIRMATION
+    }
     if (idea.entryTriggered) {
         if (!entryTooFarFromPlan(idea)) return TradeIdeaStage.ENTRY_CONFIRMED
 
