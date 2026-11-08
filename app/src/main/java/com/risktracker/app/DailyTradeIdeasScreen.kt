@@ -45,6 +45,22 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
+internal data class MarketMover(val symbol: String, val last: Double, val changePct: Double, val quoteVolume: Double, val rangePct: Double)
+
+internal fun rankMarketMovers(movers: List<MarketMover>, limit: Int = 12): List<MarketMover> {
+    if (limit <= 0) return emptyList()
+    return movers.asSequence()
+        .filter { it.symbol.isNotBlank() && it.last.isFinite() && it.last > 0.0 &&
+            it.changePct.isFinite() && it.quoteVolume.isFinite() && it.quoteVolume > 0.0 &&
+            it.rangePct.isFinite() && it.rangePct >= 0.0 }
+        .distinctBy { it.symbol }
+        .sortedByDescending {
+            abs(it.changePct) * 0.65 + it.rangePct * 0.35 +
+                kotlin.math.ln1p(it.quoteVolume / 1_000_000.0).coerceAtMost(5.0) * 0.5
+        }
+        .take(limit)
+        .toList()
+}
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
@@ -356,7 +372,8 @@ internal object BinanceMarketScanner {
 
     suspend fun scan(
         progress: (String) -> Unit,
-        onPartialResults: (List<TradeIdea>) -> Unit = {}
+        onPartialResults: (List<TradeIdea>) -> Unit = {},
+        onMarketMovers: (List<MarketMover>) -> Unit = {}
     ): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading active USDT perpetual contracts (one REST bootstrap)…")
@@ -366,6 +383,19 @@ internal object BinanceMarketScanner {
         }.map { it.optString("symbol") }.toSet()
         report("Found ${allowed.size} active USDT-M perpetual pairs. Loading 24h market statistics…")
         val all = JSONArray(get("/fapi/v1/ticker/24hr"))
+        val allMarketMovers = (0 until all.length()).mapNotNull { i ->
+            val x = all.optJSONObject(i) ?: return@mapNotNull null
+            val symbol = x.optString("symbol")
+            if (symbol !in allowed) return@mapNotNull null
+            val last = x.optString("lastPrice").toDoubleOrNull() ?: return@mapNotNull null
+            val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+            val change = x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
+            val high = x.optString("highPrice").toDoubleOrNull() ?: last
+            val low = x.optString("lowPrice").toDoubleOrNull() ?: last
+            MarketMover(symbol, last, change, quote, ((high - low) / last * 100.0).coerceAtLeast(0.0))
+        }
+        val moversSnapshot = rankMarketMovers(allMarketMovers)
+        withContext(Dispatchers.Main.immediate) { onMarketMovers(moversSnapshot) }
         val prefiltered = (0 until all.length()).mapNotNull { i ->
             val x = all.optJSONObject(i) ?: return@mapNotNull null
             val symbol = x.optString("symbol")
@@ -648,6 +678,7 @@ fun DailyTradeIdeasScreen() {
     val cachedScan = remember { TradeIdeaCache.load(context) }
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
+    var marketMovers by remember { mutableStateOf(emptyList<MarketMover>()) }
     fun readTrackedPlanKeys(rows: List<TradeIdea>): Set<String> {
         val all = trackingPrefs.all
         val tracked = all.keys.filter { key -> key.startsWith("plan_") && (all[key] as? Float ?: 0f) > 0f }.toMutableSet()
@@ -714,6 +745,7 @@ fun DailyTradeIdeasScreen() {
             try {
                 val freshIdeas = BinanceMarketScanner.scan(
                     progress = { status = it },
+                    onMarketMovers = { movers -> marketMovers = movers },
                     onPartialResults = { partial ->
                         ideas = partial
                         updatedAt = System.currentTimeMillis()
@@ -928,6 +960,11 @@ fun DailyTradeIdeasScreen() {
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            }
+        }
+        if (marketMovers.isNotEmpty()) {
+            item {
+                MarketMoversPanel(movers = marketMovers)
             }
         }
         item {
