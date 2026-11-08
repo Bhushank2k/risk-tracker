@@ -492,7 +492,7 @@ fun DailyTradeIdeasScreen() {
     fun updateRiskSettings(next: EntryRiskSettings) {
         riskSettings = next
         EntryRiskSettingsStore.save(context, next)
-        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, next.riskPercent)
+        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = next.riskPercent)
     }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
