@@ -489,7 +489,7 @@ fun DailyTradeIdeasScreen() {
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var equityInput by remember { mutableStateOf("") }
     var paperStats by remember { mutableStateOf(TradeIdeaPaperJournal.stats(context)) }
-    val paperRiskStatus = remember(paperStats, trackedSymbols) { TradeIdeaPaperJournal.riskStatus(context) }
+    var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context)) }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
     val scope = rememberCoroutineScope()
@@ -534,6 +534,7 @@ fun DailyTradeIdeasScreen() {
                 showingCached = false
                 trackedSymbols = readTrackedSymbols()
                 paperStats = TradeIdeaPaperJournal.stats(context)
+                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
             } catch (e: CancellationException) {
@@ -563,6 +564,7 @@ fun DailyTradeIdeasScreen() {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
             paperStats = TradeIdeaPaperJournal.stats(context)
+            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context)
         }
     }
     LaunchedEffect(ideas) {
@@ -853,13 +855,13 @@ fun DailyTradeIdeasScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
+                TradeIdeaCard(idea, density, strictQualityMode, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
         } else if (trackedVisible.isEmpty()) {
             item {
@@ -1055,11 +1057,12 @@ private fun EntryGuidancePanel(
     strictMode: Boolean = false,
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
+    trackedPositionCount: Int = 0,
     isTracked: Boolean = false
 ) {
     val strictAssessment = if (strictMode) remember(idea, snapshotAgeMs, paperRiskStatus, isTracked) {
         TradeIdeasV3.assess(
-            idea, snapshotAgeMs, paperRiskStatus.openPositions, isTracked,
+            idea, snapshotAgeMs, trackedPositionCount, isTracked,
             paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions
         )
     } else null
@@ -1218,6 +1221,7 @@ private fun TradeIdeaCard(
     strictMode: Boolean = false,
     snapshotAgeMs: Long = Long.MAX_VALUE,
     paperRiskStatus: PaperRiskStatus = PaperRiskStatus(0.0, 0, 0),
+    trackedPositionCount: Int = 0,
     onTrackingChanged: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -1413,7 +1417,7 @@ private fun TradeIdeaCard(
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
-                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedEntry != null)
+                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, strictMode, snapshotAgeMs, paperRiskStatus, trackedPositionCount, trackedEntry != null)
                 Text("Trend: 4H " + idea.bias4h + " · 1H " + idea.bias1h + " · 5M " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 Text("15M RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
