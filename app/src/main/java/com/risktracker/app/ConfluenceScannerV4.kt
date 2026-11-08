@@ -8,12 +8,17 @@ import kotlin.math.min
 internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
-        micro: V2Microstructure, quoteVolume: Double, btcBias: String?): V2TradePlan? {
+        micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
         if (h4.size < 200 || h1.size < 200 || m15.size < 45 || m5.size < 30 || quoteVolume < 5_000_000.0) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
-        if (!fresh(h4.last().closeTime,now,8*3600000L) || !fresh(h1.last().closeTime,now,2*3600000L) ||
-            !fresh(m15.last().closeTime,now,30*60000L) || !fresh(m5.last().closeTime,now,15*60000L)) return null
+        val freshness = when (horizon) {
+            "Scalp" -> longArrayOf(2 * 3600000L, 30 * 60000L, 15 * 60000L, 5 * 60000L)
+            "Swing" -> longArrayOf(48 * 3600000L, 8 * 3600000L, 2 * 3600000L, 30 * 60000L)
+            else -> longArrayOf(8 * 3600000L, 2 * 3600000L, 30 * 60000L, 15 * 60000L)
+        }
+        if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
+            !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)?:return null; val e4200=ema(c4,200)?:return null
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null; val e1200=ema(c1,200)?:return null
@@ -98,7 +103,10 @@ internal object ConfluenceScannerV4 {
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
-                if(s.range)"Intraday · M15 range / M5 execution" else "Intraday · M15 setup / M5 execution",
+                if (horizon == "Scalp") "Scalp · M5 setup / M1 execution"
+                else if (horizon == "Swing") "Swing · H1 setup / M15 execution"
+                else if (s.range) "Intraday · M15 range / M5 execution"
+                else "Intraday · M15 setup / M5 execution",
                 if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral",if(up1)"Bullish" else if(dn1)"Bearish" else "Neutral",
                 if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons)
         }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()
