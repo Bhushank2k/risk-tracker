@@ -148,35 +148,18 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaCache.save(context, scanCompletedAt, allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
 
-            // If Strict Quality V3 is enabled, background alerts and paper entries use
-            // the same hard gates as the foreground screen.
-            val strictModeEnabled = context.getSharedPreferences("trade_idea_quality_v3", Context.MODE_PRIVATE)
-                .getBoolean("enabled", false)
             val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt)
             val trackingPrefs = context.getSharedPreferences("trade_idea_tracking_v1", Context.MODE_PRIVATE)
             val manuallyTrackedSymbols = trackingPrefs.all.keys
                 .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
                 .map { it.removePrefix("entry_") }.toSet()
-            val activePositionCount = maxOf(paperRisk.openPositions, manuallyTrackedSymbols.size)
-            val alertIdeas = if (strictModeEnabled) allIdeas.map { idea ->
-                val assessment = TradeIdeasV3.assess(
-                    idea, 0L, activePositionCount, idea.symbol in manuallyTrackedSymbols,
-                    paperRisk.dailyLossPercent, paperRisk.consecutiveLosses, activePositionCount
-                )
-                idea.copy(
-                    score = assessment.score,
-                    warning = if (assessment.blockers.isNotEmpty()) {
-                        "BLOCK: V3 Strict Quality — " + assessment.blockers.joinToString(" ")
-                    } else idea.warning
-                )
-            } else allIdeas
+            val alertIdeas = allIdeas
 
             // Scanning and cache refresh do not require notification permission or opt-in.
             // Only entry/exit alerts and paper-plan management are gated by the user's alert switch.
             val readyAlertsEnabled = TradeIdeaNotifications.isReadyEnabled(context)
             val entryAlertsEnabled = TradeIdeaNotifications.isEntryEnabled(context)
-            if (!strictModeEnabled &&
-                (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled))) {
+            if (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled)) {
                 return Result.success()
             }
 
@@ -201,16 +184,12 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                 TradeIdeaReadyAlertStore.clear(context)
             }
 
-            // Strict Quality V3 keeps paper-plan outcomes current even when push alerts are opted out.
-            if (!entryAlertsEnabled && !strictModeEnabled) return Result.success()
+            if (!entryAlertsEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
-            val entrySlots = if (strictModeEnabled) {
-                minOf((6 - plans.size).coerceAtLeast(0), (TradeIdeasV3.MAX_TRACKED_POSITIONS - activePositionCount).coerceAtLeast(0))
-            } else (6 - plans.size).coerceAtLeast(0)
+            val entrySlots = (6 - plans.size).coerceAtLeast(0)
             alertIdeas.filter {
                 it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
-                    (!strictModeEnabled || (!it.warning.startsWith("BLOCK:", ignoreCase = true) && it.symbol !in manuallyTrackedSymbols)) &&
                     (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
                     (it.oiChangePct == null || it.oiChangePct > -1.0) &&
                     it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
