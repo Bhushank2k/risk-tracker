@@ -97,7 +97,13 @@ internal object TradeIdeaCache {
                     longAverageR = stats.optDouble("longAverageR", Double.NaN).takeIf { it.isFinite() },
                     shortTrades = stats.optInt("shortTrades"),
                     shortWins = stats.optInt("shortWins"),
-                    shortAverageR = stats.optDouble("shortAverageR", Double.NaN).takeIf { it.isFinite() }
+                    shortAverageR = stats.optDouble("shortAverageR", Double.NaN).takeIf { it.isFinite() },
+                    trendTrades = stats.optInt("trendTrades"),
+                    trendWins = stats.optInt("trendWins"),
+                    trendAverageR = stats.optDouble("trendAverageR", Double.NaN).takeIf { it.isFinite() },
+                    rangeTrades = stats.optInt("rangeTrades"),
+                    rangeWins = stats.optInt("rangeWins"),
+                    rangeAverageR = stats.optDouble("rangeAverageR", Double.NaN).takeIf { it.isFinite() }
                 ),
                 volatilityPct = x.optDouble("volatilityPct", 0.0),
                 strategyChecks = x.optJSONArray("strategyChecks")?.let { checks ->
@@ -135,6 +141,10 @@ internal object TradeIdeaCache {
                     .put("longAverageR", idea.backtest.longAverageR ?: JSONObject.NULL)
                     .put("shortTrades", idea.backtest.shortTrades).put("shortWins", idea.backtest.shortWins)
                     .put("shortAverageR", idea.backtest.shortAverageR ?: JSONObject.NULL)
+                    .put("trendTrades", idea.backtest.trendTrades).put("trendWins", idea.backtest.trendWins)
+                    .put("trendAverageR", idea.backtest.trendAverageR ?: JSONObject.NULL)
+                    .put("rangeTrades", idea.backtest.rangeTrades).put("rangeWins", idea.backtest.rangeWins)
+                    .put("rangeAverageR", idea.backtest.rangeAverageR ?: JSONObject.NULL)
                 val strategyChecks = JSONArray().apply {
                     idea.strategyChecks.forEach { (label, passed) ->
                         put(JSONObject().put("label", label).put("passed", passed ?: JSONObject.NULL))
@@ -1647,6 +1657,13 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                         (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
                         "  |  SHORT " + stats.shortTrades + " trades · " +
                         (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "TREND " + stats.trendTrades + " trades · " +
+                        (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                        "  |  RANGE " + stats.rangeTrades + " trades · " +
+                        (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 val lower = stats.winRateLower95 ?: 0.0
