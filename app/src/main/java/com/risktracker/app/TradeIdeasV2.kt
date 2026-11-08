@@ -86,6 +86,38 @@ internal fun tradeIdeaNetReturnR(
     return grossR - entry * costBps / 10_000.0 / riskDistance
 }
 
+internal fun isReplayTrendPullback(
+    isLong: Boolean, current: V2Candle, previous: V2Candle, ema20: Double, atr: Double
+): Boolean {
+    if (!ema20.isFinite() || !atr.isFinite() || atr <= 0.0) return false
+    return if (isLong) {
+        current.low in (ema20 - atr * 0.7)..(ema20 + atr * 0.2) &&
+            current.close > ema20 && current.close > previous.close
+    } else {
+        current.high in (ema20 - atr * 0.2)..(ema20 + atr * 0.7) &&
+            current.close < ema20 && current.close < previous.close
+    }
+}
+
+internal fun isReplayRangeReversal(
+    isLong: Boolean, rangeMode: Boolean, current: V2Candle,
+    rangeHigh: Double, rangeLow: Double, atr: Double, rsi: Double
+): Boolean {
+    if (!rangeMode || !rangeHigh.isFinite() || !rangeLow.isFinite() || !atr.isFinite() ||
+        !rsi.isFinite() || atr <= 0.0 || rangeHigh <= rangeLow) return false
+    val width = rangeHigh - rangeLow
+    if (width <= atr * 2.0) return false
+    return if (isLong) {
+        val lowerWick = min(current.open, current.close) - current.low
+        current.low <= rangeLow + width * 0.12 && current.close > rangeLow &&
+            lowerWick >= abs(current.close - current.open) * 0.8 && rsi <= 42.0
+    } else {
+        val upperWick = current.high - max(current.open, current.close)
+        current.high >= rangeHigh - width * 0.12 && current.close < rangeHigh &&
+            upperWick >= abs(current.close - current.open) * 0.8 && rsi >= 58.0
+    }
+}
+
 internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
@@ -153,23 +185,14 @@ internal object TradeIdeasV2 {
             val breakoutHeld = if (long) retest.close >= breakoutLevel && retest.close >= current.close
                 else retest.close <= breakoutLevel && retest.close <= current.close
 
-            val pullback = (long && current.low in (setupEma - atr * 0.7)..(setupEma + atr * 0.2) &&
-                current.close > setupEma && current.close > previous.close) ||
-                (short && current.high in (setupEma - atr * 0.2)..(setupEma + atr * 0.7) &&
-                    current.close < setupEma && current.close < previous.close)
+            val pullback = (long && isReplayTrendPullback(true, current, previous, setupEma, atr)) ||
+                (short && isReplayTrendPullback(false, current, previous, setupEma, atr))
 
-            val rangeBars = m15.subList(i - 29, i)
+            val rangeBars = m15.subList(i - 30, i)
             val rangeHigh = rangeBars.maxOf { it.high }
             val rangeLow = rangeBars.minOf { it.low }
-            val rangeWidth = rangeHigh - rangeLow
-            val lowerWick = min(current.open, current.close) - current.low
-            val upperWick = current.high - max(current.open, current.close)
-            val rangeLong = rangeMode && rangeWidth > atr * 2.0 &&
-                current.low <= rangeLow + rangeWidth * 0.12 && current.close > rangeLow &&
-                lowerWick >= abs(current.close - current.open) * 0.8 && setupRsi <= 42.0
-            val rangeShort = rangeMode && rangeWidth > atr * 2.0 &&
-                current.high >= rangeHigh - rangeWidth * 0.12 && current.close < rangeHigh &&
-                upperWick >= abs(current.close - current.open) * 0.8 && setupRsi >= 58.0
+            val rangeLong = isReplayRangeReversal(true, rangeMode, current, rangeHigh, rangeLow, atr, setupRsi)
+            val rangeShort = isReplayRangeReversal(false, rangeMode, current, rangeHigh, rangeLow, atr, setupRsi)
 
             val sideLong: Boolean
             val entryCandle: V2Candle
