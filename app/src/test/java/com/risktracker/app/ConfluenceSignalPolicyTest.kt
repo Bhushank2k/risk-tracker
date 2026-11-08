@@ -45,11 +45,10 @@ class ConfluenceSignalPolicyTest {
 
     @Test
     fun readyRequiresEveryHardGateAndMinimumScore() {
-        val valid = arrayOf(true, true, true, true, true, true, true, true, true, 80)
         assertTrue(isConfluenceReady(
-            valid[0] as Boolean, valid[1] as Boolean, valid[2] as Boolean, valid[3] as Boolean,
-            valid[4] as Boolean, valid[5] as Boolean, valid[6] as Boolean, valid[7] as Boolean,
-            valid[8] as Boolean, valid[9] as Int
+            liquid = true, geometry = true, rewardRisk = true, funding = true,
+            volatility = true, notExtended = true, volume = true, momentum = true,
+            entryConfirmed = true, score = 80
         ))
         for (failedGate in 0..8) {
             val gates = BooleanArray(9) { true }
