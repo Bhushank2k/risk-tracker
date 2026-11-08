@@ -801,7 +801,7 @@ fun DailyTradeIdeasScreen() {
                     }
                     if (rulesExpanded) {
                         Text("TREND & CONFIRMATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Core setups require aligned 4H and 1H EMA structure. Scalp execution confirms on 5M; intraday/swing setups use their completed setup and execution candles.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Core and experimental setups require aligned 4H and 1H EMA structure. Scalp execution confirms on 5M; intraday/swing setups use their completed setup and execution candles.", style = MaterialTheme.typography.bodySmall)
                         Text("VOLUME & LIQUIDITY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         Text("• Setup relative volume ≥ 1.2×; breakouts ≥ 1.5×. Minimum 24H quote volume $5M; spread ≤ 10 bps and directional order-book depth must be available.", style = MaterialTheme.typography.bodySmall)
                         Text("RISK / REWARD", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
