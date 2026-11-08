@@ -77,7 +77,7 @@ internal object TradeIdeasV3 {
         val activePositions = maxOf(trackedPositionCount, openPaperPositions)
         val capacityOk = isAlreadyTracked || activePositions < MAX_TRACKED_POSITIONS
         val dailyRiskOk = isAlreadyTracked || (dailyLossPercent < MAX_DAILY_LOSS_PERCENT && consecutiveLosses < MAX_CONSECUTIVE_LOSSES)
-        val totalOpenRiskOk = isAlreadyTracked || openPaperPositions * riskPerTradePercent.coerceIn(0.5, 2.0) <= MAX_TOTAL_OPEN_RISK_PERCENT
+        val totalOpenRiskOk = isAlreadyTracked || (openPaperPositions + 1) * riskPerTradePercent.coerceIn(0.5, 2.0) <= MAX_TOTAL_OPEN_RISK_PERCENT
 
         val checks = listOf(
             "4H trend agrees with direction" to trend4h,
