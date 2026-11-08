@@ -486,6 +486,7 @@ fun DailyTradeIdeasScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
+    var rulesExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
@@ -618,7 +619,7 @@ fun DailyTradeIdeasScreen() {
             (strategyMode == "Intraday" && idea.horizon.contains("Intraday", ignoreCase = true)) ||
             (strategyMode == "Swing" && idea.horizon.contains("Swing", ignoreCase = true))
     }
-    val dailyPicks = selectDailyPicks(allModeIdeas)
+    val dailyPicks = selectDailyPicks(allModeIdeas, scanSnapshotAgeMs)
     val modeIdeas = if (strategyMode == "Daily Picks") {
         val selected = if (strictQualityMode && filter == "Avoid") {
             allModeIdeas.filter { it.warning.startsWith("BLOCK:", ignoreCase = true) }
@@ -627,7 +628,7 @@ fun DailyTradeIdeasScreen() {
     } else allModeIdeas
     val rankedIdeas = modeIdeas.sortedWith(
         compareBy<TradeIdea> {
-            when (tradeIdeaStage(it, it.symbol in trackedSymbols)) {
+            when (tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs)) {
                 TradeIdeaStage.ENTRY_CONFIRMED -> 0
                 TradeIdeaStage.TRACKING -> 1
                 TradeIdeaStage.MONITOR -> 2
@@ -638,7 +639,7 @@ fun DailyTradeIdeasScreen() {
         }.thenByDescending { it.score }
     )
     val visible = rankedIdeas.filter { idea ->
-        val stage = tradeIdeaStage(idea, idea.symbol in trackedSymbols)
+        val stage = tradeIdeaStage(idea, idea.symbol in trackedSymbols, scanSnapshotAgeMs)
         val nearSetup = isWithinSetupWatchRange(idea)
         when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
@@ -661,12 +662,12 @@ fun DailyTradeIdeasScreen() {
     }
     val trackedVisible = visible.filter { it.symbol in trackedSymbols }
     val opportunityVisible = visible.filterNot { it.symbol in trackedSymbols }
-    val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) == TradeIdeaStage.ENTRY_CONFIRMED }
+    val readyCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = modeIdeas.count { idea ->
-        tradeIdeaStage(idea, idea.symbol in trackedSymbols) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
+        tradeIdeaStage(idea, idea.symbol in trackedSymbols, scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
             isWithinSetupWatchRange(idea)
     }
-    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
+    val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
     val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
     val longCount = modeIdeas.count { it.side == "LONG" }
     val shortCount = modeIdeas.count { it.side == "SHORT" }
@@ -784,6 +785,33 @@ fun DailyTradeIdeasScreen() {
                         }
                         Text("Background market scans run about every 15 minutes when Android allows. Alerts only · no orders are placed.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item {
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Setup rules", fontWeight = FontWeight.SemiBold)
+                            Text("The scanner's current hard filters and signal expiry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { rulesExpanded = !rulesExpanded }) { Text(if (rulesExpanded) "Hide" else "View rules") }
+                    }
+                    if (rulesExpanded) {
+                        Text("TREND & CONFIRMATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("• Core and experimental setups require aligned 4H and 1H EMA structure. Scalp execution confirms on 5M; intraday/swing setups use their completed setup and execution candles.", style = MaterialTheme.typography.bodySmall)
+                        Text("VOLUME & LIQUIDITY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("• Setup relative volume ≥ 1.2×; breakouts ≥ 1.5×. Minimum 24H quote volume $5M; spread ≤ 10 bps and directional order-book depth must be available.", style = MaterialTheme.typography.bodySmall)
+                        Text("RISK / REWARD", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("• Target 1 is set at 2R and Target 2 at 3R. This is a gross price-based ratio: deduct your actual fees, funding and slippage; skip the setup if net reward falls below 2R.", style = MaterialTheme.typography.bodySmall)
+                        Text("BTC MARKET FILTER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("• BTC 4H/1H regime is a headwind warning, not an automatic veto of a coin-specific setup.", style = MaterialTheme.typography.bodySmall)
+                        Text("SIGNAL EXPIRY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("• Scalp snapshots expire after 15 minutes, intraday after 1 hour, and swing after 4 hours. Expired ideas are marked AVOID and must be rescanned.", style = MaterialTheme.typography.bodySmall)
+                        Text("Strict Quality adds ≥ $10M 24H volume, ≥ 1.2× relative volume, 4H/1H/5M alignment, fresh depth, 2R target 1, and portfolio/daily-loss limits.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Advisory only · no exchange orders are placed.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -934,7 +962,7 @@ private fun biasSupportsSide(bias: String, side: String): Boolean {
 }
 
 /** Advisory entry timing layer. It never overrides scanner qualification or risk gates. */
-private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
+private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): EntryGuidance {
     val longSide = idea.side == "LONG"
     val trend4h = biasSupportsSide(idea.bias4h, idea.side)
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
@@ -965,14 +993,17 @@ private fun buildEntryGuidance(idea: TradeIdea): EntryGuidance {
     val tooFar = entryTooFarFromPlan(idea)
     val invalidated = livePriceInvalidatesPlan(idea)
     // Share the main card's final state; the coach score is informational only.
-    val sharedStage = tradeIdeaStage(idea, tracked = false)
+    val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
     val action = when (sharedStage) {
         TradeIdeaStage.ENTRY_CONFIRMED -> "READY TO ENTER: scanner trigger and live-price safety checks pass. Recheck the live quote, spread and stop before acting."
         TradeIdeaStage.MONITOR -> "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
         TradeIdeaStage.WAIT_CONFIRMATION -> "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
         TradeIdeaStage.AVOID_CHASING -> "AVOID: price has moved beyond the permitted entry distance. Do not chase; wait for a fresh setup and rescan."
-        TradeIdeaStage.DO_NOT_ENTER -> if (invalidated) "AVOID: live price has reached or crossed the stop; this plan is invalidated."
-            else "AVOID: scanner risk validation failed. Do not enter this setup."
+        TradeIdeaStage.DO_NOT_ENTER -> when {
+            snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea) -> "AVOID: this signal snapshot has expired. Run a fresh market scan before considering an entry."
+            invalidated -> "AVOID: live price has reached or crossed the stop; this plan is invalidated."
+            else -> "AVOID: scanner risk validation failed. Do not enter this setup."
+        }
         TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
     }
     val trigger = if (longSide)
@@ -1011,7 +1042,7 @@ private fun EntryGuidancePanel(
             paperRiskStatus.dailyLossPercent, paperRiskStatus.consecutiveLosses, paperRiskStatus.openPositions, riskSettings.riskPercent
         )
     } else null
-    val guidance = if (strictAssessment == null) remember(idea) { buildEntryGuidance(idea) } else {
+    val guidance = if (strictAssessment == null) remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) } else {
         val assessment = strictAssessment
         EntryGuidance(
             assessment.score,
@@ -1055,7 +1086,7 @@ private fun EntryGuidancePanel(
             Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
-            val scannerStage = tradeIdeaStage(idea, tracked = false)
+            val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
             if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
@@ -1096,8 +1127,15 @@ private fun isWithinSetupWatchRange(idea: TradeIdea): Boolean {
     return abs(idea.last - idea.entry) <= watchDistance
 }
 
-private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean): TradeIdeaStage {
+private fun ideaMaxAgeMs(idea: TradeIdea): Long = when {
+    idea.horizon.contains("scalp", ignoreCase = true) -> 15 * 60_000L
+    idea.horizon.contains("swing", ignoreCase = true) -> 4 * 60 * 60_000L
+    else -> 60 * 60_000L
+}
+
+private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Long = 0L): TradeIdeaStage {
     if (tracked) return TradeIdeaStage.TRACKING
+    if (snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.side == "WAIT" || !tradeIdeaRiskValid(idea) || livePriceInvalidatesPlan(idea)) return TradeIdeaStage.DO_NOT_ENTER
     if (idea.entryTriggered) {
         return if (entryTooFarFromPlan(idea)) TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.ENTRY_CONFIRMED
@@ -1120,9 +1158,10 @@ private fun displayIdeaHorizon(horizon: String): String = horizon
  * scoring at least 75 are eligible. Prefer confirmed triggers, then stronger
  * scores/volume/liquidity. Keep symbols unique and cap one direction at two picks.
  */
-private fun selectDailyPicks(ideas: List<TradeIdea>): List<TradeIdea> {
+private fun selectDailyPicks(ideas: List<TradeIdea>, snapshotAgeMs: Long = 0L): List<TradeIdea> {
     val eligible = ideas.filter { idea ->
-        idea.side in setOf("LONG", "SHORT") &&
+        (snapshotAgeMs <= 0L || snapshotAgeMs <= ideaMaxAgeMs(idea)) &&
+            idea.side in setOf("LONG", "SHORT") &&
             (idea.entryTriggered || isWithinSetupWatchRange(idea)) &&
             idea.score >= TradeIdeasV2.MIN_SCORE &&
             tradeIdeaRiskValid(idea) &&
@@ -1189,7 +1228,7 @@ private fun TradeIdeaCard(
         }
     }
     val liveIdea = idea.copy(last = livePrice)
-    val stage = tradeIdeaStage(liveIdea, trackedEntry != null)
+    val stage = tradeIdeaStage(liveIdea, trackedEntry != null, snapshotAgeMs)
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
@@ -1354,7 +1393,9 @@ private fun TradeIdeaCard(
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
-                Text(if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
+                val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
+                Text(if (expired) "This signal has expired. Refresh the market scan before considering it."
+                    else if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
                     else "The risk plan failed validation or has a blocking warning: " + idea.warning,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }

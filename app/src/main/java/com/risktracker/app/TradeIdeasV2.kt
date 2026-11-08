@@ -71,14 +71,13 @@ internal object TradeIdeasV2 {
         val previous = setupCandles[setupCandles.lastIndex - 1]
         val atr = atr(setupCandles) ?: return null
         val e1_200 = ema(h1.map { it.close }, 200) ?: return null
-        val longBias = if (swingMode) {
-            h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
-                h1.last().close > e1_50 && e1_20 > e1_50
-        } else h1.last().close > e1_200 && e1_20 > e1_50 && e1_50 > e1_200
-        val shortBias = if (swingMode) {
-            h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
-                h1.last().close < e1_50 && e1_20 < e1_50
-        } else h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
+        // Require both 4H and 1H structure to agree for every core setup.
+        val longBias = h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
+            (if (swingMode) h1.last().close > e1_50 && e1_20 > e1_50
+             else h1.last().close > e1_200 && e1_20 > e1_50 && e1_50 > e1_200)
+        val shortBias = h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
+            (if (swingMode) h1.last().close < e1_50 && e1_20 < e1_50
+             else h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200)
         val setupTf = if (swingMode) "1H" else "15M"
         val executionTf = if (swingMode) "15M" else "5M"
         val strategyHorizon = if (swingMode) "Intraday · H1 setup / M15 execution" else "Scalp · M15 setup / M5 execution"
@@ -164,7 +163,7 @@ internal object TradeIdeasV2 {
         // BTC direction is context, never a blanket veto for a coin-specific setup.
         val btcOpposesSide = !btcBias.isNullOrBlank() && btcBias != "Neutral" &&
             (if (longBias) btcBias == "Bearish" else btcBias == "Bullish")
-        val minRelativeVolume = if (breakoutIndex >= 0) 1.5 else 1.0
+        val minRelativeVolume = if (breakoutIndex >= 0) 1.5 else 1.2
         val oiChange = micro.oiChangePct?.takeIf { it.isFinite() }
         val oiAligned = oiChange != null && oiChange >= 0.5 &&
             (if (longBias) current.close >= previous.close else current.close <= previous.close)
@@ -180,8 +179,8 @@ internal object TradeIdeasV2 {
         val risk = abs(entry - stop)
         val validGeometry = risk >= atr * 0.35 && risk <= atr * 2.5 &&
             (if (longBias) stop < entry else stop > entry)
-        val target1 = entry + sign * risk * 1.5
-        val target2 = entry + sign * risk * 2.5
+        val target1 = entry + sign * risk * 2.0
+        val target2 = entry + sign * risk * 3.0
         val spread = micro.spreadBps
         val imbalance = micro.bookImbalance
         val liquidityOkay = spread != null && spread.isFinite() && spread in 0.0..MAX_SPREAD_BPS &&
@@ -192,7 +191,7 @@ internal object TradeIdeasV2 {
         val maxAtrPct = if (swingMode) 3.0 else 1.5
         val volatilityOkay = atrPct in minAtrPct..maxAtrPct
         val rewardRiskOkay = validGeometry && risk > 0.0 &&
-            abs(target1 - entry) / risk >= 1.5
+            abs(target1 - entry) / risk >= 2.0
         val volatilityScore = when {
             atrPct in minAtrPct..maxAtrPct -> 15
             atrPct > maxAtrPct -> 7
@@ -201,7 +200,7 @@ internal object TradeIdeasV2 {
         val trendScore = 20
         val patternScore = if (patternDetected && !breakoutInvalidated) 20 else 0
         val retestScore = if (retestTouched && retestHeld && !breakoutInvalidated) 15 else 0
-        val volumeScore = when { setupRelativeVolume >= 1.5 -> 10; setupRelativeVolume >= 1.0 -> 5; else -> 0 }
+        val volumeScore = when { setupRelativeVolume >= 1.5 -> 10; setupRelativeVolume >= 1.2 -> 5; else -> 0 }
         val timingScore = if (executionConfirmed) 10 else 0
         val liquidityScore = if (liquidityOkay) 5 else 0
         val oiScore = if (oiAligned) 5 else 0
@@ -254,7 +253,7 @@ internal object TradeIdeasV2 {
             setupRelativeVolume < minRelativeVolume -> "BLOCK: Relative volume is below the strategy threshold of " + minRelativeVolume + "x."
             !volatilityOkay -> "BLOCK: ATR% is outside the allowed " + minAtrPct + "%–" + maxAtrPct + "% range."
             !validGeometry -> "BLOCK: Structural stop distance is invalid or outside 0.35–2.5 ATR."
-            !rewardRiskOkay -> "BLOCK: Planned reward/risk is below 1.5:1."
+            !rewardRiskOkay -> "BLOCK: Target 1 reward/risk is below 2.0:1 before costs."
             !fundingOkay -> "BLOCK: Extreme funding is adverse to this direction."
             !notOverboughtOrOversold -> "BLOCK: Momentum is extended; avoid chasing an overbought/oversold entry."
             !notOverextended -> "BLOCK: Price is too extended from the setup level."
@@ -325,20 +324,22 @@ internal object TradeIdeasV2 {
                 else max(retest.high, m15[i].high) + atr * 0.20
             val risk = abs(entry - stop)
             if (risk < atr * 0.35 || risk > atr * 2.5) { i++; continue }
-            val t1 = entry + sign * risk * 1.5
-            val t2 = entry + sign * risk * 2.5
+            val t1 = entry + sign * risk * 2.0
+            val t2 = entry + sign * risk * 3.0
             var partial = false
             var result = -1.0
             var exitAt = -1
             val maxExit = min(i + 2 + 96, m15.size)
             for (j in i + 2 until maxExit) {
                 val c = m15[j]
-                val stopHit = if (long) c.low <= stop else c.high >= stop
+                // Match the paper plan: after the first scale-out, the remaining stop moves to breakeven.
+                val activeStop = if (partial) entry else stop
+                val stopHit = if (long) c.low <= activeStop else c.high >= activeStop
                 val t1Hit = if (long) c.high >= t1 else c.low <= t1
                 val t2Hit = if (long) c.high >= t2 else c.low <= t2
-                if (stopHit) { result = if (partial) 0.25 else -1.0; exitAt = j; break }
-                if (t2Hit) { result = 2.0; exitAt = j; break }
-                if (t1Hit && !partial) { partial = true; result = 0.75 }
+                if (stopHit) { result = if (partial) 1.0 else -1.0; exitAt = j; break }
+                if (t2Hit) { result = 2.5; exitAt = j; break }
+                if (t1Hit && !partial) { partial = true; result = 1.0 }
             }
             if (exitAt >= 0) {
                 outcomes.add(result)
@@ -348,7 +349,7 @@ internal object TradeIdeasV2 {
                 // dropping unresolved trades (which biases the historical sample).
                 val finalClose = m15[maxExit - 1].close
                 val openR = (finalClose - entry) / risk * sign
-                outcomes.add(if (partial) 0.75 + openR * 0.5 else openR)
+                outcomes.add(if (partial) 1.0 + openR * 0.5 else openR)
                 i = maxExit
             } else i++
         }
