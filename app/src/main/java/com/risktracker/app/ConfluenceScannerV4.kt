@@ -71,15 +71,23 @@ internal object ConfluenceScannerV4 {
             val liquid=liquidityData&&(if(long)depth!!>=-.15 else depth!!<=.15)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
-            val momentum=if(long)rsi in 38.0..72.0&&macdUp else rsi in 28.0..62.0&&macdDn
+            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
             val extended=abs(cur.close-s.level)<=atr*.9
             val entry=exec.close; val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
             val t1=entry+sign*risk*2; val t2=entry+sign*risk*3; val rr=geometry&&risk>0&&abs(t1-entry)/risk>=2
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
-            val score=(25+20+15+(if(entryOk)15 else 0)+(if(rv>=1.5)10 else if(rv>=1.2)7 else 0)+
-                (if(momentum)10 else if(if(long)rsi<78 else rsi>22)5 else 0)+(if(btcBias==null||btcBias=="Neutral"||!btcAgainst)5 else 2))
+            val score=confluenceScore(
+                regimeConfirmed = up || down || rangeMode,
+                structureConfirmed = true,
+                entryConfirmed = entryOk,
+                relativeVolume = rv,
+                momentumConfirmed = momentum,
+                liquidityConfirmed = liquid,
+                btcAgainst = btcAgainst,
+                stopGeometryConfirmed = geometry
+            )
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
@@ -115,7 +123,7 @@ internal object ConfluenceScannerV4 {
                 score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
                 else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
             }
-            val reasons=listOf("Confluence score "+score+"/100: ${bias1Label}+${bias2Label} 25 · structure 20 · ${setupLabel} setup 15 · ${executionLabel} entry 15 · volume 10 · momentum 10 · BTC 5",
+            val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
