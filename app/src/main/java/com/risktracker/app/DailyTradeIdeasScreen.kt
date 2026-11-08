@@ -1058,6 +1058,41 @@ private fun SnapshotMetric(label: String, value: String, accent: Color, modifier
 }
 
 @Composable
+private fun MarketMoversPanel(movers: List<MarketMover>) {
+    RiskCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Market movers · watchlist", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Top active USDT perpetuals by 24H movement, range and liquidity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(movers.size.toString() + " coins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            movers.forEachIndexed { index, mover ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(mover.symbol.removeSuffix("USDT") + " / USDT", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("24H volume " + if (mover.quoteVolume >= 1_000_000.0)
+                            "$" + "%.1fM".format(Locale.US, mover.quoteVolume / 1_000_000.0)
+                        else "$" + "%.0fK".format(Locale.US, mover.quoteVolume / 1_000.0),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("%+.2f%%".format(Locale.US, mover.changePct), style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold, color = if (mover.changePct >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                        Text("Range " + "%.1f%%".format(Locale.US, mover.rangePct) + " · " + mover.last.usd(6),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text("WATCH ONLY · These coins are active, not approved trade setups. Wait for a separate scanner plan and all entry/risk checks before trading.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
 private fun ScannerStat(label: String, value: String, modifier: Modifier = Modifier) {
     RiskCard(modifier) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
