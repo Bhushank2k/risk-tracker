@@ -47,6 +47,11 @@ internal fun isTradeIdeaRiskValid(
     return geometryValid && rewardRisk >= 2.0 && riskCodes.none { it.blocksEntry }
 }
 
+/** True only when the full forward holding window is present in the candle sample. */
+internal fun hasCompleteTradeHorizon(setupIndex: Int, candleCount: Int, maxHoldingBars: Int): Boolean =
+    setupIndex >= 0 && candleCount > 0 && maxHoldingBars > 0 &&
+        setupIndex.toLong() + 1L + maxHoldingBars.toLong() < candleCount.toLong()
+
 internal data class V2TradePlan(
     val side: String,
     val score: Int,
@@ -111,7 +116,8 @@ internal object TradeIdeasV2 {
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
         val outcomes = mutableListOf<Double>()
         var i = 25
-        while (i < m15.lastIndex - 1) {
+        // Exclude late setups unless every candle in their full holding window is available.
+        while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
             val time = m15[i].closeTime
             val four = h4.filter { it.closeTime <= time }
             val one = h1.filter { it.closeTime <= time }
@@ -175,15 +181,14 @@ internal object TradeIdeasV2 {
                 val heldBars = (exitAt - (i + 1)).coerceAtLeast(0)
                 outcomes.add(tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = exitAt + 1
-            } else if (maxExit - 1 < m15.lastIndex) {
-                // Horizon-specific time stop: close remaining exposure instead of silently
-                // dropping unresolved trades (which biases the historical sample).
+            } else if (maxExit - 1 <= m15.lastIndex) {
+                // Horizon-specific time stop: mark remaining exposure at the final available candle.
                 val finalClose = m15[maxExit - 1].close
                 val openR = (finalClose - entry) / risk * sign
                 val heldBars = (maxExit - 1 - (i + 1)).coerceAtLeast(0)
                 outcomes.add(tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = maxExit
-            } else i++
+            }
         }
         return if (outcomes.isEmpty()) TradeIdeaBacktestStats()
         else TradeIdeaBacktestStats(outcomes.size, outcomes.count { it > 0.0 }, outcomes.average())
