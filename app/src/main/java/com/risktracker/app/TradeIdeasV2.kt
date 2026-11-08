@@ -14,6 +14,7 @@ internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     INVALID_STOP(true),
     INSUFFICIENT_REWARD_RISK(true),
     ADVERSE_FUNDING(true),
+    FUNDING_DATA_UNAVAILABLE(true),
     VOLATILITY_OUT_OF_RANGE(true),
     EXTENDED_ENTRY(true),
     LOW_RELATIVE_VOLUME(true),
@@ -24,6 +25,11 @@ internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     BELOW_READY_SCORE_THRESHOLD(false),
     COSTS_NOT_INCLUDED(false),
     LEGACY_BLOCKING_WARNING(true)
+}
+
+internal fun isFundingDataAcceptable(side: String, fundingRate: Double?): Boolean {
+    if (side !in setOf("LONG", "SHORT") || fundingRate == null || !fundingRate.isFinite()) return false
+    return if (side == "LONG") fundingRate <= 0.001 else fundingRate >= -0.001
 }
 
 internal fun isTradeIdeaRiskValid(
