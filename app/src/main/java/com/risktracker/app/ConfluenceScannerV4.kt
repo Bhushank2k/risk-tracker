@@ -1,0 +1,111 @@
+package com.risktracker.app
+
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+
+/** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
+internal object ConfluenceScannerV4 {
+    private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
+    fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
+        micro: V2Microstructure, quoteVolume: Double, btcBias: String?): V2TradePlan? {
+        if (h4.size < 200 || h1.size < 200 || m15.size < 45 || m5.size < 30 || quoteVolume < 5_000_000.0) return null
+        if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
+        val now = System.currentTimeMillis()
+        if (!fresh(h4.last().closeTime,now,8*3600000L) || !fresh(h1.last().closeTime,now,2*3600000L) ||
+            !fresh(m15.last().closeTime,now,30*60000L) || !fresh(m5.last().closeTime,now,15*60000L)) return null
+        val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
+        val e420=ema(c4,20)?:return null; val e450=ema(c4,50)?:return null; val e4200=ema(c4,200)?:return null
+        val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null; val e1200=ema(c1,200)?:return null
+        val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
+        val atr=atr(m15)?:return null; val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
+        val up4=h4.last().close>e4200&&e420>e450&&e450>e4200; val dn4=h4.last().close<e4200&&e420<e450&&e450<e4200
+        val up1=h1.last().close>e1200&&e120>e150&&e150>e1200; val dn1=h1.last().close<e1200&&e120<e150&&e150<e1200
+        val up=up4&&up1; val down=dn4&&dn1
+        val rangeMode=!up&&!down&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
+        val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
+        val rv=if(avg>0)cur.volume/avg else 0.0
+        val rsi=rsi(c15)?:return null
+        val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
+        val prevMacd=(ema(c15.dropLast(1),12)?:macd)-(ema(c15.dropLast(1),26)?:0.0)
+        val macdUp=macd>0&&macd>=prevMacd; val macdDn=macd<0&&macd<=prevMacd
+        val setups=mutableListOf<Setup>()
+        if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
+            setups.add(Setup("Trend pullback","LONG",e1520,false,"15M EMA20 pullback reclaimed in aligned 4H/1H uptrend"))
+        if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close)
+            setups.add(Setup("Trend pullback","SHORT",e1520,false,"15M EMA20 pullback rejected in aligned 4H/1H downtrend"))
+        for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
+            val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
+            if(av<=0||m15[i].volume/av<1.5)continue
+            val hi=hist.maxOf{it.high}; val lo=hist.minOf{it.low}
+            if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
+                setups.add(Setup("Breakout + retest","LONG",hi,false,"15M 20-bar breakout on ≥1.5× volume, then retest and hold"))
+            if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
+                setups.add(Setup("Breakout + retest","SHORT",lo,false,"15M 20-bar breakdown on ≥1.5× volume, then retest and hold"))
+        }
+        if(rangeMode){
+            val band=m15.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
+            if(width>atr*2){
+                val lw=min(cur.open,cur.close)-cur.low; val uw=cur.high-max(cur.open,cur.close)
+                if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42)
+                    setups.add(Setup("Range reversal","LONG",lo,true,"Neutral 4H/1H regime; lower range rejection and RSI reclaim"))
+                if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58)
+                    setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral 4H/1H regime; upper range rejection and RSI rollover"))
+            }
+        }
+        if(setups.isEmpty())return null
+        val spread=micro.spreadBps; val depth=micro.bookImbalance; val funding=micro.fundingRate
+        val liquidityData=spread!=null&&spread.isFinite()&&spread in 0.0..10.0&&depth!=null&&depth.isFinite()&&depth in -1.0..1.0
+        return setups.mapNotNull{s->
+            val long=s.side=="LONG"; val sign=if(long)1.0 else -1.0
+            val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
+            val liquid=liquidityData&&(if(long)depth!!>=-.15 else depth!!<=.15)
+            val fundingOk=funding==null||!funding.isFinite()||(if(long)funding<=.001 else funding>=-.001)
+            val momentum=if(long)rsi in 38.0..72.0&&macdUp else rsi in 28.0..62.0&&macdDn
+            val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
+            val extended=abs(cur.close-s.level)<=atr*.9
+            val entry=exec.close; val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
+            val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
+            val t1=entry+sign*risk*2; val t2=entry+sign*risk*3; val rr=geometry&&risk>0&&abs(t1-entry)/risk>=2
+            val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
+            val score=(25+20+15+(if(entryOk)15 else 0)+(if(rv>=1.5)10 else if(rv>=1.2)7 else 0)+
+                (if(momentum)10 else if(if(long)rsi<78 else rsi>22)5 else 0)+(if(btcBias==null||btcBias=="Neutral"||!btcAgainst)5 else 2))
+            val blocks=mutableListOf<String>()
+            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
+            if(!fundingOk)blocks.add("adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
+            if(rv<1.2)blocks.add("relative volume"); if(!momentum)blocks.add("RSI/MACD"); if(score<70)blocks.add("score")
+            val ready=blocks.isEmpty()&&entryOk&&score>=80
+            val warning=when{
+                !liquid->"BLOCK: Spread must be ≤10 bps and directional order-book depth must be available."
+                !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
+                !rr->"BLOCK: Target 1 gross reward/risk is below 2R; deduct actual costs before entry."
+                !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
+                !volatility->"BLOCK: 15M ATR% is outside 0.12–3.0%."
+                !extended->"BLOCK: Price is extended from setup level; do not chase."
+                rv<1.2->"BLOCK: Relative volume is below 1.2×."
+                !momentum->"BLOCK: RSI/MACD momentum does not confirm."
+                score<70->"BLOCK: Confluence score is below 70/100."
+                !entryOk->"WAIT: Completed 5M EMA9/21 entry confirmation is missing."
+                score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
+                else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
+            }
+            val reasons=listOf("Confluence score "+score+"/100: 4H+1H 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC 5",
+                s.detail,if(s.range)"Range regime: compressed 4H/1H; reversal restricted to range edges" else "4H and 1H EMA20/50/200 aligned "+s.side,
+                if(entryOk)"5M EMA9/21 confirms entry" else "Waiting for completed 5M EMA9/21 confirmation",
+                "15M relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
+                "15M RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(if(long)macdUp else macdDn)"aligned" else "not aligned"),
+                "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · depth "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable"),
+                "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
+                "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
+            V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
+                if(s.range)"Intraday · M15 range / M5 execution" else "Intraday · M15 setup / M5 execution",
+                if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral",if(up1)"Bullish" else if(dn1)"Bearish" else "Neutral",
+                if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons)
+        }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()
+    }
+    private fun fresh(t:Long,n:Long,m:Long)=t<n&&n-t<=m
+    private fun valid(r:List<V2Candle>):Boolean{var last=Long.MIN_VALUE;return r.all{val ok=it.high.isFinite()&&it.low.isFinite()&&it.open.isFinite()&&it.close.isFinite()&&it.volume.isFinite()&&it.high>=it.low&&it.close in it.low..it.high&&it.open in it.low..it.high&&it.close>0&&it.volume>=0&&it.closeTime>last;last=it.closeTime;ok}}
+    private fun ema(v:List<Double>,p:Int):Double?{if(v.size<p)return null;val a=2.0/(p+1);var x=v.take(p).average();v.drop(p).forEach{x=it*a+x*(1-a)};return x.takeIf{it.isFinite()}}
+    private fun atr(r:List<V2Candle>):Double?{if(r.size<16)return null;return r.zipWithNext{p,c->max(c.high-c.low,max(abs(c.high-p.close),abs(c.low-p.close)))}.takeLast(14).average().takeIf{it.isFinite()&&it>0}}
+    private fun rsi(v:List<Double>):Double?{if(v.size<15)return null;val d=v.zipWithNext{a,b->b-a}.takeLast(14);val g=d.filter{it>0}.sum()/14.0;val l=-d.filter{it<0}.sum()/14.0;if(l==0.0)return if(g==0.0)50.0 else 100.0;return 100-100/(1+g/l)}
+}

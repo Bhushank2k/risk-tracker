@@ -406,33 +406,18 @@ internal object BinanceMarketScanner {
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
-    private fun evaluateModes(t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>, m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>): List<TradeIdea> {
+    private fun evaluateModes(
+        t: ScanTicker, h4: List<ScanCandle>, h1: List<ScanCandle>, m15: List<ScanCandle>,
+        m5: List<ScanCandle>, micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
+    ): List<TradeIdea> {
         val four = h4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val one = h1.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val fifteen = m15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val five = m5.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct)
-        val scalpPlan = TradeIdeasV2.evaluate(four, one, fifteen, five, market, t.quoteVolume, t.changePct, false, btcBias)
-        // For swing mode, the H1 candles become the setup series and M15 candles become execution.
-        val swingPlan = TradeIdeasV2.evaluate(four, one, one, fifteen, market, t.quoteVolume, t.changePct, true, btcBias)
-        val coreIdeas = listOfNotNull(
-            scalpPlan?.let { buildIdea(t, it, m15, m5, h4, h1, micro, false) },
-            swingPlan?.let { buildIdea(t, it, h1, m15, h4, h1, micro, true) }
-        )
-        val btcFour = btcH4.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
-        val experimentalPlans = ExperimentalTradeStrategies.evaluate(four, one, fifteen, five, market, btcBias, btcFour)
-        val experimentalIdeas = experimentalPlans.map { plan ->
-            val isScalp = plan.horizon.contains("Scalp", ignoreCase = true)
-            val isSwing = plan.horizon.contains("Swing", ignoreCase = true)
-            val setupRows = when {
-                isScalp -> m5
-                isSwing -> h4
-                else -> m15
-            }
-            val executionRows = if (isSwing) h1 else m5
-            buildIdea(t, plan, setupRows, executionRows, h4, h1, micro, isSwing, runBacktest = false)
-        }
-        return coreIdeas + experimentalIdeas
+        val plan = ConfluenceScannerV4.evaluate(four, one, fifteen, five, market, t.quoteVolume, btcBias)
+            ?: return emptyList()
+        return listOf(buildIdea(t, plan, m15, m5, h4, h1, micro, swingMode = false, runBacktest = false))
     }
 
     private fun buildIdea(t: ScanTicker, plan: V2TradePlan, setupRows: List<ScanCandle>, executionRows: List<ScanCandle>,
@@ -801,16 +786,16 @@ fun DailyTradeIdeasScreen() {
                     }
                     if (rulesExpanded) {
                         Text("TREND & CONFIRMATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Core and experimental setups require aligned 4H and 1H EMA structure. Scalp execution confirms on 5M; intraday/swing setups use their completed setup and execution candles.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Confluence V4 uses 4H/1H EMA20/50/200 bias, a completed 15M setup, and completed 5M EMA9/21 entry confirmation. Range reversals are allowed only in a compressed, non-trending 4H/1H regime.", style = MaterialTheme.typography.bodySmall)
                         Text("VOLUME & LIQUIDITY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Setup relative volume ≥ 1.2×; breakouts ≥ 1.5×. Minimum 24H quote volume $5M; spread ≤ 10 bps and directional order-book depth must be available.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Baseline 15M relative volume ≥ 1.2×; breakout candle ≥ 1.5×. Minimum 24H quote volume $5M; spread ≤ 10 bps and directional order-book depth must be available.", style = MaterialTheme.typography.bodySmall)
                         Text("RISK / REWARD", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         Text("• Target 1 is set at 2R and Target 2 at 3R. This is a gross price-based ratio: deduct your actual fees, funding and slippage; skip the setup if net reward falls below 2R.", style = MaterialTheme.typography.bodySmall)
                         Text("BTC MARKET FILTER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         Text("• BTC 4H/1H regime is a headwind warning, not an automatic veto of a coin-specific setup.", style = MaterialTheme.typography.bodySmall)
                         Text("SIGNAL EXPIRY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Scalp snapshots expire after 15 minutes, intraday after 1 hour, and swing after 4 hours. Expired ideas are marked AVOID and must be rescanned.", style = MaterialTheme.typography.bodySmall)
-                        Text("Strict Quality adds ≥ $10M 24H volume, ≥ 1.2× relative volume, 4H/1H/5M alignment, fresh depth, 2R target 1, and portfolio/daily-loss limits.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("• V4 signals use the existing 1-hour intraday expiry. Expired snapshots are marked AVOID and must be rescanned.", style = MaterialTheme.typography.bodySmall)
+                        Text("V4 score: 4H/1H bias 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC context 5. Strong ≥80; qualifying/watch ≥70. Hard gates override score.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Advisory only · no exchange orders are placed.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
