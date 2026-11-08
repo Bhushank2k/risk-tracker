@@ -11,8 +11,8 @@ internal object TradeIdeasV3 {
     const val MIN_QUOTE_VOLUME = 10_000_000.0
     const val MAX_SPREAD_BPS = 10.0
     const val MAX_TRACKED_POSITIONS = 2
-    const val MAX_TOTAL_OPEN_RISK_PERCENT = 1.0
-    const val MAX_DAILY_LOSS_PERCENT = 1.5
+    const val MAX_TOTAL_OPEN_RISK_PERCENT = 2.0
+    const val MAX_DAILY_LOSS_PERCENT = 3.0
     const val MAX_CONSECUTIVE_LOSSES = 2
 
     data class Assessment(
@@ -29,7 +29,8 @@ internal object TradeIdeasV3 {
         isAlreadyTracked: Boolean,
         dailyLossPercent: Double,
         consecutiveLosses: Int,
-        openPaperPositions: Int
+        openPaperPositions: Int,
+        riskPerTradePercent: Double = 1.0
     ): Assessment {
         val longSide = idea.side == "LONG"
         val sideValid = idea.side == "LONG" || idea.side == "SHORT"
@@ -60,7 +61,7 @@ internal object TradeIdeasV3 {
             riskDistance > 0.0 && reward > 0.0 &&
             (if (longSide) idea.stop < idea.entry && idea.target1 > idea.entry && idea.target2 > idea.target1
              else idea.stop > idea.entry && idea.target1 < idea.entry && idea.target2 < idea.target1)
-        val rrOk = geometryOk && reward / riskDistance >= 1.5
+        val rrOk = geometryOk && reward / riskDistance >= 2.0
         val patternOk = !idea.setup.contains("watch", ignoreCase = true) &&
             !idea.setup.contains("disagreement", ignoreCase = true)
         val horizonMaxAge = when {
@@ -76,7 +77,7 @@ internal object TradeIdeasV3 {
         val activePositions = maxOf(trackedPositionCount, openPaperPositions)
         val capacityOk = isAlreadyTracked || activePositions < MAX_TRACKED_POSITIONS
         val dailyRiskOk = isAlreadyTracked || (dailyLossPercent < MAX_DAILY_LOSS_PERCENT && consecutiveLosses < MAX_CONSECUTIVE_LOSSES)
-        val totalOpenRiskOk = isAlreadyTracked || openPaperPositions * 0.5 <= MAX_TOTAL_OPEN_RISK_PERCENT
+        val totalOpenRiskOk = isAlreadyTracked || openPaperPositions * riskPerTradePercent.coerceIn(0.5, 2.0) <= MAX_TOTAL_OPEN_RISK_PERCENT
 
         val checks = listOf(
             "4H trend agrees with direction" to trend4h,
@@ -90,11 +91,11 @@ internal object TradeIdeasV3 {
             "Funding not extreme against position" to fundingOk,
             "Open interest supports participation" to oiOk,
             "Setup pattern confirmed" to patternOk,
-            "Target 1 reward/risk ≥ 1.5R" to rrOk,
+            "Target 1 reward/risk ≥ 2.0R" to rrOk,
             "Signal snapshot still fresh" to fresh,
             "Price has not invalidated or chased the plan" to (priceValid && notChasing),
-            "Portfolio capacity available (max 2 positions / 1% open risk)" to (capacityOk && totalOpenRiskOk),
-            "Daily loss below 1.5% and fewer than 2 consecutive losses" to dailyRiskOk
+            "Portfolio capacity available (max 2 positions / 2% open risk)" to (capacityOk && totalOpenRiskOk),
+            "Daily loss below 3% and fewer than 2 consecutive losses" to dailyRiskOk
         )
 
         val blockers = mutableListOf<String>()
@@ -110,12 +111,12 @@ internal object TradeIdeasV3 {
         if (!fundingOk) blockers += "Funding is extreme and adverse to this direction."
         if (!patternOk) blockers += "No confirmed setup pattern."
         if (!geometryOk) blockers += "Stop/target geometry is invalid."
-        if (!rrOk) blockers += "Target 1 reward/risk is below 1.5R."
+        if (!rrOk) blockers += "Target 1 reward/risk is below 2.0R."
         if (!fresh) blockers += "Signal expired; a fresh market scan is required."
         if (!priceValid) blockers += "Price has invalidated the stop."
         else if (!notChasing) blockers += "Price moved too far from planned entry; do not chase."
-        if (!capacityOk || !totalOpenRiskOk) blockers += "Portfolio cap reached: maximum 2 active positions and 1% illustrative combined open risk."
-        if (!dailyRiskOk) blockers += "Daily paper risk stop reached (1.5% realized loss or 2 consecutive losses); no new entries until the next day."
+        if (!capacityOk || !totalOpenRiskOk) blockers += "Portfolio cap reached: maximum 2 active positions and 2% illustrative combined open risk."
+        if (!dailyRiskOk) blockers += "Daily paper risk stop reached (3% realized loss or 2 consecutive losses); no new entries until the next day."
         val score = (
             (if (trend4h && trend1h) 20 else 0) +
             (if (executionTrend) 20 else 0) +
