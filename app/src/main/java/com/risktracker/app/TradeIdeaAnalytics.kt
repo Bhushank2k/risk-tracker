@@ -49,8 +49,17 @@ internal data class BacktestCandle(
 internal data class TradeIdeaBacktestStats(
     val trades: Int = 0,
     val wins: Int = 0,
-    val averageR: Double = 0.0
+    val averageR: Double = 0.0,
+    val profitFactor: Double? = null,
+    val maxDrawdownR: Double = 0.0,
+    val longTrades: Int = 0,
+    val longWins: Int = 0,
+    val longAverageR: Double? = null,
+    val shortTrades: Int = 0,
+    val shortWins: Int = 0,
+    val shortAverageR: Double? = null
 ) {
+
     val losses: Int get() = (trades - wins).coerceAtLeast(0)
     val winRatePercent: Double get() = if (trades == 0) 0.0 else wins.toDouble() / trades * 100.0
     val lossRatePercent: Double get() = if (trades == 0) 0.0 else losses.toDouble() / trades * 100.0
@@ -77,6 +86,37 @@ internal data class TradeIdeaBacktestStats(
 
     companion object {
         const val MINIMUM_ESTIMATE_SAMPLES = 30
+
+        fun fromOutcomes(outcomes: List<Pair<String, Double>>): TradeIdeaBacktestStats {
+            val valid = outcomes.filter { it.second.isFinite() && it.first in setOf("LONG", "SHORT") }
+            if (valid.isEmpty()) return TradeIdeaBacktestStats()
+            val values = valid.map { it.second }
+            val grossWins = values.filter { it > 0.0 }.sum()
+            val grossLosses = -values.filter { it < 0.0 }.sum()
+            var equity = 0.0
+            var peak = 0.0
+            var maxDrawdown = 0.0
+            values.forEach { value ->
+                equity += value
+                peak = maxOf(peak, equity)
+                maxDrawdown = maxOf(maxDrawdown, peak - equity)
+            }
+            val longs = valid.filter { it.first == "LONG" }.map { it.second }
+            val shorts = valid.filter { it.first == "SHORT" }.map { it.second }
+            return TradeIdeaBacktestStats(
+                trades = valid.size,
+                wins = values.count { it > 0.0 },
+                averageR = values.average(),
+                profitFactor = if (grossLosses > 0.0) grossWins / grossLosses else null,
+                maxDrawdownR = maxDrawdown,
+                longTrades = longs.size,
+                longWins = longs.count { it > 0.0 },
+                longAverageR = longs.takeIf { it.isNotEmpty() }?.average(),
+                shortTrades = shorts.size,
+                shortWins = shorts.count { it > 0.0 },
+                shortAverageR = shorts.takeIf { it.isNotEmpty() }?.average()
+            )
+        }
     }
 }
 

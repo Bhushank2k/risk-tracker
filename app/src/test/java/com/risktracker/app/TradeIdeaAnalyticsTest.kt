@@ -41,4 +41,25 @@ class TradeIdeaAnalyticsTest {
         assertNull(TradeSizing.calculate(1000.0, 100.0, 100.0))
         assertNull(TradeSizing.calculate(1000.0, -1.0, 99.0))
     }
+    @Test fun replayMetricsIncludeProfitFactorDrawdownAndSideBreakdown() {
+        val stats = TradeIdeaBacktestStats.fromOutcomes(
+            listOf("LONG" to 2.0, "LONG" to -1.0, "SHORT" to 1.0, "SHORT" to -2.0)
+        )
+
+        assertEquals(1.0, stats.profitFactor!!, 0.000001)
+        assertEquals(2.0, stats.maxDrawdownR, 0.000001)
+        assertEquals(2, stats.longTrades)
+        assertEquals(1, stats.longWins)
+        assertEquals(0.5, stats.longAverageR!!, 0.000001)
+        assertEquals(2, stats.shortTrades)
+        assertEquals(1, stats.shortWins)
+        assertEquals(-0.5, stats.shortAverageR!!, 0.000001)
+    }
+
+    @Test fun profitFactorIsUnavailableWhenThereAreNoLosingTrades() {
+        val stats = TradeIdeaBacktestStats.fromOutcomes(listOf("LONG" to 1.0, "SHORT" to 2.0))
+        assertNull(stats.profitFactor)
+        assertEquals(0.0, stats.maxDrawdownR, 0.000001)
+    }
+
 }
