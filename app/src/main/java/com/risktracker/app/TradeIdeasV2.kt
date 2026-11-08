@@ -176,7 +176,7 @@ internal object TradeIdeasV2 {
                 outcomes.add(tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h))
                 i = exitAt + 1
             } else if (maxExit - 1 < m15.lastIndex) {
-                // Time stop: close any remaining position after 24h instead of silently
+                // Horizon-specific time stop: close remaining exposure instead of silently
                 // dropping unresolved trades (which biases the historical sample).
                 val finalClose = m15[maxExit - 1].close
                 val openR = (finalClose - entry) / risk * sign
