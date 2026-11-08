@@ -488,11 +488,11 @@ fun DailyTradeIdeasScreen() {
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
-    var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)) }
+    var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
         riskSettings = next
         EntryRiskSettingsStore.save(context, next)
-        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, next.riskPercent)
+        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = next.riskPercent)
     }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
@@ -537,7 +537,7 @@ fun DailyTradeIdeasScreen() {
                 updatedAt = scanTime
                 showingCached = false
                 trackedSymbols = readTrackedSymbols()
-                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)
+                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
                 status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
                 if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
             } catch (e: CancellationException) {
@@ -565,7 +565,7 @@ fun DailyTradeIdeasScreen() {
         while (true) {
             delay(60_000)
             scanHealth = TradeIdeaScanHealthStore.load(context)
-            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskSettings.riskPercent)
+            paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
         }
     }
     LaunchedEffect(ideas) {
