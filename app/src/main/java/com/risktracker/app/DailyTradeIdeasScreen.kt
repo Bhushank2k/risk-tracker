@@ -402,7 +402,7 @@ internal object BinanceMarketScanner {
             val symbol = x.optString("symbol")
             val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
             val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
-            if (symbol !in allowed || quote < MIN_TRADE_QUOTE_VOLUME_USD || last <= 0.0) null
+            if (symbol !in allowed || !isTradeIdeaVolumeEligible(quote) || last <= 0.0) null
             else {
                 val change = x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
                 val high = x.optString("highPrice").toDoubleOrNull() ?: last
