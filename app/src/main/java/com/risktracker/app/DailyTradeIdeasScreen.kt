@@ -469,7 +469,6 @@ fun DailyTradeIdeasScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
-    var rulesExpanded by remember { mutableStateOf(false) }
     var trackedSymbols by remember { mutableStateOf(readTrackedSymbols()) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
@@ -605,16 +604,6 @@ fun DailyTradeIdeasScreen() {
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> stage == TradeIdeaStage.TRACKING
             "Avoid" -> stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING
-            "Scalp" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
-                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("scalp", ignoreCase = true)
-            "Intraday" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
-                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("intraday", ignoreCase = true)
-            "Swing" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
-                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.horizon.contains("swing", ignoreCase = true)
-            "Long" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
-                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.side == "LONG"
-            "Short" -> stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) &&
-                (stage != TradeIdeaStage.WAIT_CONFIRMATION || nearSetup) && idea.side == "SHORT"
             else -> stage == TradeIdeaStage.ENTRY_CONFIRMED || stage == TradeIdeaStage.TRACKING ||
                 stage == TradeIdeaStage.MONITOR || (stage == TradeIdeaStage.WAIT_CONFIRMATION && nearSetup)
         }
@@ -627,7 +616,6 @@ fun DailyTradeIdeasScreen() {
             isWithinSetupWatchRange(idea)
     }
     val blockedCount = modeIdeas.count { tradeIdeaStage(it, it.symbol in trackedSymbols, scanSnapshotAgeMs) in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING) }
-    val trackedCount = modeIdeas.count { it.symbol in trackedSymbols }
     val longCount = modeIdeas.count { it.side == "LONG" }
     val shortCount = modeIdeas.count { it.side == "SHORT" }
     val waitCount = modeIdeas.count { it.side == "WAIT" }
@@ -669,17 +657,6 @@ fun DailyTradeIdeasScreen() {
                 if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 else if (showingCached) Text("Showing the last saved scan while fresh market data is unavailable.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("TODAY AT A GLANCE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    SnapshotMetric("READY", readyCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                    SnapshotMetric("WAIT", monitorCount.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
-                    SnapshotMetric("AVOID", blockedCount.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
-                    SnapshotMetric("TRACKING", trackedCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-                }
             }
         }
         item {
@@ -744,33 +721,6 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Setup rules", fontWeight = FontWeight.SemiBold)
-                            Text("The scanner's current hard filters and signal expiry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        TextButton(onClick = { rulesExpanded = !rulesExpanded }) { Text(if (rulesExpanded) "Hide" else "View rules") }
-                    }
-                    if (rulesExpanded) {
-                        Text("TREND & CONFIRMATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Confluence V4 uses 4H/1H EMA20/50/200 bias, a completed 15M setup, and completed 5M EMA9/21 entry confirmation. Range reversals are allowed only in a compressed, non-trending 4H/1H regime.", style = MaterialTheme.typography.bodySmall)
-                        Text("VOLUME & LIQUIDITY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Baseline 15M relative volume ≥ 1.2×; breakout candle ≥ 1.5×. Minimum 24H quote volume $5M; spread ≤ 10 bps and directional order-book depth must be available.", style = MaterialTheme.typography.bodySmall)
-                        Text("RISK / REWARD", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• Target 1 is set at 2R and Target 2 at 3R. This is a gross price-based ratio: deduct your actual fees, funding and slippage; skip the setup if net reward falls below 2R.", style = MaterialTheme.typography.bodySmall)
-                        Text("BTC MARKET FILTER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• BTC 4H/1H regime is a headwind warning, not an automatic veto of a coin-specific setup.", style = MaterialTheme.typography.bodySmall)
-                        Text("SIGNAL EXPIRY", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("• V4 signals use the existing 1-hour intraday expiry. Expired snapshots are marked AVOID and must be rescanned.", style = MaterialTheme.typography.bodySmall)
-                        Text("V4 score: 4H/1H bias 25 · structure 20 · 15M setup 15 · 5M entry 15 · volume 10 · momentum 10 · BTC context 5. Strong ≥80; qualifying/watch ≥70. Hard gates override score.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Advisory only · no exchange orders are placed.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -778,7 +728,7 @@ fun DailyTradeIdeasScreen() {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Tracking", "Avoid", "Scalp", "Intraday", "Swing", "Long", "Short").forEach { option ->
+                    listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
                         FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
                     }
                 }
@@ -801,7 +751,6 @@ fun DailyTradeIdeasScreen() {
             }
         }
         if (opportunityVisible.isNotEmpty()) {
-            item { Text(if (filter == "All") "Best opportunities" else filter + " ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedSymbols.size) { symbol, isTracked -> trackedSymbols = if (isTracked) trackedSymbols + symbol else trackedSymbols - symbol }
             }
