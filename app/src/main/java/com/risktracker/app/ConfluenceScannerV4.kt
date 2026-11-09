@@ -35,7 +35,7 @@ internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
-        if (h4.size < 50 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
+        if (h4.size < 20 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
         val freshness = when (horizon) {
@@ -50,15 +50,16 @@ internal object ConfluenceScannerV4 {
         val bias2Label = if (horizon == "Scalp") "15M" else if (horizon == "Swing") "4H" else "4H context"
         val setupLabel = if (horizon == "Scalp") "5M" else if (horizon == "Swing") "1H" else "15M"
         val executionLabel = if (horizon == "Scalp") "1M" else if (horizon == "Swing") "15M" else "5M"
-        val e420=ema(c4,20)?:return null; val e450=ema(c4,50)?:return null
+        val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
         val atr=atr(m15)?:return null; val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
-        val up4=h4.last().close>e450&&e420>e450; val dn4=h4.last().close<e450&&e420<e450
+        val up4=e450?.let { h4.last().close>it&&e420>it } ?: false
+        val dn4=e450?.let { h4.last().close<it&&e420<it } ?: false
         val up1=h1.last().close>e150&&e120>e150; val dn1=h1.last().close<e150&&e120<e150
-        // 1H is the primary intraday directional filter; 4H remains contextual.
+        // 1H is the primary intraday directional filter; 4H remains contextual and may be neutral.
         val up=up1; val down=dn1
-        val rangeMode=!up&&!down&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
+        val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
         val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
