@@ -1175,16 +1175,15 @@ private fun EntryGuidancePanel(
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
-                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                    fontWeight = FontWeight.SemiBold)
+                Text("SCANNER VALIDATION", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             }
             if (scannerDecisionIsActionable(idea, snapshotAgeMs)) {
                 Text("Entry " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
                     fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
             }
-            Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            if (scannerStage != TradeIdeaStage.DO_NOT_ENTER) {
+                Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            }
             if (scannerStage == TradeIdeaStage.MONITOR || scannerStage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Wait for: " + guidance.trigger, style = MaterialTheme.typography.labelSmall)
                 Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
