@@ -21,11 +21,11 @@ internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     INVALID_STOP(true),
     INSUFFICIENT_REWARD_RISK(true),
     ADVERSE_FUNDING(true),
-    FUNDING_DATA_UNAVAILABLE(true),
+    FUNDING_DATA_UNAVAILABLE(false),
     VOLATILITY_OUT_OF_RANGE(true),
     EXTENDED_ENTRY(true),
-    LOW_RELATIVE_VOLUME(true),
-    MOMENTUM_NOT_CONFIRMED(true),
+    LOW_RELATIVE_VOLUME(false),
+    MOMENTUM_NOT_CONFIRMED(false),
     LOW_CONFLUENCE_SCORE(true),
     STALE_MARKET_DATA(true),
     WAITING_FOR_ENTRY_CONFIRMATION(false),
@@ -160,7 +160,7 @@ internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
     const val MAX_SPREAD_BPS = 10.0
-    const val MIN_SCORE = 70
+    const val MIN_SCORE = 75
     private const val MIN_QUOTE_VOLUME = MIN_TRADE_QUOTE_VOLUME_USD
 
     fun evaluate(

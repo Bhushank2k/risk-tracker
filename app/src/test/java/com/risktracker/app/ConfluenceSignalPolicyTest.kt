@@ -27,12 +27,55 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isTradeIdeaLiquidityAcceptable("SHORT", 3.0, 0.16, 20_000.0, 20_000.0))
         assertFalse(isTradeIdeaLiquidityAcceptable("OTHER", 3.0, 0.0, 20_000.0, 20_000.0))
     }
-    @Test fun readyRequiresEveryHardGateAndMinimumScore() {
-        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,80))
-        for (failedGate in 0..8) {
-            val gates = BooleanArray(9) { true }; gates[failedGate] = false
-            assertFalse(isConfluenceReady(gates[0],gates[1],gates[2],gates[3],gates[4],gates[5],gates[6],gates[7],gates[8],100))
-        }
-        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,79))
+    @Test fun readyRequiresHardGatesAndBalancedScoreButNotEverySoftSignal() {
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
+        // Volume and momentum are scoring inputs, not standalone hard gates.
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
+        assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,false,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,false,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,false,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,false,true,true,true,100))
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
+    }
+
+    @Test fun volumeAndMomentumAreSoftSignalsButSafetyFailuresRemainHard() {
+        assertFalse(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME.blocksEntry)
+        assertFalse(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED.blocksEntry)
+        assertFalse(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.LOW_LIQUIDITY.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.INVALID_STOP.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.ADVERSE_FUNDING.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE.blocksEntry)
+    }
+
+    @Test fun netRewardRiskIncludesEstimatedExecutionCosts() {
+        val net = tradeIdeaNetReturnR(
+            grossR = 2.0, entry = 100.0, riskDistance = 1.0,
+            heldBars = 8, setupBarMinutes = 15
+        )
+        assertTrue(net.isFinite())
+        assertTrue(net >= 1.5)
+        val tightStopNet = tradeIdeaNetReturnR(
+            grossR = 2.0, entry = 100.0, riskDistance = 0.1,
+            heldBars = 8, setupBarMinutes = 15
+        )
+        assertTrue(tightStopNet < 1.5)
+    }
+
+    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
+        val base = listOf(true,true,true,true,true,true,false,false)
+        fun score(volume: Double) = confluenceScore(
+            regimeConfirmed=base[0], structureConfirmed=base[1], entryConfirmed=base[2],
+            relativeVolume=volume, momentumConfirmed=base[3], liquidityConfirmed=base[4],
+            btcAgainst=base[5], stopGeometryConfirmed=base[6]
+        )
+        assertTrue(score(1.0) > score(0.99))
+        assertTrue(score(1.2) > score(1.0))
+        assertTrue(score(1.5) > score(1.2))
     }
 }

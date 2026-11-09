@@ -25,9 +25,9 @@ internal fun confluenceMomentumConfirmed(
 }
 
 /**
- * A transparent 100-point confluence score. Hard risk checks remain independent
- * blockers; the score never overrides funding, liquidity, stop, volatility,
- * extension, relative-volume, momentum, or reward/risk failures.
+ * A transparent 100-point confluence score. Hard safety gates remain independent.
+ * Relative volume and momentum contribute
+ * to confluence but are not standalone blockers for otherwise valid pullbacks.
  */
 internal fun confluenceScore(
     regimeConfirmed: Boolean,
@@ -43,6 +43,7 @@ internal fun confluenceScore(
         !relativeVolume.isFinite() -> 0
         relativeVolume >= 1.5 -> 10
         relativeVolume >= 1.2 -> 7
+        relativeVolume >= 1.0 -> 4
         else -> 0
     }
     return (if (regimeConfirmed) 20 else 0) +

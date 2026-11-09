@@ -544,7 +544,7 @@ internal object BinanceMarketScanner {
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
             market, t.quoteVolume, btcBias, "Intraday")?.let {
             buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false,
-                trendRows = h4, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "4H", runBacktest = true)
+                trendRows = h1, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "1H", runBacktest = true)
         }
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
             market, t.quoteVolume, btcBias, "Swing")?.let {
@@ -615,23 +615,24 @@ internal object BinanceMarketScanner {
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
         val candleAligned = candle?.let {
             val directionOk = if (isLong) it.close > it.open else it.close < it.open
-            val requiredVolume = confluenceExecutionVolumeThreshold(plan.setup)
+            val requiredVolume = if (plan.setup.contains("breakout", ignoreCase = true)) confluenceExecutionVolumeThreshold(plan.setup) else 0.0
             directionOk && volumeRatio >= requiredVolume
         }
-        val recent = executionRows.dropLast(1).takeLast(20)
+        val recent = executionRows.dropLast(1).takeLast(9)
         val swingLow = recent.minOfOrNull { it.low }
         val swingHigh = recent.maxOfOrNull { it.high }
         val stopAligned = if (isLong) swingLow != null && plan.stop < swingLow
             else swingHigh != null && plan.stop > swingHigh
         val risk = abs(plan.entry - plan.stop)
-        val rr = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
+        val grossR = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
+        val netR = if (risk > 0.0) tradeIdeaNetReturnR(grossR, plan.entry, risk, heldBars = 8, setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
         return listOf(
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
-            "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
+            "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
-            ("Target 1 minimum 1:2 risk/reward (" + "%.2f".format(Locale.US, rr) + "R)") to (rr >= 2.0)
+            ("Target 1 minimum 1:1.5 estimated net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
         )
     }
 
@@ -1087,7 +1088,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val trendLabels = when {
         isScalp -> listOf("1H", "15M", "1M")
         isSwing -> listOf("1D", "4H", "15M")
-        else -> listOf("4H", "1H", "5M")
+        else -> listOf("1H", "4H context", "5M")
     }
     val setupInterval = if (isScalp) "5M" else if (isSwing) "1H" else "15M"
     val executionInterval = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
@@ -1103,12 +1104,13 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         it.isFinite() && it in -1.0..1.0 && (if (longSide) it >= -0.15 else it <= 0.15)
     }
     val riskDistance = abs(idea.entry - idea.stop)
-    val rr = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    val rewardOk = rr >= 2.0
-    val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
+    val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
+    val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = when { idea.horizon.startsWith("Scalp", true) -> 5; idea.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
+    val rewardOk = netR.isFinite() && netR >= 1.5
+    val score = (if (trend1h) 20 else 0) + (if (trend4h) 5 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
-        (if (bookOk == true) 5 else 0) + (if (rewardOk) 15 else 0)
+        (if (bookOk == true) 5 else 0) + (if (rewardOk) 25 else 0)
     val grade = when {
         score >= 80 -> "Strong checklist"
         score >= 65 -> "Good checklist · verify"
@@ -1146,14 +1148,14 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
     val combinedChecks = listOf(
-        ("${trendLabels[0]} trend aligned") to trend4h,
-        ("${trendLabels[1]} trend aligned") to trend1h,
+        ("${trendLabels[0]} trend aligned") to trend1h,
+        ("${trendLabels[1]} context aligned") to trend4h,
         ("${trendLabels[2]} execution trend aligned") to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
         ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
-        ("Target 1 offers at least 2.0R (" + "%.2f".format(Locale.US, rr) + "R)") to rewardOk
+        ("Target 1 offers at least 1.5R estimated net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
     ) + idea.strategyChecks
     return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
 }
@@ -1313,7 +1315,12 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     }
     if (expired || invalidRisk || stopHit) return TradeIdeaStage.DO_NOT_ENTER
     // Legacy cache entries without this strategy data are not eligible for READY.
-    if (idea.strategyChecks.isEmpty() || idea.strategyChecks.any { it.second != true }) {
+    val requiredChecks = idea.strategyChecks.filter { (label, _) ->
+        label.contains("confirmation candle", ignoreCase = true) ||
+            label.startsWith("Stop-loss", ignoreCase = true) ||
+            label.startsWith("Target 1", ignoreCase = true)
+    }
+    if (requiredChecks.isEmpty() || requiredChecks.any { it.second != true }) {
         val riskDistance = abs(idea.entry - idea.stop)
         val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
         val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last

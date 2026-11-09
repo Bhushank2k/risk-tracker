@@ -28,14 +28,14 @@ internal fun isConfluenceReady(
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && momentum && entryConfirmed && score >= 80
+    notExtended && entryConfirmed && score >= 75
 
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
-        if (h4.size < 200 || h1.size < 200 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
+        if (h4.size < 20 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
         val freshness = when (horizon) {
@@ -46,18 +46,20 @@ internal object ConfluenceScannerV4 {
         if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
             !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
-        val bias1Label = if (horizon == "Scalp") "1H" else if (horizon == "Swing") "1D" else "4H"
-        val bias2Label = if (horizon == "Scalp") "15M" else if (horizon == "Swing") "4H" else "1H"
+        val bias1Label = if (horizon == "Scalp") "1H" else if (horizon == "Swing") "1D" else "1H"
+        val bias2Label = if (horizon == "Scalp") "15M" else if (horizon == "Swing") "4H" else "4H context"
         val setupLabel = if (horizon == "Scalp") "5M" else if (horizon == "Swing") "1H" else "15M"
         val executionLabel = if (horizon == "Scalp") "1M" else if (horizon == "Swing") "15M" else "5M"
-        val e420=ema(c4,20)?:return null; val e450=ema(c4,50)?:return null; val e4200=ema(c4,200)?:return null
-        val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null; val e1200=ema(c1,200)?:return null
+        val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
+        val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
         val atr=atr(m15)?:return null; val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
-        val up4=h4.last().close>e4200&&e420>e450&&e450>e4200; val dn4=h4.last().close<e4200&&e420<e450&&e450<e4200
-        val up1=h1.last().close>e1200&&e120>e150&&e150>e1200; val dn1=h1.last().close<e1200&&e120<e150&&e150<e1200
-        val up=up4&&up1; val down=dn4&&dn1
-        val rangeMode=!up&&!down&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
+        val up4=e450?.let { h4.last().close>it&&e420>it } ?: false
+        val dn4=e450?.let { h4.last().close<it&&e420<it } ?: false
+        val up1=h1.last().close>e150&&e120>e150; val dn1=h1.last().close<e150&&e120<e150
+        // 1H is the primary intraday directional filter; 4H remains contextual and may be neutral.
+        val up=up1; val down=dn1
+        val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
         val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
@@ -102,7 +104,10 @@ internal object ConfluenceScannerV4 {
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
-            val t1=entry+sign*risk*2; val t2=entry+sign*risk*3; val rr=geometry&&risk>0&&abs(t1-entry)/risk>=2
+            val t1=entry+sign*risk*2; val t2=entry+sign*risk*3
+            val setupBarMinutes=when(horizon){"Scalp"->5;"Swing"->60;else->15}
+            val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(2.0,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
+            val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=1.5
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
             val score=confluenceScore(
                 regimeConfirmed = up || down || rangeMode,
@@ -115,11 +120,11 @@ internal object ConfluenceScannerV4 {
                 stopGeometryConfirmed = geometry
             )
             val blocks=mutableListOf<String>()
-            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
+            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("1.5R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
-            if(rv<1.2)blocks.add("relative volume"); if(!momentum)blocks.add("RSI/MACD"); if(score<70)blocks.add("score")
+            if(rv<1.0)blocks.add("low relative volume (scoring penalty)"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
-                liquid, geometry, rr, fundingOk, volatility, extended, rv>=1.2,
+                liquid, geometry, rr, fundingOk || fundingUnavailable, volatility, extended, rv>=1.0,
                 momentum, entryOk, score
             )
             val riskCodes = buildSet {
@@ -130,30 +135,30 @@ internal object ConfluenceScannerV4 {
                 else if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
                 if (!volatility) add(TradeIdeaRiskCode.VOLATILITY_OUT_OF_RANGE)
                 if (!extended) add(TradeIdeaRiskCode.EXTENDED_ENTRY)
-                if (rv < 1.2) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
+                if (rv < 1.0) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
-                if (score < 70) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
+                if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
-                if (score in 70..79) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
             }
             val warning=when{
                 !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
-                !rr->"BLOCK: Target 1 gross reward/risk is below 2R; deduct actual costs before entry."
-                fundingUnavailable->"BLOCK: A valid funding rate is unavailable; verify funding data before entry."
+                !rr->"BLOCK: Target 1 estimated net reward/risk is below 1.5R after costs."
+                fundingUnavailable->"WATCH: Funding data unavailable; verify current funding before execution."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
-                rv<1.2->"BLOCK: Relative volume is below 1.2×."
-                !momentum->"BLOCK: RSI/MACD momentum does not confirm."
-                score<70->"BLOCK: Confluence score is below 70/100."
+                rv<1.0->"WATCH: Relative volume is below 1.0×; volume confluence is weak."
+                !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
+                score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
-                score<80->"WATCH: Setup qualifies, but score is below the 80-point entry threshold."
-                else->"CONFLUENCE V4: Hard filters passed. Verify net reward/risk remains ≥2R after fees, funding and slippage."
+                score<75->"WAIT: Setup qualifies, but score is below the 75-point READY threshold."
+                else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥1.5R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
-                s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} and ${bias2Label} EMA20/50/200 aligned "+s.side,
+                s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
