@@ -446,18 +446,24 @@ internal object BinanceMarketScanner {
                             try {
                                 // Fetch each symbol's intervals concurrently. The shared semaphore
                                 // and pacer bound aggregate REST load across all four workers.
-                                val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
-                                val h1Job = async { cachedCandles(ticker.symbol, "1h", 260) }
-                                val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
-                                val m15Job = async { cachedCandles(ticker.symbol, "15m", 260) }
-                                val m5Job = async { cachedCandles(ticker.symbol, "5m", 220) }
-                                val m1Job = async { cachedCandles(ticker.symbol, "1m", 120) }
-                                val h4 = h4Job.await()
-                                val h1 = h1Job.await()
-                                val d1 = d1Job.await()
-                                val m15 = m15Job.await()
-                                val m5 = m5Job.await()
-                                val m1 = m1Job.await()
+                                val candleSets = supervisorScope {
+                                    val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
+                                    val h1Job = async { cachedCandles(ticker.symbol, "1h", 260) }
+                                    val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
+                                    val m15Job = async { cachedCandles(ticker.symbol, "15m", 260) }
+                                    val m5Job = async { cachedCandles(ticker.symbol, "5m", 220) }
+                                    val m1Job = async { cachedCandles(ticker.symbol, "1m", 120) }
+                                    listOf(
+                                        h4Job.await(), h1Job.await(), d1Job.await(),
+                                        m15Job.await(), m5Job.await(), m1Job.await()
+                                    )
+                                }
+                                val h4 = candleSets[0]
+                                val h1 = candleSets[1]
+                                val d1 = candleSets[2]
+                                val m15 = candleSets[3]
+                                val m5 = candleSets[4]
+                                val m1 = candleSets[5]
                                 // OI is supplementary context, not a Confluence hard gate.
                                 // Fetch it only after a technical setup exists, not for every market.
                                 val micro = BinanceFuturesStream.microstructure(ticker.symbol)
