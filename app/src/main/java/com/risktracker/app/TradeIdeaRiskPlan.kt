@@ -14,13 +14,13 @@ import kotlin.math.abs
 /** User-configurable, advisory-only risk settings. No exchange orders are submitted. */
 internal data class EntryRiskSettings(
     val accountEquity: Double = 0.0,
-    val riskPercent: Double = 1.0,
-    val maxLeverage: Int = 5,
+    val riskPercent: Double = 0.5,
+    val maxLeverage: Int = 3,
     val maxRiskPerTradePercent: Double = 2.0,
     val maxCombinedOpenRiskPercent: Double = 2.0,
-    val minRewardRisk: Double = 2.0,
+    val minRewardRisk: Double = 1.5,
     val maxActivePositions: Int = 2,
-    val dailyLossLimitPercent: Double = 3.0,
+    val dailyLossLimitPercent: Double = 1.5,
     val maxConsecutiveLosses: Int = 2,
     val tp1Percent: Int = 40,
     val tp2Percent: Int = 30,
@@ -34,13 +34,13 @@ internal object EntryRiskSettingsStore {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return EntryRiskSettings(
             accountEquity = p.getString("equity", "0")?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0,
-            riskPercent = p.getFloat("risk_percent", 1f).toDouble().coerceIn(0.5, 2.0),
-            maxLeverage = p.getInt("max_leverage", 5).coerceIn(1, 5),
+            riskPercent = p.getFloat("risk_percent", 0.5f).toDouble().coerceIn(0.5, 2.0),
+            maxLeverage = p.getInt("max_leverage", 3).coerceIn(1, 3),
             maxRiskPerTradePercent = 2.0,
             maxCombinedOpenRiskPercent = 2.0,
-            minRewardRisk = 2.0,
+            minRewardRisk = 1.5,
             maxActivePositions = 2,
-            dailyLossLimitPercent = 3.0,
+            dailyLossLimitPercent = 1.5,
             maxConsecutiveLosses = 2,
             tp1Percent = 40, tp2Percent = 30, tp3Percent = 30
         )
@@ -100,7 +100,7 @@ internal fun EntryRiskPlanSettingsCard(
     )) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Entry & Risk Plan", style = MaterialTheme.typography.titleMedium)
-            Text("Risk profile · ${"%.1f".format(Locale.US, settings.riskPercent)}% account risk · maximum 5x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
+            Text("Risk profile · ${"%.1f".format(Locale.US, settings.riskPercent)}% account risk · maximum 3x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = if (settings.accountEquity > 0.0) settings.accountEquity.toString() else "",
@@ -128,20 +128,20 @@ internal fun EntryRiskPlanSettingsCard(
                 Text("${settings.maxLeverage}x", style = MaterialTheme.typography.bodyMedium)
             }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                (1..5).forEachIndexed { index, value ->
+                (1..3).forEachIndexed { index, value ->
                     SegmentedButton(
                         selected = settings.maxLeverage == value,
                         onClick = { onSettingsChanged(settings.copy(maxLeverage = value)) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 5)
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = 3)
                     ) { Text("${value}x") }
                 }
             }
             HorizontalDivider()
             RiskSettingRow("Maximum risk per trade", "2%")
-            RiskSettingRow("Maximum combined open risk", "2%")
-            RiskSettingRow("Minimum reward / risk", "1:2")
+            RiskSettingRow("Maximum combined open risk", "1.5%")
+            RiskSettingRow("Minimum net reward / risk", "1:1.5")
             RiskSettingRow("Maximum active positions", "2")
-            RiskSettingRow("Daily loss limit", "3%")
+            RiskSettingRow("Daily loss limit", "1.5%")
             RiskSettingRow("Loss-streak lockout", "2 consecutive losses")
             RiskSettingRow("Margin mode", "Isolated")
             RiskSettingRow("Profit-taking", "40% / 30% / 30%")
