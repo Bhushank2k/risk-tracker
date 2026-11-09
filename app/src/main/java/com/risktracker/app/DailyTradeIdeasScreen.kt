@@ -630,7 +630,7 @@ internal object BinanceMarketScanner {
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
-            "$executionInterval confirmation candle with volume (>= 1.2x; breakout >= 1.5x)" to candleAligned,
+            "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
             ("Target 1 minimum 1:1.5 net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
         )
@@ -1107,10 +1107,10 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
     val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = 15) else Double.NaN
     val rewardOk = netR.isFinite() && netR >= 1.5
-    val score = (if (trend4h) 20 else 0) + (if (trend1h) 15 else 0) +
+    val score = (if (trend1h) 20 else 0) + (if (trend4h) 5 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
-        (if (bookOk == true) 5 else 0) + (if (rewardOk) 15 else 0)
+        (if (bookOk == true) 5 else 0) + (if (rewardOk) 25 else 0)
     val grade = when {
         score >= 80 -> "Strong checklist"
         score >= 65 -> "Good checklist · verify"
@@ -1148,8 +1148,8 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
     val combinedChecks = listOf(
-        ("${trendLabels[0]} trend aligned") to trend4h,
-        ("${trendLabels[1]} trend aligned") to trend1h,
+        ("${trendLabels[0]} trend aligned") to trend1h,
+        ("${trendLabels[1]} context aligned") to trend4h,
         ("${trendLabels[2]} execution trend aligned") to trend5m,
         ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
         ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
