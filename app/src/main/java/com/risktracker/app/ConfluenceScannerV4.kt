@@ -28,7 +28,7 @@ internal fun isConfluenceReady(
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && momentum && entryConfirmed && score >= 80
+    notExtended && entryConfirmed && score >= 75
 
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
