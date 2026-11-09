@@ -868,16 +868,12 @@ fun DailyTradeIdeasScreen() {
                     Text(timeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val healthTime = scanHealth.lastSuccessAt
-                val healthLabel = if (healthTime > 0L) {
-                    val ageMinutes = ((System.currentTimeMillis() - healthTime).coerceAtLeast(0L) / 60_000L)
-                    val stamp = SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(healthTime))
-                    "Last successful market scan: $stamp IST · ${ageMinutes}m ago"
-                } else "No successful market scan recorded yet"
                 val healthAge = if (healthTime > 0L) System.currentTimeMillis() - healthTime else Long.MAX_VALUE
-                Text((if (healthAge <= 90 * 60_000L) "FRESH · " else "STALE · ") + healthLabel,
+                if (healthTime > 0L) Text(
+                    if (healthAge <= 90 * 60_000L) "Market data fresh" else "Last successful scan is stale",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                Text("Price alerts are not real-time guarantees.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = if (healthAge <= 90 * 60_000L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                )
                 if (!scanHealth.lastError.isNullOrBlank()) Text("Last scan warning: ${scanHealth.lastError}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 if (loading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1061,6 +1057,10 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean =
         riskCodes = idea.riskCodes
     )
 
+private fun scannerDecisionIsActionable(idea: TradeIdea, snapshotAgeMs: Long): Boolean =
+    tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs) in
+        setOf(TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION)
+
 private data class EntryGuidance(
     val score: Int,
     val grade: String,
@@ -1168,47 +1168,41 @@ private fun EntryGuidancePanel(
     riskSettings: EntryRiskSettings = EntryRiskSettings()
 ) {
     val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
+    val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
     RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
-                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                    fontWeight = FontWeight.SemiBold)
+                Text("SCANNER VALIDATION", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             }
-            Text("Planned entry zone: " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
-                fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-            Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            if (guidance.action.startsWith("READY TO ENTER")) {
-                Text("Next step: the scanner trigger is already confirmed. Recheck the current price and spread; the coach score is not additional approval.",
-                    style = MaterialTheme.typography.bodySmall)
-            } else if (guidance.action.startsWith("WAIT")) {
-                Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            if (scannerDecisionIsActionable(idea, snapshotAgeMs)) {
+                Text("Entry " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
+                    fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
             }
-            Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error)
+            if (scannerStage != TradeIdeaStage.DO_NOT_ENTER) {
+                Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            }
+            if (scannerStage == TradeIdeaStage.MONITOR || scannerStage == TradeIdeaStage.WAIT_CONFIRMATION) {
+                Text("Wait for: " + guidance.trigger, style = MaterialTheme.typography.labelSmall)
+                Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error)
+            }
             HorizontalDivider()
-            val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-            if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
-                Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-            Text("Entry checklist (not trade approval)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            guidance.checks.forEach { (label, passed) ->
+            val failedChecks = guidance.checks.filter { it.second != true }
+            Text("Checks · ${guidance.checks.count { it.second == true }}/${guidance.checks.count { it.second != null }} passed",
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            (if (failedChecks.isNotEmpty()) failedChecks else guidance.checks.take(3)).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (passed == true) "✓" else "○",
-                        color = if (passed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall)
-                    Text(label + if (passed == null) " · unavailable" else if (passed) " · pass" else " · review",
+                    Text(if (passed == null) "—" else "!",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                    Text(label + if (passed == null) " · unavailable" else " · failed",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Confluence V4 scoring and its existing hard risk gates determine scanner qualification.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (failedChecks.isEmpty()) Text("All displayed checks passed.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -1424,8 +1418,21 @@ private fun TradeIdeaCard(
                         Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                if (idea.side == "LONG" || idea.side == "SHORT") {
+                when (stage) {
+                    TradeIdeaStage.DO_NOT_ENTER -> {
+                        val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
+                        Text(if (expired) "Signal expired · refresh scan"
+                            else idea.warning.removePrefix("BLOCK:").trim().ifBlank { "Scanner validation failed" },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
+                    }
+                    TradeIdeaStage.AVOID_CHASING -> Text("Entry missed · do not chase; wait for a fresh setup.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                    else -> Text(stage.detail, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Text("Score ${idea.score}/100", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if ((idea.side == "LONG" || idea.side == "SHORT") && stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                         SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
@@ -1433,9 +1440,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("Gross R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
- } else {
-                    Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+ }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
                     Text("Why this idea?")
                     Spacer(Modifier.width(4.dp))
@@ -1467,11 +1472,14 @@ private fun TradeIdeaCard(
             Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(12.dp)) {
                 Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(stage.title.uppercase(Locale.US), color = tint, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                    Text(stage.detail, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (stage == TradeIdeaStage.DO_NOT_ENTER) idea.warning.removePrefix("BLOCK:").trim() else stage.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (stage == TradeIdeaStage.DO_NOT_ENTER) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
-            if (!expanded) EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
-            if (idea.side == "LONG" || idea.side == "SHORT") {
+            if ((idea.side == "LONG" || idea.side == "SHORT") && stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
@@ -1480,10 +1488,6 @@ private fun TradeIdeaCard(
                 }
                 Text("Gross R:R is before fees, funding and slippage; verify net reward/risk remains at least 2R before entry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (density != "Compact") TargetLadder(idea)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(livePrice.usd(6), fontWeight = FontWeight.SemiBold)
             }
             if (density != "Compact") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1550,15 +1554,15 @@ private fun TradeIdeaCard(
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
-                Text(if (expired) "This signal has expired. Refresh the market scan before considering it."
-                    else if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
-                    else "The risk plan failed validation or has a blocking warning: " + idea.warning,
+            } else if (stage == TradeIdeaStage.AVOID_CHASING) {
+                Text("Entry missed · do not chase; wait for a fresh setup.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else if (stage != TradeIdeaStage.DO_NOT_ENTER) {
+                Text(if (idea.side == "WAIT") "No directional setup qualifies."
+                    else "Review the latest scanner result before acting.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
             }
 
-            if (density == "Expanded") HistoricalOutcomePanel(idea) else Text(historyOneLine(idea), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
             if (expanded) {
                 HorizontalDivider()
@@ -1575,13 +1579,8 @@ private fun TradeIdeaCard(
                 ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
                 HorizontalDivider()
-                Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
-                    else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
-                    style = MaterialTheme.typography.bodySmall)
+                HistoricalOutcomePanel(idea)
                 idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             }
         }
@@ -1668,9 +1667,7 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text("Historical win / loss", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Historical replay uses closed candles and a 24-hour time stop. It is a simplified estimate, not a live fill simulation; fees, funding payments, spread and slippage can reduce actual results.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(sideLabel + " · " + stats.trades + " samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (stats.hasUsableEstimate) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
@@ -1724,7 +1721,7 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
+                Text("Win/loss hidden · need 30 samples; current " + stats.trades,
                     style = MaterialTheme.typography.bodySmall)
             }
         }
