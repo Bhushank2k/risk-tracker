@@ -105,7 +105,8 @@ internal object ConfluenceScannerV4 {
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
             val t1=entry+sign*risk*2; val t2=entry+sign*risk*3
-            val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(2.0,entry,risk,heldBars=8,setupBarMinutes=15) else Double.NaN
+            val setupBarMinutes=when(horizon){"Scalp"->5;"Swing"->60;else->15}
+            val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(2.0,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
             val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=1.5
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
             val score=confluenceScore(
