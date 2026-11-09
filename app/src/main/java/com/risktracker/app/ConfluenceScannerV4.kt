@@ -120,7 +120,7 @@ internal object ConfluenceScannerV4 {
                 stopGeometryConfirmed = geometry
             )
             val blocks=mutableListOf<String>()
-            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R gross R:R")
+            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("1.5R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(rv<1.0)blocks.add("low relative volume (scoring penalty)"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
