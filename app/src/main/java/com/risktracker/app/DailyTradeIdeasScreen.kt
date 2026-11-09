@@ -1445,9 +1445,7 @@ private fun TradeIdeaCard(
                         SummaryLevel("Gross R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
- } else if (idea.side == "WAIT") {
-                    Text("No directional setup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+ }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
                     Text("Why this idea?")
                     Spacer(Modifier.width(4.dp))
