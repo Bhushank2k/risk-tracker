@@ -221,34 +221,52 @@ internal object BinanceMarketScanner {
     fun latestPrice(symbol: String): Double? = BinanceFuturesStream.latestTicker(symbol)?.first
 
     private fun get(path: String): String {
-        ensureRestAllowed()
-        val c = URL(BASE + path).openConnection() as HttpURLConnection
-        c.connectTimeout = 12000
-        c.readTimeout = 16000
-        c.requestMethod = "GET"
-        return try {
-            val code = c.responseCode
-            val stream = if (code in 200..299) c.inputStream else c.errorStream
-            val body = stream.bufferedReader().use { it.readText() }
-            if (code !in 200..299) {
-                val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
-                if (code == 418 || code == 429) {
-                    val now = System.currentTimeMillis()
-                    val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
-                    val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
-                    val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
-                    val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
-                    val serverPauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L)
-                    val pauseMs = serverPauseMs.takeIf { it > 0L }
-                        ?: if (code == 418) 15L * 60_000L else 60_000L
-                    restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
-                    restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
-                    throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+        var lastConnectionFailure: java.io.IOException? = null
+        for (attempt in 0..2) {
+            ensureRestAllowed()
+            val c = URL(BASE + path).openConnection() as HttpURLConnection
+            c.connectTimeout = 12000
+            c.readTimeout = 16000
+            c.requestMethod = "GET"
+            try {
+                val code = c.responseCode
+                val stream = if (code in 200..299) c.inputStream else c.errorStream
+                val body = stream.bufferedReader().use { it.readText() }
+                if (code !in 200..299) {
+                    val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
+                    if (code == 418 || code == 429) {
+                        val now = System.currentTimeMillis()
+                        val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
+                        val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
+                        val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
+                        val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
+                        val serverPauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L)
+                        val pauseMs = serverPauseMs.takeIf { it > 0L }
+                            ?: if (code == 418) 15L * 60_000L else 60_000L
+                        restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
+                        restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
+                        throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+                    }
+                    throw IllegalStateException("Binance HTTP " + code + ": " + message)
                 }
-                throw IllegalStateException("Binance HTTP " + code + ": " + message)
+                return body
+            } catch (e: BinanceRateLimitException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                lastConnectionFailure = e
+                if (attempt == 2) throw e
+                try {
+                    // GET requests are safe to retry after transient app-resume socket failures.
+                    Thread.sleep(500L * (1L shl attempt))
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw java.io.IOException("Binance request retry interrupted", interrupted)
+                }
+            } finally {
+                c.disconnect()
             }
-            body
-        } finally { c.disconnect() }
+        }
+        throw lastConnectionFailure ?: java.io.IOException("Binance request failed without a response")
     }
 
     private fun candles(symbol: String, interval: String, limit: Int): List<ScanCandle> {
