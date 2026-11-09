@@ -26,7 +26,7 @@ internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     EXTENDED_ENTRY(true),
     LOW_RELATIVE_VOLUME(false),
     MOMENTUM_NOT_CONFIRMED(false),
-    LOW_CONFLUENCE_SCORE(false),
+    LOW_CONFLUENCE_SCORE(true),
     STALE_MARKET_DATA(true),
     WAITING_FOR_ENTRY_CONFIRMATION(false),
     BELOW_READY_SCORE_THRESHOLD(false),
