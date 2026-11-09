@@ -42,7 +42,6 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
@@ -406,8 +405,7 @@ internal object BinanceMarketScanner {
         // fields to prioritize evaluation; expensive candle history is fetched only
         // when a symbol reaches the bounded deep-validation queue.
         val candidates = prefiltered.sortedByDescending {
-            it.volatilityPct + abs(it.changePct) * 0.5 +
-                kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
+            quickScanMarketPriority(it.volatilityPct, it.changePct, it.quoteVolume)
         }
         report("Quick filter complete: ${candidates.size}/${allowed.size} active USDT perpetuals queued for full confirmation. Loading BTC context…")
 
@@ -420,8 +418,8 @@ internal object BinanceMarketScanner {
 
         // Aggregate ticker/book feeds cover all contracts. Subscribe to order-book
         // depth in supported batches, then evaluate each batch with bounded parallelism.
-        val depthBatchSize = 150
-        val deepScanConcurrency = 4
+        val depthBatchSize = QUICK_SCAN_DEPTH_BATCH_SIZE
+        val deepScanConcurrency = QUICK_SCAN_DEEP_SCAN_CONCURRENCY
         report("Full confirmation starting: 0/${candidates.size} pairs · BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         var marketsWithPlans = 0
