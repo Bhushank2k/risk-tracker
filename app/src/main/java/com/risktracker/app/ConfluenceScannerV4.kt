@@ -137,7 +137,7 @@ internal object ConfluenceScannerV4 {
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
-                if (score in 70..79) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
             }
             val warning=when{
