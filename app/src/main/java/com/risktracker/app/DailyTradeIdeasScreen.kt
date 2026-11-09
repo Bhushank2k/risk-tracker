@@ -632,7 +632,7 @@ internal object BinanceMarketScanner {
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
-            ("Target 1 minimum 1:1.5 net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
+            ("Target 1 minimum 1:1.5 estimated net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
         )
     }
 
@@ -1155,7 +1155,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
-        ("Target 1 offers at least 1.5R net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
+        ("Target 1 offers at least 1.5R estimated net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
     ) + idea.strategyChecks
     return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
 }
