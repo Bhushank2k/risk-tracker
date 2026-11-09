@@ -749,7 +749,6 @@ fun DailyTradeIdeasScreen() {
     val partialScanVisible = scanUi.partial
     val showingCached = scanUi.showingCached
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
-    var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
     fun readTrackedPlanKeys(rows: List<TradeIdea>): Set<String> {
         val all = trackingPrefs.all
         val tracked = all.keys.filter { key -> key.startsWith("plan_") && (all[key] as? Float ?: 0f) > 0f }.toMutableSet()
@@ -773,6 +772,7 @@ fun DailyTradeIdeasScreen() {
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
+    LaunchedEffect(ideas) { trackedPlanKeys = readTrackedPlanKeys(ideas) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
