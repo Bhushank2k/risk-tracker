@@ -1168,6 +1168,7 @@ private fun EntryGuidancePanel(
     riskSettings: EntryRiskSettings = EntryRiskSettings()
 ) {
     val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
+    val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
     RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
@@ -1184,16 +1185,12 @@ private fun EntryGuidancePanel(
                     fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
             }
             Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            if (guidance.action.startsWith("READY TO ENTER")) {
-                Text("Next step: the scanner trigger is already confirmed. Recheck the current price and spread; the coach score is not additional approval.",
-                    style = MaterialTheme.typography.bodySmall)
-            } else if (guidance.action.startsWith("WAIT")) {
-                Text("Confirmation: " + guidance.trigger, style = MaterialTheme.typography.bodySmall)
+            if (scannerStage == TradeIdeaStage.MONITOR || scannerStage == TradeIdeaStage.WAIT_CONFIRMATION) {
+                Text("Wait for: " + guidance.trigger, style = MaterialTheme.typography.labelSmall)
+                Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error)
             }
-            Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
-            val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
             if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
@@ -1449,8 +1446,8 @@ private fun TradeIdeaCard(
                         SummaryLevel("Gross R:R", if (tradeIdeaRiskValid(idea)) "%.2fR".format(Locale.US, rewardRisk) else "—", Modifier.weight(0.8f))
                     }
                     Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
- } else {
-                    Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+ } else if (idea.side == "WAIT") {
+                    Text("No directional setup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
                     Text("Why this idea?")
@@ -1486,7 +1483,7 @@ private fun TradeIdeaCard(
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (idea.side == "LONG" || idea.side == "SHORT") {
+            if ((idea.side == "LONG" || idea.side == "SHORT") && stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
@@ -1563,10 +1560,10 @@ private fun TradeIdeaCard(
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
             } else {
                 val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
-                Text(if (expired) "This signal has expired. Refresh the market scan before considering it."
-                    else if (idea.side == "WAIT") "Trend, momentum and liquidity filters are not aligned. No entry is permitted."
-                    else "The risk plan failed validation or has a blocking warning: " + idea.warning,
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(if (expired) "Signal expired · refresh scan."
+                    else if (idea.side == "WAIT") "No directional setup qualifies."
+                    else idea.warning.removePrefix("BLOCK:").trim(),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
             }
 
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
@@ -1586,12 +1583,7 @@ private fun TradeIdeaCard(
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
                 HorizontalDivider()
                 HistoricalOutcomePanel(idea)
-                Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
-                    else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
-                    style = MaterialTheme.typography.bodySmall)
                 idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             }
         }
