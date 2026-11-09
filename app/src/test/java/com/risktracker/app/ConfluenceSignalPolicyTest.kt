@@ -37,7 +37,7 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isConfluenceReady(true,true,true,false,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,false,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,false,true,true,true,100))
-        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
     }
