@@ -42,6 +42,31 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
     }
 
+    @Test fun volumeAndMomentumAreSoftSignalsButSafetyFailuresRemainHard() {
+        assertFalse(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME.blocksEntry)
+        assertFalse(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED.blocksEntry)
+        assertFalse(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.LOW_LIQUIDITY.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.INVALID_STOP.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.ADVERSE_FUNDING.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE.blocksEntry)
+    }
+
+    @Test fun netRewardRiskIncludesEstimatedExecutionCosts() {
+        val net = tradeIdeaNetReturnR(
+            grossR = 2.0, entry = 100.0, riskDistance = 1.0,
+            heldBars = 8, setupBarMinutes = 15
+        )
+        assertTrue(net.isFinite())
+        assertTrue(net >= 1.5)
+        val tightStopNet = tradeIdeaNetReturnR(
+            grossR = 2.0, entry = 100.0, riskDistance = 0.1,
+            heldBars = 8, setupBarMinutes = 15
+        )
+        assertTrue(tightStopNet < 1.5)
+    }
+
     @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
         val base = listOf(true,true,true,true,true,true,false,false)
         fun score(volume: Double) = confluenceScore(
