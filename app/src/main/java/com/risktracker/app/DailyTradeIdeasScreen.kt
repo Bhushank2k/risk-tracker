@@ -1190,11 +1190,6 @@ private fun EntryGuidancePanel(
                     color = MaterialTheme.colorScheme.error)
             }
             HorizontalDivider()
-            if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
-                Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
             val failedChecks = guidance.checks.filter { it.second != true }
             Text("Checks · ${guidance.checks.count { it.second == true }}/${guidance.checks.count { it.second != null }} passed",
                 style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -1477,7 +1472,11 @@ private fun TradeIdeaCard(
             Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(12.dp)) {
                 Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(stage.title.uppercase(Locale.US), color = tint, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                    Text(stage.detail, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (stage == TradeIdeaStage.DO_NOT_ENTER) idea.warning.removePrefix("BLOCK:").trim() else stage.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (stage == TradeIdeaStage.DO_NOT_ENTER) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
             if ((idea.side == "LONG" || idea.side == "SHORT") && stage !in setOf(TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING)) {
@@ -1555,11 +1554,12 @@ private fun TradeIdeaCard(
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
                 Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
-                Text(if (expired) "Signal expired · refresh scan."
-                    else if (idea.side == "WAIT") "No directional setup qualifies."
-                    else idea.warning.removePrefix("BLOCK:").trim(),
+            } else if (stage == TradeIdeaStage.AVOID_CHASING) {
+                Text("Entry missed · do not chase; wait for a fresh setup.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else if (stage != TradeIdeaStage.DO_NOT_ENTER) {
+                Text(if (idea.side == "WAIT") "No directional setup qualifies."
+                    else "Review the latest scanner result before acting.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2)
             }
 
