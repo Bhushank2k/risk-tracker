@@ -625,7 +625,7 @@ internal object BinanceMarketScanner {
             else swingHigh != null && plan.stop > swingHigh
         val risk = abs(plan.entry - plan.stop)
         val grossR = if (risk > 0.0) abs(plan.target1 - plan.entry) / risk else 0.0
-        val netR = if (risk > 0.0) tradeIdeaNetReturnR(grossR, plan.entry, risk, heldBars = 8, setupBarMinutes = 15) else Double.NaN
+        val netR = if (risk > 0.0) tradeIdeaNetReturnR(grossR, plan.entry, risk, heldBars = 8, setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
         return listOf(
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
@@ -1105,7 +1105,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     }
     val riskDistance = abs(idea.entry - idea.stop)
     val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = 15) else Double.NaN
+    val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = when { idea.horizon.startsWith("Scalp", true) -> 5; idea.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
     val rewardOk = netR.isFinite() && netR >= 1.5
     val score = (if (trend1h) 20 else 0) + (if (trend4h) 5 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
