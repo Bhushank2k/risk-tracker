@@ -27,12 +27,30 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isTradeIdeaLiquidityAcceptable("SHORT", 3.0, 0.16, 20_000.0, 20_000.0))
         assertFalse(isTradeIdeaLiquidityAcceptable("OTHER", 3.0, 0.0, 20_000.0, 20_000.0))
     }
-    @Test fun readyRequiresEveryHardGateAndMinimumScore() {
-        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,80))
-        for (failedGate in 0..8) {
-            val gates = BooleanArray(9) { true }; gates[failedGate] = false
-            assertFalse(isConfluenceReady(gates[0],gates[1],gates[2],gates[3],gates[4],gates[5],gates[6],gates[7],gates[8],100))
-        }
-        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,79))
+    @Test fun readyRequiresHardGatesAndBalancedScoreButNotEverySoftSignal() {
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
+        // Volume and momentum are scoring inputs, not standalone hard gates.
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
+        assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,false,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,false,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,false,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,false,true,true,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
+    }
+
+    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
+        val base = listOf(true,true,true,true,true,true,false,false)
+        fun score(volume: Double) = confluenceScore(
+            regimeConfirmed=base[0], structureConfirmed=base[1], entryConfirmed=base[2],
+            relativeVolume=volume, momentumConfirmed=base[3], liquidityConfirmed=base[4],
+            btcAgainst=base[5], stopGeometryConfirmed=base[6]
+        )
+        assertTrue(score(1.0) > score(0.99))
+        assertTrue(score(1.2) > score(1.0))
+        assertTrue(score(1.5) > score(1.2))
     }
 }
