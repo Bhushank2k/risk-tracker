@@ -25,8 +25,8 @@ internal fun confluenceMomentumConfirmed(
 }
 
 /**
- * A transparent 100-point confluence score. Hard risk checks remain independent
- * Hard safety gates remain independent. Relative volume and momentum contribute
+ * A transparent 100-point confluence score. Hard safety gates remain independent.
+ * Relative volume and momentum contribute
  * to confluence but are not standalone blockers for otherwise valid pullbacks.
  */
 internal fun confluenceScore(
