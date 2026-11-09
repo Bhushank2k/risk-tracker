@@ -42,7 +42,6 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
@@ -221,34 +220,52 @@ internal object BinanceMarketScanner {
     fun latestPrice(symbol: String): Double? = BinanceFuturesStream.latestTicker(symbol)?.first
 
     private fun get(path: String): String {
-        ensureRestAllowed()
-        val c = URL(BASE + path).openConnection() as HttpURLConnection
-        c.connectTimeout = 12000
-        c.readTimeout = 16000
-        c.requestMethod = "GET"
-        return try {
-            val code = c.responseCode
-            val stream = if (code in 200..299) c.inputStream else c.errorStream
-            val body = stream.bufferedReader().use { it.readText() }
-            if (code !in 200..299) {
-                val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
-                if (code == 418 || code == 429) {
-                    val now = System.currentTimeMillis()
-                    val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
-                    val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
-                    val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
-                    val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
-                    val serverPauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L)
-                    val pauseMs = serverPauseMs.takeIf { it > 0L }
-                        ?: if (code == 418) 15L * 60_000L else 60_000L
-                    restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
-                    restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
-                    throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+        var lastConnectionFailure: java.io.IOException? = null
+        for (attempt in 0..2) {
+            ensureRestAllowed()
+            val c = URL(BASE + path).openConnection() as HttpURLConnection
+            c.connectTimeout = 12000
+            c.readTimeout = 16000
+            c.requestMethod = "GET"
+            try {
+                val code = c.responseCode
+                val stream = if (code in 200..299) c.inputStream else c.errorStream
+                val body = stream.bufferedReader().use { it.readText() }
+                if (code !in 200..299) {
+                    val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("request failed")
+                    if (code == 418 || code == 429) {
+                        val now = System.currentTimeMillis()
+                        val retrySeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
+                        val headerPauseMs = retrySeconds?.coerceAtLeast(1L)?.times(1000L)
+                        val banUntilText = message.substringAfter("banned until", "").trim().takeWhile { it.isDigit() }
+                        val bodyPauseMs = banUntilText.toLongOrNull()?.minus(now)?.coerceAtLeast(1L)
+                        val serverPauseMs = maxOf(headerPauseMs ?: 0L, bodyPauseMs ?: 0L)
+                        val pauseMs = serverPauseMs.takeIf { it > 0L }
+                            ?: if (code == 418) 15L * 60_000L else 60_000L
+                        restBlockedUntilMs = maxOf(restBlockedUntilMs, now + pauseMs)
+                        restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
+                        throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
+                    }
+                    throw IllegalStateException("Binance HTTP " + code + ": " + message)
                 }
-                throw IllegalStateException("Binance HTTP " + code + ": " + message)
+                return body
+            } catch (e: BinanceRateLimitException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                lastConnectionFailure = e
+                if (attempt == 2) throw e
+                try {
+                    // GET requests are safe to retry after transient app-resume socket failures.
+                    Thread.sleep(500L * (1L shl attempt))
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw java.io.IOException("Binance request retry interrupted", interrupted)
+                }
+            } finally {
+                c.disconnect()
             }
-            body
-        } finally { c.disconnect() }
+        }
+        throw lastConnectionFailure ?: java.io.IOException("Binance request failed without a response")
     }
 
     private fun candles(symbol: String, interval: String, limit: Int): List<ScanCandle> {
@@ -384,42 +401,13 @@ internal object BinanceMarketScanner {
         report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $2M quote-volume floor; spread and two-sided depth remain hard gates.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
-        // Measure every eligible active USDT perpetual; ranking changes evaluation order, never market coverage.
-        report("Loading hourly history for 0/${prefiltered.size} eligible pairs…")
-        val hourlyCache = ConcurrentHashMap<String, List<ScanCandle>>()
-        val hourlyCompleted = AtomicInteger(0)
-        val hourlyHistoryFailures = AtomicInteger(0)
-        val ranked = prefiltered.map { ticker ->
-            async {
-                coroutineContext.ensureActive()
-                try {
-                    val hourly = cachedCandles(ticker.symbol, "1h", 260)
-                    hourlyCache[ticker.symbol] = hourly
-                    ticker.copy(atrPct = atrPercent(hourly), relativeVolume = relativeVolume(hourly))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: BinanceRateLimitException) {
-                    throw e
-                } catch (_: Exception) {
-                    // Incomplete hourly history is not eligible for ATR-based ranking.
-                    hourlyHistoryFailures.incrementAndGet()
-                    null
-                } finally {
-                    val completed = hourlyCompleted.incrementAndGet()
-                    if (completed % 5 == 0 || completed == prefiltered.size) {
-                        report("Hourly history: ${completed}/${prefiltered.size} pairs · ${hourlyHistoryFailures.get()} unavailable…")
-                    }
-                }
-            }
-        }.awaitAll().filterNotNull()
-        val candidates = ranked.sortedByDescending {
-            // Blend tradable movement with liquidity so quieter but liquid setups are not crowded out.
-            // Keep every eligible market; this score only prioritizes the order of deep evaluation.
-            it.atrPct * (1.0 + 0.12 * it.relativeVolume.coerceIn(0.0, 3.0)) +
-                it.volatilityPct * 0.05 + kotlin.math.ln1p(it.quoteVolume / 5_000_000.0) * 0.15
+        // Keep every volume-eligible contract in the scan. Use only bulk 24h ticker
+        // fields to prioritize evaluation; expensive candle history is fetched only
+        // when a symbol reaches the bounded deep-validation queue.
+        val candidates = prefiltered.sortedByDescending {
+            quickScanMarketPriority(it.volatilityPct, it.changePct, it.quoteVolume)
         }
-        if (candidates.isEmpty()) throw IllegalStateException("Hourly ATR and relative-volume data were unavailable for all ${prefiltered.size} liquid pairs.")
-        report("Hourly history ready: ${candidates.size}/${prefiltered.size} pairs. Loading BTC market context…")
+        report("Quick filter complete: ${candidates.size}/${allowed.size} active USDT perpetuals queued for full confirmation. Loading BTC context…")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
@@ -428,10 +416,11 @@ internal object BinanceMarketScanner {
         val btcH1 = btcH1Job.await()
         val btcBias = btcRegime(btcH4, btcH1)
 
-        // The aggregate ticker/book streams cover the whole market. Depth streams are
-        // intentionally subscribed in bounded batches, then awaited before each batch is evaluated.
-        val depthBatchSize = 150
-        report("Deep scan starting: 0/${candidates.size} pairs · BTC regime: $btcBias…")
+        // Aggregate ticker/book feeds cover all contracts. Subscribe to order-book
+        // depth in supported batches, then evaluate each batch with bounded parallelism.
+        val depthBatchSize = QUICK_SCAN_DEPTH_BATCH_SIZE
+        val deepScanConcurrency = QUICK_SCAN_DEEP_SCAN_CONCURRENCY
+        report("Full confirmation starting: 0/${candidates.size} pairs · BTC regime: $btcBias…")
         val results = mutableListOf<TradeIdea>()
         var marketsWithPlans = 0
         var marketsWithoutPlans = 0
@@ -439,59 +428,93 @@ internal object BinanceMarketScanner {
         var gateDiagnostics = ScanGateDiagnostics()
         var marketDataFailures = 0
         var lastMarketFailure: String? = null
-        for ((index, ticker) in candidates.withIndex()) {
+        var completedPairs = 0
+        data class DeepScanOutcome(val symbol: String, val ideas: List<TradeIdea>, val failure: String? = null)
+
+        for (depthBatchTickers in candidates.chunked(depthBatchSize)) {
             coroutineContext.ensureActive()
-            if (index % depthBatchSize == 0) {
-                val depthBatch = candidates.drop(index).take(depthBatchSize).map { it.symbol }
-                BinanceFuturesStream.start(depthBatch)
-                val depthReady = BinanceFuturesStream.awaitDepth(depthBatch, timeoutMs = 5_000L)
-                report("Order-book depth ready: ${depthReady.size}/${depthBatch.size} pairs · scanning ${index + 1}/${candidates.size}…")
-            }
-            try {
-                // Fetch each symbol's remaining intervals concurrently; the shared limiter
-                // caps total REST concurrency and spaces request starts to protect Binance.
-                val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
-                val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
-                val m15Job = async { cachedCandles(ticker.symbol, "15m", 500) }
-                val m5Job = async { cachedCandles(ticker.symbol, "5m", 1500) }
-                val m1Job = async { cachedCandles(ticker.symbol, "1m", 300) }
-                val h4 = h4Job.await()
-                val h1 = hourlyCache[ticker.symbol] ?: cachedCandles(ticker.symbol, "1h", 260)
-                val d1 = d1Job.await()
-                val m15 = m15Job.await()
-                val m5 = m5Job.await()
-                val m1 = m1Job.await()
-                val micro = BinanceFuturesStream.microstructure(ticker.symbol).copy(
-                    oiChangePct = openInterestChangePct(ticker.symbol)
-                )
-                val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
-                val live = ticker.copy(
-                    last = liveTicker?.first ?: ticker.last,
-                    quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
-                    changePct = liveTicker?.third ?: ticker.changePct
-                )
-                val marketIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
-                if (marketIdeas.isEmpty()) {
-                    marketsWithoutPlans++
-                } else {
-                    marketsWithPlans++
-                    gateDiagnostics = gateDiagnostics.record(marketIdeas)
-                    blockedPlans = gateDiagnostics.blockedPlans
+            val depthSymbols = depthBatchTickers.map { it.symbol }
+            BinanceFuturesStream.start(depthSymbols)
+            val depthReady = BinanceFuturesStream.awaitDepth(depthSymbols, timeoutMs = 5_000L)
+            report("Order-book depth ready: ${depthReady.size}/${depthSymbols.size} pairs · validating batch…")
+
+            for (workBatch in depthBatchTickers.chunked(deepScanConcurrency)) {
+                coroutineContext.ensureActive()
+                val outcomes = coroutineScope {
+                    workBatch.map { ticker ->
+                        async {
+                            try {
+                                // Fetch each symbol's intervals concurrently. The shared semaphore
+                                // and pacer bound aggregate REST load across all four workers.
+                                val candleSets = supervisorScope {
+                                    val h4Job = async { cachedCandles(ticker.symbol, "4h", 260) }
+                                    val h1Job = async { cachedCandles(ticker.symbol, "1h", 260) }
+                                    val d1Job = async { cachedCandles(ticker.symbol, "1d", 260) }
+                                    val m15Job = async { cachedCandles(ticker.symbol, "15m", 260) }
+                                    val m5Job = async { cachedCandles(ticker.symbol, "5m", 220) }
+                                    val m1Job = async { cachedCandles(ticker.symbol, "1m", 120) }
+                                    listOf(
+                                        h4Job.await(), h1Job.await(), d1Job.await(),
+                                        m15Job.await(), m5Job.await(), m1Job.await()
+                                    )
+                                }
+                                val h4 = candleSets[0]
+                                val h1 = candleSets[1]
+                                val d1 = candleSets[2]
+                                val m15 = candleSets[3]
+                                val m5 = candleSets[4]
+                                val m1 = candleSets[5]
+                                // OI is supplementary context, not a Confluence hard gate.
+                                // Fetch it only after a technical setup exists, not for every market.
+                                val micro = BinanceFuturesStream.microstructure(ticker.symbol)
+                                val liveTicker = BinanceFuturesStream.latestTicker(ticker.symbol)
+                                val live = ticker.copy(
+                                    last = liveTicker?.first ?: ticker.last,
+                                    quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
+                                    changePct = liveTicker?.third ?: ticker.changePct
+                                )
+                                val initialIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                                val oiChange = if (initialIdeas.isNotEmpty()) openInterestChangePct(ticker.symbol) else null
+                                val ideas = if (oiChange == null) initialIdeas else initialIdeas.map { idea ->
+                                    idea.copy(
+                                        oiChangePct = oiChange,
+                                        reasons = idea.reasons + ("Open interest changed " +
+                                            "%+.2f".format(Locale.US, oiChange) + "% over the latest 15M samples")
+                                    )
+                                }
+                                DeepScanOutcome(ticker.symbol, ideas)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: BinanceRateLimitException) {
+                                throw e
+                            } catch (e: Exception) {
+                                DeepScanOutcome(ticker.symbol, emptyList(),
+                                    "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}")
+                            }
+                        }
+                    }.awaitAll()
                 }
-                results.addAll(marketIdeas)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: BinanceRateLimitException) {
-                throw e
-            } catch (e: Exception) {
-                marketDataFailures++
-                lastMarketFailure = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
+
+                outcomes.forEach { outcome ->
+                    if (outcome.failure != null) {
+                        marketDataFailures++
+                        lastMarketFailure = outcome.failure
+                    } else if (outcome.ideas.isEmpty()) {
+                        marketsWithoutPlans++
+                    } else {
+                        marketsWithPlans++
+                        gateDiagnostics = gateDiagnostics.record(outcome.ideas)
+                        blockedPlans = gateDiagnostics.blockedPlans
+                        results.addAll(outcome.ideas)
+                    }
+                }
+                completedPairs += workBatch.size
+                if (results.isNotEmpty()) {
+                    val snapshot = results.toList()
+                    withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
+                }
+                report("Scanned ${completedPairs}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors · gates: ${gateDiagnostics.topGateSummary()}…")
             }
-            if (results.isNotEmpty()) {
-                val snapshot = results.toList()
-                withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
-            }
-            report("Scanned ${index + 1}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors · gates: ${gateDiagnostics.topGateSummary()}…")
         }
         if (results.isEmpty()) {
             val detail = lastMarketFailure?.let { " Last market error: $it" }
@@ -499,7 +522,7 @@ internal object BinanceMarketScanner {
             throw IllegalStateException(
                 "Scan found no technical setups in ${candidates.size} evaluated pairs (${prefiltered.size} passed the 24h liquidity filter). " +
                     "Pairs with setups: $marketsWithPlans; no setup: $marketsWithoutPlans; data errors: $marketDataFailures; " +
-                    "hourly history unavailable: ${hourlyHistoryFailures.get()}.$detail"
+                    "candidate universe: all active USDT perpetuals passing the $2M quote-volume prefilter.$detail"
             )
         }
         report("Scan complete · ${results.size} plans · ${gateDiagnostics.blockedPlans} blocked · ${marketsWithoutPlans} no setup · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols.")
@@ -881,10 +904,10 @@ fun DailyTradeIdeasScreen() {
                             CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(9.dp))
                         }
-                        Text(if (loading) "Scanning markets…" else "Refresh market scan")
+                        Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. The scanner prefilters liquid USDT perpetuals by 24h range, then ranks the shortlist by 1H ATR% and relative volume. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
+                        Text("Source · Binance Futures public market data. The scanner discovers all active USDT perpetuals, filters by 24h quote volume, then fully validates every eligible pair in bounded parallel batches. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
