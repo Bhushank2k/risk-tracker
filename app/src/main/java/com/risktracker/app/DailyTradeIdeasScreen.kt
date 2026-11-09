@@ -618,7 +618,7 @@ internal object BinanceMarketScanner {
             val requiredVolume = if (plan.setup.contains("breakout", ignoreCase = true)) confluenceExecutionVolumeThreshold(plan.setup) else 0.0
             directionOk && volumeRatio >= requiredVolume
         }
-        val recent = executionRows.dropLast(1).takeLast(20)
+        val recent = executionRows.dropLast(1).takeLast(9)
         val swingLow = recent.minOfOrNull { it.low }
         val swingHigh = recent.maxOfOrNull { it.high }
         val stopAligned = if (isLong) swingLow != null && plan.stop < swingLow
