@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -188,6 +189,80 @@ internal object TradeIdeaCache {
     private fun JSONObject.optNullableDouble(key: String): Double? {
         if (!has(key) || isNull(key)) return null
         return optDouble(key).takeIf { it.isFinite() }
+    }
+}
+
+/** Owns scans independently of the Compose destination lifecycle. */
+internal data class TradeIdeaScanUiState(
+    val initialized: Boolean = false, val ideas: List<TradeIdea> = emptyList(),
+    val loading: Boolean = false, val status: String = "Preparing market scanner…",
+    val error: String? = null, val updatedAt: Long? = null,
+    val partial: Boolean = false, val showingCached: Boolean = false
+)
+
+internal object TradeIdeaScanManager {
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mutableState = kotlinx.coroutines.flow.MutableStateFlow(TradeIdeaScanUiState())
+    val state: kotlinx.coroutines.flow.StateFlow<TradeIdeaScanUiState> = mutableState
+    private var scanJob: Job? = null
+
+    fun initialize(context: android.content.Context) {
+        val appContext = context.applicationContext
+        if (mutableState.value.initialized) return
+        BinanceMarketScanner.initialize(appContext)
+        val cached = TradeIdeaCache.load(appContext)
+        mutableState.value = mutableState.value.copy(
+            initialized = true, ideas = cached?.second ?: emptyList(), updatedAt = cached?.first,
+            showingCached = cached != null,
+            status = if (cached != null) "Showing saved scan while fresh Binance data loads…"
+                else "Refresh to scan live Binance USDT-M perpetual markets."
+        )
+        val age = cached?.first?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
+        if (age > 10 * 60_000L) refresh(appContext)
+    }
+
+    fun refresh(context: android.content.Context) {
+        val appContext = context.applicationContext
+        if (scanJob?.isActive == true) return
+        mutableState.value = mutableState.value.copy(
+            loading = true, error = null, partial = false,
+            status = if (mutableState.value.ideas.isEmpty()) "Connecting to Binance public market data…"
+                else "Refreshing market data · saved ideas remain visible…"
+        )
+        TradeIdeaScanHealthStore.started(appContext)
+        scanJob = managerScope.launch {
+            try {
+                val freshIdeas = BinanceMarketScanner.scan(
+                    progress = { message -> mutableState.value = mutableState.value.copy(status = message) },
+                    onPartialResults = { partial ->
+                        mutableState.value = mutableState.value.copy(
+                            ideas = partial, updatedAt = System.currentTimeMillis(), partial = true,
+                            showingCached = false,
+                            status = "Partial scan · " + partial.size + " ideas received; scan is still running…"
+                        )
+                    }
+                )
+                val completedAt = System.currentTimeMillis()
+                withContext(Dispatchers.IO) { TradeIdeaCache.save(appContext, completedAt, freshIdeas) }
+                TradeIdeaScanHealthStore.succeeded(appContext, at = completedAt)
+                mutableState.value = mutableState.value.copy(
+                    ideas = freshIdeas, updatedAt = completedAt, partial = false, showingCached = false,
+                    error = null, loading = false,
+                    status = if (freshIdeas.isEmpty()) "Scan complete · no setups passed the current filters."
+                        else "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val message = e.message ?: "Market scan failed. Check your connection and retry."
+                TradeIdeaScanHealthStore.failed(appContext, message)
+                mutableState.value = mutableState.value.copy(
+                    error = message, loading = false,
+                    status = if (mutableState.value.partial) "Scan incomplete · showing timestamped partial results; no completed snapshot was saved."
+                        else "Scan could not be completed."
+                )
+            } finally { mutableState.value = mutableState.value.copy(loading = false) }
+        }
     }
 }
 
@@ -665,7 +740,14 @@ internal object BinanceMarketScanner {
 @Composable
 fun DailyTradeIdeasScreen() {
     val context = LocalContext.current
-    val cachedScan = remember { TradeIdeaCache.load(context) }
+    val scanUi by TradeIdeaScanManager.state.collectAsState()
+    val ideas = scanUi.ideas
+    val loading = scanUi.loading
+    val status = scanUi.status
+    val error = scanUi.error
+    val updatedAt = scanUi.updatedAt
+    val partialScanVisible = scanUi.partial
+    val showingCached = scanUi.showingCached
     val trackingPrefs = remember { context.getSharedPreferences("trade_idea_tracking_v1", android.content.Context.MODE_PRIVATE) }
     var ideas by remember { mutableStateOf(cachedScan?.second ?: emptyList()) }
     fun readTrackedPlanKeys(rows: List<TradeIdea>): Set<String> {
@@ -684,19 +766,13 @@ fun DailyTradeIdeasScreen() {
         }
         return tracked
     }
-    var loading by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(if (cachedScan != null) "Showing saved scan while fresh Binance data loads…" else "Refresh to scan live Binance USDT-M perpetual markets.") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var updatedAt by remember { mutableStateOf(cachedScan?.first) }
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
-    var showingCached by remember { mutableStateOf(cachedScan != null) }
     var filter by remember { mutableStateOf("All") }
     var horizonFilter by remember { mutableStateOf("All") }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
     var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
-    var partialScanVisible by remember { mutableStateOf(false) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
@@ -706,7 +782,6 @@ fun DailyTradeIdeasScreen() {
     }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
-    val scope = rememberCoroutineScope()
     fun enableReadyAlerts() {
         TradeIdeaNotifications.setReadyEnabled(context, true)
         TradeIdeaNotifications.schedule(context)
@@ -723,59 +798,15 @@ fun DailyTradeIdeasScreen() {
     val entryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) enableEntryAlerts()
     }
-    fun refresh() {
-        if (loading) return
-        loading = true
-        error = null
-        status = if (ideas.isEmpty()) "Connecting to Binance public market data…" else "Refreshing market data · saved ideas remain visible…"
-        TradeIdeaScanHealthStore.started(context)
-        scanHealth = TradeIdeaScanHealthStore.load(context)
-        scope.launch {
-            try {
-                val freshIdeas = BinanceMarketScanner.scan(
-                    progress = { status = it },
-                    onPartialResults = { partial ->
-                        ideas = partial
-                        updatedAt = System.currentTimeMillis()
-                        partialScanVisible = true
-                        trackedPlanKeys = readTrackedPlanKeys(partial)
-                        showingCached = false
-                        status = "Partial scan · " + partial.size + " ideas received; scan is still running…"
-                    }
-                )
-                val scanTime = System.currentTimeMillis()
-                withContext(Dispatchers.IO) { TradeIdeaCache.save(context, scanTime, freshIdeas) }
-                TradeIdeaScanHealthStore.succeeded(context, at = scanTime)
-                scanHealth = TradeIdeaScanHealthStore.load(context)
-                ideas = freshIdeas
-                updatedAt = scanTime
-                partialScanVisible = false
-                showingCached = false
-                trackedPlanKeys = readTrackedPlanKeys(freshIdeas)
-                paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)
-                status = "Scan complete · " + freshIdeas.size + " trade ideas from eligible markets."
-                if (freshIdeas.isEmpty()) status = "Scan complete · no setups passed the current filters."
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                error = e.message ?: "Market scan failed. Check your connection and retry."
-                TradeIdeaScanHealthStore.failed(context, error ?: "Market scan failed")
-                scanHealth = TradeIdeaScanHealthStore.load(context)
-                status = if (partialScanVisible) "Scan incomplete · showing timestamped partial results; no completed snapshot was saved."
-                    else "Scan could not be completed."
-            } finally { loading = false }
-        }
-    }
+    fun refresh() = TradeIdeaScanManager.refresh(context)
     LaunchedEffect(Unit) {
-        BinanceMarketScanner.initialize(context)
+        TradeIdeaScanManager.initialize(context)
         // Keep the shared market-scan worker scheduled even when notification alerts are disabled.
         // The worker always refreshes the cached Daily Trade Ideas snapshot; notification permission
         // and alert opt-ins gate only notifications, never market-data refreshes.
         TradeIdeaNotifications.schedule(context)
         // Start all-market public streams first, so cached ideas still receive live prices if REST is banned.
         BinanceFuturesStream.start(emptyList())
-        val cacheAge = cachedScan?.first?.let { System.currentTimeMillis() - it } ?: Long.MAX_VALUE
-        if (cacheAge > 10 * 60_000L) refresh()
     }
     LaunchedEffect(Unit) {
         while (true) {
