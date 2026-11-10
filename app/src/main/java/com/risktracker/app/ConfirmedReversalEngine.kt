@@ -70,7 +70,7 @@ internal object ConfirmedReversalEngine {
   if(!validReversalCandles(rows)||maxHoldingBars<1||!roundTripCostBps.isFinite()||roundTripCostBps<0)return ReversalBacktestStats()
   val results=mutableListOf<Double>();var nextFree=0
   for(s in detect("BACKTEST",rows)) {
-   val ei=s.confirmationIndex+1;if(ei>=rows.size||ei<nextFree)continue
+   val ei=s.confirmationIndex+1;if(ei>=rows.size||ei<nextFree||ei+maxHoldingBars-1>rows.lastIndex)continue
    val long=s.side=="BUY";val entry=rows[ei].open;val risk=if(long)entry-s.stop else s.stop-entry
    if(!risk.isFinite()||risk<=0)continue
    val target=if(long)entry+risk*TARGET_R else entry-risk*TARGET_R;val end=min(rows.lastIndex,ei+maxHoldingBars-1);var result:Double?=null
