@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MenuBook
@@ -92,7 +91,6 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     11 -> Icons.Filled.Security
     13 -> Icons.Filled.Science
     14 -> Icons.Filled.History
-    15 -> Icons.Filled.Description
     16 -> Icons.Filled.ShowChart
     17 -> Icons.Filled.AccountBalanceWallet
     18 -> Icons.Filled.Monitor
@@ -242,7 +240,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "RECORDS & REPORTS" to listOf(
             "Crypto tax report" to 9,
-            "Ledger audit" to 15
         ),
         "APP" to listOf(
             "Settings" to 7,
@@ -264,7 +261,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 11 -> "Trade Risk Gate"
                 13 -> "Scenario Lab"
                 14 -> "Trade Reviews"
-                15 -> "Ledger Audit"
                 16 -> "Live Trades"
                 17 -> "Account Activity"
                 18 -> "Sync Health"
@@ -471,7 +467,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         }
                     }
                 })
-                15 -> LedgerAuditScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
