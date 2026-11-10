@@ -309,6 +309,8 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Calendar-year totals (Jan–Dec). The Crypto Tax Report uses Indian financial years (1 April–31 March) and a separate trade-history dataset.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { yearMenuExpanded = true }, modifier = Modifier.weight(1f)) {
                         Text("Year: $selectedYear")
