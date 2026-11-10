@@ -295,6 +295,16 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
             }
         }
 
+        RiskCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Crypto tax review", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Import individual trade-history CSV/ZIP files in the tax report. These records are separate from Futures income rows and are not combined automatically.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { onNavigate(9) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open Crypto Tax Report")
+                }
+            }
+        }
         Text("3 · HISTORICAL FUTURES P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -465,12 +475,22 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     RiskCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Last import audit", style = MaterialTheme.typography.titleSmall)
-                            Text("Activity dates: ${report.firstActivityDate} to ${report.lastActivityDate}")
-                            Text("Included income rows: ${report.includedRows} · ignored other income rows: ${report.ignoredRows}")
-                            Text("Exact duplicate rows skipped: ${report.duplicateRows}")
-                            Text("Realized P&L: ${report.rowsByType["REALIZED_PNL"] ?: 0} rows · commissions: ${report.rowsByType["COMMISSION"] ?: 0} · funding: ${report.rowsByType["FUNDING_FEE"] ?: 0}")
+                            Text("First activity: ${report.firstActivityDate.ifBlank { "—" }} · Last activity: ${report.lastActivityDate.ifBlank { "—" }}")
+                            Text("Days with activity: ${report.daily.size} · Included income rows: ${report.includedRows}")
+                            Text("Ignored other income rows: ${report.ignoredRows} · Exact duplicate rows skipped: ${report.duplicateRows}")
                             Text("Net imported Futures P&L: ${report.daily.values.sum().usd()}")
-                            Text("Audit limitation: these dates describe rows present in the file, not the full coverage of the export. Compare the file with Binance's export period and statements before treating this year as complete.",
+                            Text("Rows by income type", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                            if (report.rowsByType.isEmpty()) {
+                                Text("No income-type breakdown was saved.", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                report.rowsByType.toSortedMap().forEach { (type, count) ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(type, style = MaterialTheme.typography.bodySmall)
+                                        Text(count.toString(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                            Text("Coverage limitation: these dates describe rows present in the file, not the full coverage of the export. Compare the file with Binance's export period and statements before treating this year as complete.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error)
                         }
