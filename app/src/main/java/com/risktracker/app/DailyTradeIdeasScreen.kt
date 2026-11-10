@@ -592,6 +592,12 @@ internal object BinanceMarketScanner {
             }
         }
         if (results.isEmpty()) {
+            if (isCompletedEmptyTradeIdeaScan(candidates.size, marketDataFailures)) {
+                // A clean scan with no qualifying setups is a valid market outcome, not a
+                // transport failure. Persist the empty snapshot so stale ideas cannot linger.
+                report("Scan complete · no setups passed the current filters across ${candidates.size} evaluated pairs. No trade is a valid result.")
+                return@withContext emptyList()
+            }
             val detail = lastMarketFailure?.let { " Last market error: $it" }
                 ?: " Candle history was fetched, but every strategy rejected the available series."
             throw IllegalStateException(
