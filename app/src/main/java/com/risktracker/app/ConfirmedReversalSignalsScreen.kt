@@ -73,7 +73,7 @@ private object BinanceReversalKlineSource {
   item{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
    Text("Confirmed Reversal Signals",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.SemiBold)
    Text("Binance USDⓈ-M Futures · 15m · BUY + SHORT",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   OutlinedTextField(symbol,{symbol=it.uppercase(Locale.US).filter(Char::isLetterOrDigit).take(20)},Modifier.fillMaxWidth(),label={Text("Futures symbol")},supportingText={Text("Example: BTCUSDT · public data only")},singleLine=true,keyboardOptions=KeyboardOptions(capitalization=KeyboardCapitalization.Characters))
+   OutlinedTextField(symbol,{symbol=it.uppercase(Locale.US).filter { ch -> ch.isLetterOrDigit() }.take(20)},Modifier.fillMaxWidth(),label={Text("Futures symbol")},supportingText={Text("Example: BTCUSDT · public data only")},singleLine=true,keyboardOptions=KeyboardOptions(capitalization=KeyboardCapitalization.Characters))
    Button(::refresh,Modifier.fillMaxWidth(),enabled=!loading&&symbol.length>=5){if(loading)CircularProgressIndicator(Modifier.size(18.dp),strokeWidth=2.dp)else Text("Refresh 15m signals")}
    if(loading)Text("Loading closed Binance candles…",style=MaterialTheme.typography.bodySmall)
    error?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
