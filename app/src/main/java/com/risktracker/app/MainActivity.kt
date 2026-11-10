@@ -99,7 +99,6 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     17 -> Icons.Filled.AccountBalanceWallet
     18 -> Icons.Filled.Monitor
     19 -> Icons.Filled.Notifications
-    20 -> Icons.Filled.ShowChart
     21 -> Icons.Filled.Lightbulb
     22 -> Icons.Filled.Flag
     23 -> Icons.Filled.Receipt
@@ -208,7 +207,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
         val lastAttempt = BinanceAutoJournalStore.syncStatus(context).lastAttempt
-        if ((tab == 1 || tab == 20) && credentialsAvailable &&
+        if (tab == 1 && credentialsAvailable &&
             shouldSyncOnOpen(lastAttempt, System.currentTimeMillis())) {
             appScope.launch {
                 runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
@@ -228,7 +227,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Daily discipline" to 24
         ),
         "TRADING" to listOf(
-            "Trade Journal" to 1,
             "Live positions & orders" to 16,
             "Post-trade reviews" to 14
         ),
@@ -260,7 +258,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         )
     )
 
-    val activeNavIndex = when (tab) { 0 -> 0; 1, 20 -> 1; 21 -> 2; else -> 3 }
+    val activeNavIndex = when (tab) { 0 -> 0; 1 -> 1; 21 -> 2; else -> 3 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -279,7 +277,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> "Account Activity"
                 18 -> "Sync Health"
                 19 -> "Risk Alerts"
-                20 -> "Journal & Performance"
                 21 -> "Trade Ideas"
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
@@ -489,7 +486,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
-                20 -> TradeJournalScreen(exchangeFills, exchangeSyncStatus, entries, trades, importedPnl, initialSection = "Analytics")
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)

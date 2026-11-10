@@ -20,13 +20,13 @@ Use one authoritative screen for each kind of information. Other screens may sho
 
 Primary bottom navigation remains limited to four frequent destinations:
 - Overview
-- Journal
-- Analytics
+- Journal (with Trade history and Performance sections)
 - Ideas
+- Explore
 
-The Explore sheet groups all secondary destinations without deleting or renumbering routes:
-- Trading: Journal, live positions/orders, post-trade reviews.
-- Performance: Trading Analytics and P&L Calendar.
+The Explore sheet groups specialist destinations without repeating primary navigation:
+- Trading: Live positions/orders and post-trade reviews.
+- Performance: P&L Calendar and Scanner Performance Lab.
 - Ideas & Risk Tools: Daily Trade Ideas, position calculator, Trade Risk Gate, risk alerts, scenario lab and target planner.
 - Connections & Account: Binance Sync/imports, sync health and account activity/statements.
 - Records & Reports: Crypto Tax Report and Ledger Audit.
@@ -36,8 +36,8 @@ The Overview remains in the bottom navigation rather than being duplicated in Ex
 
 ## Duplication rules
 
-1. Overview is the compact portfolio snapshot; Analytics is the detailed performance workspace.
-2. Journal is the record-level source for executions. Analytics aggregates those records; it does not create a second trade ledger.
+1. Overview is the compact portfolio snapshot; Journal owns execution history and its Performance section owns detailed analytics.
+2. Journal is the record-level source for executions. Performance aggregates those records; it does not create a second trade ledger.
 3. Binance Sync owns connection and sync diagnostics. Other pages show only a small freshness/status indicator when it changes the user's decision.
 4. Account Activity owns external cash flows. Those values must not be silently combined with trading P&L.
 5. Tax Report and Ledger Audit retain source and completeness caveats because those affect interpretation; keep them concise and adjacent to the relevant figures.
