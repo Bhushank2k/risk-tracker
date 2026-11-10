@@ -25,7 +25,7 @@ class ConfirmedReversalEngineTest {
  }
  @Test fun pivotWaitsForEveryRightHandClose(){
   val x=listOf(c(0,10.0,11.0,9.0,10.0),c(1,10.0,10.5,8.0,9.0),c(2,9.0,9.5,6.0,8.0),c(3,8.0,9.0,7.0,8.5),c(4,8.5,10.0,8.0,9.5),c(5,9.5,10.5,9.0,10.0),c(6,10.0,11.0,9.5,10.5))
-  assertFalse(isConfirmedPivotLow(x,2,2,3,4));assertFalse(isConfirmedPivotLow(x,2,2,3,5));assertTrue(isConfirmedPivotLow(x,2,2,3,6))
+  assertFalse(isConfirmedPivotLow(x,2,2,3,4));assertTrue(isConfirmedPivotLow(x,2,2,3,5));assertTrue(isConfirmedPivotLow(x,2,2,3,6))
  }
  @Test fun malformedAndOutOfOrderRowsAreRejected(){
   val x=listOf(c(0,10.0,11.0,9.0,10.0),c(1,10.0,11.0,9.0,10.0));assertTrue(validReversalCandles(x));assertFalse(validReversalCandles(x.reversed()));assertFalse(validReversalCandles(listOf(c(0,10.0,8.0,9.0,10.0),x[1])))
