@@ -13,6 +13,16 @@ class ConfirmedReversalEngineTest {
   add(c(45,90.5,102.0,90.2,101.0))
   for(i in 46 until 60)add(c(i,101.0,101.5,100.5,101.1))
  }
+ private fun bearishReversalSample():List<ReversalCandle> = buildList {
+  for(i in 0 until 40){val close=80.0+i*.8;val open=close-.2;add(c(i,open,open+.5,close-.5,close))}
+  add(c(40,111.2,115.0,110.5,113.0,150.0))
+  add(c(41,113.0,114.5,111.0,111.8))
+  add(c(42,111.8,114.0,110.0,111.0))
+  add(c(43,111.0,112.0,108.5,109.0))
+  add(c(44,109.0,110.0,108.0,108.5))
+  add(c(45,108.5,109.0,95.0,96.0))
+  for(i in 46 until 60)add(c(i,96.0,96.5,95.5,96.1))
+ }
  @Test fun pivotWaitsForEveryRightHandClose(){
   val x=listOf(c(0,10.0,11.0,9.0,10.0),c(1,10.0,10.5,8.0,9.0),c(2,9.0,9.5,6.0,8.0),c(3,8.0,9.0,7.0,8.5),c(4,8.5,10.0,8.0,9.5),c(5,9.5,10.5,9.0,10.0),c(6,10.0,11.0,9.5,10.5))
   assertFalse(isConfirmedPivotLow(x,2,2,3,4));assertFalse(isConfirmedPivotLow(x,2,2,3,5));assertTrue(isConfirmedPivotLow(x,2,2,3,6))
@@ -32,6 +42,11 @@ class ConfirmedReversalEngineTest {
  @Test fun replayEntersNextBarAndRecordsTargetWin(){
   val stats=ConfirmedReversalEngine.backtest(bullishReversalSample(),maxHoldingBars=10)
   assertEquals(1,stats.trades);assertEquals(1,stats.wins);assertTrue(stats.winRatePct==100.0);assertTrue(stats.averageR>0.0)
+ }
+ @Test fun confirmedShortIsEmittedAtSwingHighAndReplayed(){
+  val x=bearishReversalSample();val signal=ConfirmedReversalEngine.detect("ETHUSDT",x).single()
+  assertEquals("SHORT",signal.side);assertEquals(43,signal.confirmationIndex);assertTrue(signal.stop>signal.entry);assertTrue(signal.target<signal.entry)
+  val stats=ConfirmedReversalEngine.backtest(x,maxHoldingBars=10);assertEquals(1,stats.trades);assertEquals(1,stats.wins)
  }
  @Test fun invalidBacktestInputsReturnZeroTrades(){assertEquals(0,ConfirmedReversalEngine.backtest(emptyList()).trades);assertEquals(0,ConfirmedReversalEngine.backtest(emptyList(),roundTripCostBps=-1.0).trades)}
 }
