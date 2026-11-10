@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MenuBook
@@ -99,7 +98,6 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     18 -> Icons.Filled.Monitor
     19 -> Icons.Filled.Notifications
     21 -> Icons.Filled.Lightbulb
-    22 -> Icons.Filled.Flag
     23 -> Icons.Filled.Receipt
     25 -> Icons.Filled.ShowChart
     26 -> Icons.Filled.ShowChart
@@ -236,7 +234,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
             "Risk Scenario Lab" to 13,
-            "Target Planner" to 22
         ),
         "CONNECTIONS & ACCOUNT" to listOf(
             "Binance Sync & imports" to 6,
@@ -273,7 +270,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 18 -> "Sync Health"
                 19 -> "Risk Alerts"
                 21 -> "Trade Ideas"
-                22 -> "Target Planner"
                 23 -> "P&L Calendar"
                 25 -> "Strategy Performance Lab"
                 26 -> "Confirmed Reversals"
@@ -481,7 +477,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 18 -> BinanceSyncHealthScreen()
                 19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 21 -> DailyTradeIdeasScreen()
-                22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 25 -> ScannerPerformanceLabScreen()
                 26 -> ConfirmedReversalSignalsScreen()
