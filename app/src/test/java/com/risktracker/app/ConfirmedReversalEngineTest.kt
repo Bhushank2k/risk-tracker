@@ -30,7 +30,7 @@ class ConfirmedReversalEngineTest {
   assertEquals("BUY",signal.side);assertEquals(43,signal.confirmationIndex);assertTrue(signal.stop<signal.entry);assertTrue(signal.target>signal.entry);assertTrue(signal.score>=ConfirmedReversalEngine.MIN_SCORE)
  }
  @Test fun replayEntersNextBarAndRecordsTargetWin(){
-  val stats=ConfirmedReversalEngine.backtest(bullishReversalSample())
+  val stats=ConfirmedReversalEngine.backtest(bullishReversalSample(),maxHoldingBars=10)
   assertEquals(1,stats.trades);assertEquals(1,stats.wins);assertTrue(stats.winRatePct==100.0);assertTrue(stats.averageR>0.0)
  }
  @Test fun invalidBacktestInputsReturnZeroTrades(){assertEquals(0,ConfirmedReversalEngine.backtest(emptyList()).trades);assertEquals(0,ConfirmedReversalEngine.backtest(emptyList(),roundTripCostBps=-1.0).trades)}
