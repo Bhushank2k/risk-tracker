@@ -33,7 +33,7 @@ internal fun resolveReversalBar(isLong:Boolean,entry:Double,stop:Double,target:D
 internal object ConfirmedReversalEngine {
  const val INTERVAL="15m";const val MIN_SCORE=65;const val TARGET_R=2.0
  fun detect(symbol:String,rows:List<ReversalCandle>,leftBars:Int=3,rightBars:Int=3,minimumScore:Int=MIN_SCORE):List<ConfirmedReversalSignal> {
-  if(!validReversalCandles(rows)||rows.size<60||leftBars<1||rightBars<1||minimumScore !in 1..100)return emptyList()
+  if(!validReversalCandles(rows)||rows.size<40||leftBars<1||rightBars<1||minimumScore !in 1..100)return emptyList()
   val out=mutableListOf<ConfirmedReversalSignal>();var priorLow:Pair<Int,Double>?=null;var priorHigh:Pair<Int,Double>?=null;val emitted=mutableSetOf<Int>()
   for(ci in leftBars+rightBars until rows.size) {
    val p=ci-rightBars;val pivot=rows[p];val confirm=rows[ci];val rsi=rsiAt(rows,p)?:continue;val atr=atrAt(rows,ci)?:continue
