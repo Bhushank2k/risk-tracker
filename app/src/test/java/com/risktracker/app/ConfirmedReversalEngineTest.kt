@@ -48,5 +48,6 @@ class ConfirmedReversalEngineTest {
   assertEquals("SHORT",signal.side);assertEquals(43,signal.confirmationIndex);assertTrue(signal.stop>signal.entry);assertTrue(signal.target<signal.entry)
   val stats=ConfirmedReversalEngine.backtest(x,maxHoldingBars=10);assertEquals(1,stats.trades);assertEquals(1,stats.wins)
  }
+ @Test fun replaySkipsRightCensoredTradesWithoutFullHoldingWindow(){assertEquals(0,ConfirmedReversalEngine.backtest(bullishReversalSample(),maxHoldingBars=64).trades)}
  @Test fun invalidBacktestInputsReturnZeroTrades(){assertEquals(0,ConfirmedReversalEngine.backtest(emptyList()).trades);assertEquals(0,ConfirmedReversalEngine.backtest(emptyList(),roundTripCostBps=-1.0).trades)}
 }
