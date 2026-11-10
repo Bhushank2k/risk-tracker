@@ -105,6 +105,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     23 -> Icons.Filled.Receipt
     24 -> Icons.Filled.FactCheck
     25 -> Icons.Filled.ShowChart
+    26 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -237,6 +238,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "IDEAS & RISK TOOLS" to listOf(
             "Daily Trade Ideas" to 21,
+            "Confirmed Reversal Signals" to 26,
             "Position & leverage calculator" to 2,
             "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
@@ -283,6 +285,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> "P&L Calendar"
                 24 -> "Daily discipline"
                 25 -> "Strategy Performance Lab"
+                26 -> "Confirmed Reversals"
                 else -> "More"
             }
 
@@ -499,6 +502,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     onNavigate = { tab = it }
                 )
                 25 -> ScannerPerformanceLabScreen()
+                26 -> ConfirmedReversalSignalsScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
