@@ -23,19 +23,39 @@ import java.util.Locale
 import java.util.TimeZone
 
 private object BinanceReversalKlineSource {
+ private const val BAR_MS=15L*60L*1000L
+ private const val HISTORY_BARS=8640 // approximately 90 days of 15-minute candles
+ private const val PAGE_SIZE=1500
  fun fetch(input:String,now:Long=System.currentTimeMillis()):List<ReversalCandle>{
-  val symbol=input.trim().uppercase(Locale.US);require(symbol.matches(Regex("[A-Z0-9]{5,20}"))){"Enter a valid Binance symbol, e.g. BTCUSDT."}
-  val c=URL("https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=15m&limit=500").openConnection() as HttpURLConnection
-  c.connectTimeout=12000;c.readTimeout=16000;c.requestMethod="GET"
-  try{
-   val code=c.responseCode;val body=(if(code in 200..299)c.inputStream else c.errorStream).bufferedReader().use{it.readText()}
-   if(code !in 200..299){val msg=runCatching{JSONObject(body).optString("msg")}.getOrDefault("request failed");throw IllegalStateException("Binance Futures ($code): $msg")}
-   val arr=JSONArray(body)
-   val rows=(0 until arr.length()).mapNotNull{i->val a=arr.optJSONArray(i)?:return@mapNotNull null;if(a.length()<7)return@mapNotNull null
-    ReversalCandle(a.optLong(0,-1),a.optLong(6,-1),a.optString(1).toDoubleOrNull()?:Double.NaN,a.optString(2).toDoubleOrNull()?:Double.NaN,a.optString(3).toDoubleOrNull()?:Double.NaN,a.optString(4).toDoubleOrNull()?:Double.NaN,a.optString(5).toDoubleOrNull()?:Double.NaN)
-   }.filter{it.closeTime in 1 until now}
-   require(validReversalCandles(rows)){"Binance returned invalid or out-of-order candles."};return rows
-  }finally{c.disconnect()}
+  val symbol=input.trim().uppercase(Locale.US)
+  require(symbol.matches(Regex("[A-Z0-9]{5,20}"))){"Enter a valid Binance symbol, e.g. BTCUSDT."}
+  var cursor=(now-HISTORY_BARS*BAR_MS).coerceAtLeast(0L)
+  val collected=linkedMapOf<Long,ReversalCandle>()
+  while(collected.size<HISTORY_BARS){
+   val url=URL("https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=15m&startTime=$cursor&limit=$PAGE_SIZE")
+   val c=url.openConnection() as HttpURLConnection
+   c.connectTimeout=12000;c.readTimeout=16000;c.requestMethod="GET"
+   val batch=try{
+    val code=c.responseCode
+    val body=(if(code in 200..299)c.inputStream else c.errorStream).bufferedReader().use{it.readText()}
+    if(code !in 200..299){val msg=runCatching{JSONObject(body).optString("msg")}.getOrDefault("request failed");throw IllegalStateException("Binance Futures ($code): $msg")}
+    val arr=JSONArray(body)
+    (0 until arr.length()).mapNotNull{i->
+     val a=arr.optJSONArray(i)?:return@mapNotNull null
+     if(a.length()<7)return@mapNotNull null
+     ReversalCandle(a.optLong(0,-1),a.optLong(6,-1),a.optString(1).toDoubleOrNull()?:Double.NaN,a.optString(2).toDoubleOrNull()?:Double.NaN,a.optString(3).toDoubleOrNull()?:Double.NaN,a.optString(4).toDoubleOrNull()?:Double.NaN,a.optString(5).toDoubleOrNull()?:Double.NaN)
+    }.filter{it.closeTime in 1 until now}
+   }finally{c.disconnect()}
+   if(batch.isEmpty())break
+   batch.forEach{collected[it.openTime]=it}
+   val next=batch.maxOf{it.openTime}+BAR_MS
+   if(next<=cursor)throw IllegalStateException("Binance candle pagination did not advance.")
+   cursor=next
+   if(batch.size<PAGE_SIZE)break
+  }
+  val rows=collected.values.sortedBy{it.openTime}.takeLast(HISTORY_BARS)
+  require(rows.size>=60&&validReversalCandles(rows)){"Binance returned insufficient or invalid closed-candle history."}
+  return rows
  }
 }
 @Composable fun ConfirmedReversalSignalsScreen(){
