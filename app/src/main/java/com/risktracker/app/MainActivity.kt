@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lightbulb
@@ -102,7 +101,6 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     21 -> Icons.Filled.Lightbulb
     22 -> Icons.Filled.Flag
     23 -> Icons.Filled.Receipt
-    24 -> Icons.Filled.FactCheck
     25 -> Icons.Filled.ShowChart
     26 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
@@ -223,9 +221,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     // Secondary destinations stay available, but are grouped by the task they support.
     // Keep route IDs unchanged: these values are consumed by the screen router below.
     val menuGroups = listOf(
-        "DAILY WORKFLOW" to listOf(
-            "Daily discipline" to 24
-        ),
         "TRADING" to listOf(
             "Live positions & orders" to 16,
             "Post-trade reviews" to 14
@@ -280,7 +275,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> "Trade Ideas"
                 22 -> "Target Planner"
                 23 -> "P&L Calendar"
-                24 -> "Daily discipline"
                 25 -> "Strategy Performance Lab"
                 26 -> "Confirmed Reversals"
                 else -> "More"
@@ -489,14 +483,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> DailyTradeIdeasScreen()
                 22 -> TargetScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                24 -> DailyDisciplineScreen(
-                    trades = trades,
-                    exchangeFills = exchangeFills,
-                    syncStatus = exchangeSyncStatus,
-                    todayPnl = todayReconciledPnl?.selectedPnl,
-                    maxDailyLoss = store.maxDailyLoss,
-                    onNavigate = { tab = it }
-                )
                 25 -> ScannerPerformanceLabScreen()
                 26 -> ConfirmedReversalSignalsScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
