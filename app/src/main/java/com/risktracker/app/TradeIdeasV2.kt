@@ -31,6 +31,7 @@ internal enum class TradeIdeaRiskCode(val blocksEntry: Boolean) {
     WAITING_FOR_ENTRY_CONFIRMATION(false),
     BELOW_READY_SCORE_THRESHOLD(false),
     COSTS_NOT_INCLUDED(false),
+    STRUCTURE_NOT_CONFIRMED(true),
     LEGACY_BLOCKING_WARNING(true)
 }
 
