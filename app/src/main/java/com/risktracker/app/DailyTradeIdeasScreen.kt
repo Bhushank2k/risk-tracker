@@ -693,6 +693,7 @@ internal object BinanceMarketScanner {
         val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
         val liquiditySweep = hasScanLiquiditySweep(setupRows, isLong)
         val structureAligned = plan.riskCodes.none { it == TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED }
+        val orderBookValid = plan.riskCodes.none { it == TradeIdeaRiskCode.LOW_LIQUIDITY }
         val candle = executionRows.lastOrNull()
         val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
@@ -712,6 +713,7 @@ internal object BinanceMarketScanner {
         return listOf(
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             "1H swing structure aligned and 4H context not opposing" to structureAligned,
+            "Live spread, 5-level depth and directional book imbalance" to orderBookValid,
             "$setupInterval liquidity sweep + reclaim (supporting evidence)" to liquiditySweep,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
