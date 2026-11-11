@@ -140,8 +140,10 @@ internal object ConfluenceScannerV4 {
         val bidDepth=micro.bidDepthUsd; val askDepth=micro.askDepthUsd
         return setups.mapNotNull{s->
             val long=s.side=="LONG"; val sign=if(long)1.0 else -1.0
-            val structureAligned = h1Structure == if (long) TradeIdeaStructure.BULLISH else TradeIdeaStructure.BEARISH
-            val fourHourNotOpposed = if (long) !dn4 else !up4
+            val expectedStructure = if (long) TradeIdeaStructure.BULLISH else TradeIdeaStructure.BEARISH
+            val structureAligned = if (s.range) h1Structure == TradeIdeaStructure.MIXED
+                else h1Structure == expectedStructure
+            val fourHourNotOpposed = if (s.range) !up4 && !dn4 else if (long) !dn4 else !up4
             val structureConfirmed = structureAligned && fourHourNotOpposed
             val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
