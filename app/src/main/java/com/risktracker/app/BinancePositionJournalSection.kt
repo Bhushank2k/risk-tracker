@@ -23,6 +23,7 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
     var outcome by remember { mutableStateOf("All") }
     var periodDays by remember { mutableStateOf<Int?>(null) }
     var sort by remember { mutableStateOf("Latest") }
+    var showFilters by remember { mutableStateOf(false) }
 
     val now = System.currentTimeMillis()
     val cutoff = periodDays?.let { now - it.toLong() * 24L * 60L * 60L * 1000L }
@@ -59,22 +60,22 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
     val winRate = if (closedWithPnl.isEmpty()) null else winners * 100.0 / closedWithPnl.size
     val netRealized = closedWithPnl.sumOf { it.realizedPnl ?: 0.0 }
 
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Trade history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("${fills.size} Binance executions · read-only import", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HistoryMetric("Positions", cycles.size.toString())
+                    HistoryMetric("Win", winRate?.let { it.pct(0) } ?: "—")
+                    HistoryMetric("Open", cycles.count { it.isUnclosed }.toString())
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text(netRealized.usd(), color = pnlColor(netRealized), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text("Net realized", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HistoryMetric("Positions", cycles.size.toString(), Modifier.weight(1f))
-                    HistoryMetric("Win rate", winRate?.let { it.pct(0) } ?: "—", Modifier.weight(1f))
-                    HistoryMetric("Open", cycles.count { it.isUnclosed }.toString(), Modifier.weight(1f))
-                }
-                Text("Net realized P&L uses closed Futures cycles with complete exchange-reported P&L. Spot is shown as activity, not closed-trade profit.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -86,22 +87,29 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
             label = { Text("Search symbol") },
             placeholder = { Text("e.g. BTCUSDT") }
         )
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("All", "Futures", "Spot").forEach { value ->
-                FilterChip(selected = market == value, onClick = { market = value }, label = { Text(value) })
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { showFilters = !showFilters }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                Text(if (showFilters) "Hide filters" else "Filters  ·  ${if (market != "All" || outcome != "All" || periodDays != null || sort != "Latest") "Active" else "Optional"}")
             }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("All", "Open", "Closed", "Winners", "Losers").forEach { value ->
-                FilterChip(selected = outcome == value, onClick = { outcome = value }, label = { Text(value) })
+        if (showFilters) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("All", "Futures", "Spot").forEach { value ->
+                    FilterChip(selected = market == value, onClick = { market = value }, label = { Text(value) })
+                }
             }
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("All" to null, "7D" to 7, "30D" to 30).forEach { (label, days) ->
-                FilterChip(selected = periodDays == days, onClick = { periodDays = days }, label = { Text(label) })
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("All", "Open", "Closed", "Winners", "Losers").forEach { value ->
+                    FilterChip(selected = outcome == value, onClick = { outcome = value }, label = { Text(value) })
+                }
             }
-            listOf("Latest", "Profit", "Loss").forEach { value ->
-                FilterChip(selected = sort == value, onClick = { sort = value }, label = { Text(value) })
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("All" to null, "7D" to 7, "30D" to 30).forEach { (label, days) ->
+                    FilterChip(selected = periodDays == days, onClick = { periodDays = days }, label = { Text(label) })
+                }
+                listOf("Latest", "Profit", "Loss").forEach { value ->
+                    FilterChip(selected = sort == value, onClick = { sort = value }, label = { Text(value) })
+                }
             }
         }
 
@@ -187,7 +195,7 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
         } else if (market != "USDⓈ-M Futures") {
             Text("No Spot activity matches this search and date range.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text("Spot entries are execution activity, not closed-position P&L. Futures cycles may be incomplete if earlier fills are missing or the account uses hedge mode. Fees remain in their original assets.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Spot is activity, not closed-position P&L. Futures cycles may be incomplete if earlier fills are missing or the account uses hedge mode; fees remain in original assets.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
