@@ -712,7 +712,7 @@ internal object BinanceMarketScanner {
         return listOf(
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
             "1H swing structure aligned and 4H context not opposing" to structureAligned,
-            ("$setupInterval liquidity sweep + reclaim (supporting evidence)" to liquiditySweep,
+            "$setupInterval liquidity sweep + reclaim (supporting evidence)" to liquiditySweep,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
