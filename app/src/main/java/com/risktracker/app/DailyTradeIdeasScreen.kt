@@ -1177,9 +1177,9 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         TradeIdeaStage.TRACKING_INVALID -> "INVALID: the tracked plan no longer passes risk validation."
     }
     val trigger = if (longSide)
-        "LONG: wait for a completed $executionInterval candle with EMA9 above EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
+        "LONG: wait for a fresh, fully closed $executionInterval candle confirming EMA9 above EMA21. The live/forming candle never qualifies. Then recheck the $setupInterval setup and liquidity gates before entry."
     else
-        "SHORT: wait for a completed $executionInterval candle with EMA9 below EMA21. Recheck the $setupInterval setup and liquidity gates; do not enter on an unclosed candle."
+        "SHORT: wait for a fresh, fully closed $executionInterval candle confirming EMA9 below EMA21. The live/forming candle never qualifies. Then recheck the $setupInterval setup and liquidity gates before entry."
     val invalidation = if (longSide)
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
@@ -1619,7 +1619,7 @@ private fun TradeIdeaCard(
                 ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
                 HorizontalDivider()
-                Text("Historical replay · " + idea.backtest.trades + " closed samples", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                Text("Historical replay · " + idea.backtest.trades + " closed samples (30 required for estimates)", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
                 Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
                     else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
                         "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
@@ -1768,7 +1768,7 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Text("Insufficient data — need at least 30 completed replay samples. Current: " + stats.trades + ".",
+                Text("Win/loss estimate hidden — requires at least 30 completed replay samples. Current: " + stats.trades + ".",
                     style = MaterialTheme.typography.bodySmall)
             }
         }
