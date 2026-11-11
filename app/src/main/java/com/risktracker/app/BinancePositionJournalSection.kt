@@ -1,6 +1,8 @@
 package com.risktracker.app
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -12,110 +14,181 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun BinancePositionJournalSection(
-    fills: List<BinanceJournalFill>
-) {
+fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
     val cycles = remember(fills) { BinancePositionJournal.futuresCycles(fills) }
     val spotGroups = remember(fills) { BinancePositionJournal.spotActivity(fills) }
     var expanded by remember { mutableStateOf(setOf<String>()) }
-    val realized = cycles.mapNotNull { it.realizedPnl }.sum()
-    val closed = cycles.count { !it.isUnclosed }
-    val unclosed = cycles.count { it.isUnclosed }
+    var symbolQuery by remember { mutableStateOf("") }
+    var market by remember { mutableStateOf("All") }
+    var outcome by remember { mutableStateOf("All") }
+    var periodDays by remember { mutableStateOf<Int?>(null) }
+    var sort by remember { mutableStateOf("Latest") }
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Binance-imported", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${fills.size} executions · Binance auto-sync", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val now = System.currentTimeMillis()
+    val cutoff = periodDays?.let { now - it.toLong() * 24L * 60L * 60L * 1000L }
+    val query = symbolQuery.trim().uppercase(Locale.ROOT)
+    val filteredCycles = remember(cycles, query, outcome, periodDays, sort, now) {
+        cycles.asSequence()
+            .filter { query.isBlank() || it.symbol.uppercase(Locale.ROOT).contains(query) }
+            .filter { cutoff == null || it.endTime >= cutoff }
+            .filter {
+                when (outcome) {
+                    "Open" -> it.isUnclosed
+                    "Closed" -> !it.isUnclosed
+                    "Winners" -> !it.isUnclosed && (it.realizedPnl ?: 0.0) > 0.0
+                    "Losers" -> !it.isUnclosed && (it.realizedPnl ?: 0.0) < 0.0
+                    else -> true
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                PositionJournalMetric("Position cycles", cycles.size.toString())
-                PositionJournalMetric("Partial history", unclosed.toString())
-                PositionJournalMetric("Closed cycles", closed.toString())
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Realized P&L", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(realized.usd(), color = pnlColor(realized), fontWeight = FontWeight.Bold)
-            }
+            .let { rows ->
+                when (sort) {
+                    "Profit" -> rows.sortedByDescending { it.realizedPnl ?: Double.NEGATIVE_INFINITY }
+                    "Loss" -> rows.sortedBy { it.realizedPnl ?: Double.POSITIVE_INFINITY }
+                    else -> rows.sortedByDescending { it.endTime }
+                }
+            }.toList()
+    }
+    val filteredSpot = remember(spotGroups, query, periodDays, now) {
+        spotGroups.filter { group ->
+            (query.isBlank() || group.symbol.uppercase(Locale.ROOT).contains(query)) &&
+                (cutoff == null || (group.fills.maxOfOrNull { it.time } ?: 0L) >= cutoff)
+        }
+    }
+    val closedWithPnl = cycles.filter { !it.isUnclosed && it.realizedPnl != null }
+    val winners = closedWithPnl.count { (it.realizedPnl ?: 0.0) > 0.0 }
+    val winRate = if (closedWithPnl.isEmpty()) null else winners * 100.0 / closedWithPnl.size
+    val netRealized = closedWithPnl.sumOf { it.realizedPnl ?: 0.0 }
 
-            if (cycles.isNotEmpty()) {
-                Text("Futures Positions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                cycles.take(100).forEach { cycle ->
-                    val isExpanded = cycle.key in expanded
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text("${cycle.symbol} · ${cycle.direction}", fontWeight = FontWeight.SemiBold)
-                                    Text("${if (cycle.isUnclosed) "Partial history" else "Closed position"} · ${cycle.fillCount} fills", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                cycle.realizedPnl?.let {
-                                    Text(it.usd(), color = pnlColor(it), fontWeight = FontWeight.Bold)
-                                } ?: Text("P&L unavailable", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Opened ${cycle.openedQuantity.num(5)}", style = MaterialTheme.typography.bodySmall)
-                                Text("Closed ${cycle.closedQuantity.num(5)}", style = MaterialTheme.typography.bodySmall)
-                                if (cycle.isUnclosed) Text("Remaining ${cycle.unclosedQuantity.num(5)}", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Text(
-                                "Avg entry ${cycle.averageEntryPrice?.num(5) ?: "—"} · Avg exit ${cycle.averageExitPrice?.num(5) ?: "—"}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                "${timeLabel(cycle.startTime)} → ${timeLabel(cycle.endTime)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (cycle.feeTotals.isNotEmpty()) {
-                                Text("Fees: " + cycle.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = {
-                                expanded = if (isExpanded) expanded - cycle.key else expanded + cycle.key
-                            }, contentPadding = PaddingValues(0.dp)) {
-                                Text(if (isExpanded) "Hide executions" else "View ${cycle.fills.size} executions")
-                            }
-                            if (isExpanded) {
-                                cycle.fills.forEach { fill ->
-                                    HorizontalDivider()
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text("${fill.side} · ${fill.quantity.num(6)} @ ${fill.price.num(6)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                                            Text("${timeLabel(fill.time)} · Order ${fill.orderId.ifBlank { "—" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        fill.realizedPnl?.let { Text(it.usd(), style = MaterialTheme.typography.bodySmall, color = pnlColor(it)) }
-                                    }
-                                }
-                            }
-                        }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Trade history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("${fills.size} Binance executions · read-only import", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text(netRealized.usd(), color = pnlColor(netRealized), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 }
-                if (cycles.size > 100) Text("Showing 100 of ${cycles.size} position cycles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            if (spotGroups.isNotEmpty()) {
-                HorizontalDivider()
-                Text("Spot Activity", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                spotGroups.take(20).forEach { group ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(group.symbol, fontWeight = FontWeight.SemiBold)
-                            Text("${group.fills.size} fills · Bought ${group.baseQuantityBought.num(5)} · Sold ${group.baseQuantitySold.num(5)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text(group.quoteVolume.num(), fontWeight = FontWeight.SemiBold)
-                    }
-                    if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HistoryMetric("Positions", cycles.size.toString(), Modifier.weight(1f))
+                    HistoryMetric("Win rate", winRate?.let { it.pct(0) } ?: "—", Modifier.weight(1f))
+                    HistoryMetric("Open", cycles.count { it.isUnclosed }.toString(), Modifier.weight(1f))
                 }
+                Text("Net realized P&L uses closed Futures cycles with complete exchange-reported P&L. Spot is shown as activity, not closed-trade profit.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+
+        OutlinedTextField(
+            value = symbolQuery,
+            onValueChange = { symbolQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Search symbol") },
+            placeholder = { Text("e.g. BTCUSDT") }
+        )
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("All", "Open", "Closed", "Winners", "Losers").forEach { value ->
+                FilterChip(selected = outcome == value, onClick = { outcome = value }, label = { Text(value) })
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("All" to null, "7D" to 7, "30D" to 30).forEach { (label, days) ->
+                FilterChip(selected = periodDays == days, onClick = { periodDays = days }, label = { Text(label) })
+            }
+            listOf("Latest", "Profit", "Loss").forEach { value ->
+                FilterChip(selected = sort == value, onClick = { sort = value }, label = { Text(value) })
+            }
+        }
+
+        if (market != "Spot" && filteredCycles.isNotEmpty()) {
+            Text("USDⓈ-M Futures · ${filteredCycles.size}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            filteredCycles.take(100).forEach { cycle ->
+                val isExpanded = cycle.key in expanded
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text("${cycle.symbol}  ·  ${cycle.direction}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Text("${if (cycle.isUnclosed) "Open / partial" else "Closed"} · ${cycle.fillCount} fills · ${timeLabel(cycle.startTime)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(cycle.realizedPnl?.let { (if (it > 0) "+" else "") + it.usd() } ?: "P&L —",
+                                    color = cycle.realizedPnl?.let { pnlColor(it) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                Text(if (cycle.isUnclosed) "Remaining ${cycle.unclosedQuantity.num(5)}" else "Realized", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Entry ${cycle.averageEntryPrice?.num(5) ?: "—"}", style = MaterialTheme.typography.labelSmall)
+                            Text("Exit ${cycle.averageExitPrice?.num(5) ?: "—"}", style = MaterialTheme.typography.labelSmall)
+                            Text("${cycle.closedQuantity.num(4)}/${cycle.openedQuantity.num(4)} qty", style = MaterialTheme.typography.labelSmall)
+                        }
+                        TextButton(onClick = { expanded = if (isExpanded) expanded - cycle.key else expanded + cycle.key }, contentPadding = PaddingValues(0.dp)) {
+                            Text(if (isExpanded) "Hide details" else "Details · ${cycle.fills.size} executions")
+                        }
+                        if (isExpanded) {
+                            Text("${timeLabel(cycle.startTime)} → ${timeLabel(cycle.endTime)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (cycle.firstObservedCycle) Text("Direction inferred from the first imported fill; earlier history may be missing.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (cycle.feeTotals.isNotEmpty()) Text("Fees: " + cycle.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.bodySmall)
+                            cycle.fills.forEach { fill ->
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text("${fill.side} · ${fill.quantity.num(6)} @ ${fill.price.num(6)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                        Text("${timeLabel(fill.time)} · Order ${fill.orderId.ifBlank { "—" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    fill.realizedPnl?.let { Text(it.usd(), style = MaterialTheme.typography.bodySmall, color = pnlColor(it)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (filteredCycles.size > 100) Text("Showing 100 of ${filteredCycles.size} position cycles.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (market != "Spot") {
+            Text("No Futures positions match these filters.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (market != "USDⓈ-M Futures" && filteredSpot.isNotEmpty()) {
+            Text("Spot activity · ${filteredSpot.size}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            filteredSpot.take(20).forEach { group ->
+                val key = "spot:${group.symbol}"
+                val isExpanded = key in expanded
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(group.symbol, fontWeight = FontWeight.SemiBold)
+                                Text("${group.fills.size} fills · Bought ${group.baseQuantityBought.num(4)} · Sold ${group.baseQuantitySold.num(4)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(group.quoteVolume.num(), fontWeight = FontWeight.SemiBold)
+                                Text("Quote turnover", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        TextButton(onClick = { expanded = if (isExpanded) expanded - key else expanded + key }, contentPadding = PaddingValues(0.dp)) {
+                            Text(if (isExpanded) "Hide fills" else "View fills")
+                        }
+                        if (isExpanded) {
+                            if (group.feeTotals.isNotEmpty()) Text("Fees: " + group.feeTotals.entries.joinToString(" · ") { "${it.value.num(6)} ${it.key}" }, style = MaterialTheme.typography.bodySmall)
+                            group.fills.asReversed().forEach { fill ->
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Text("${fill.side} · ${fill.quantity.num(6)} @ ${fill.price.num(6)} · ${timeLabel(fill.time)}", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (market != "USDⓈ-M Futures") {
+            Text("No Spot activity matches this search and date range.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("Spot entries are execution activity, not closed-position P&L. Futures cycles may be incomplete if earlier fills are missing or the account uses hedge mode. Fees remain in their original assets.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun PositionJournalMetric(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun HistoryMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
