@@ -87,6 +87,11 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
             placeholder = { Text("e.g. BTCUSDT") }
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("All", "Futures", "Spot").forEach { value ->
+                FilterChip(selected = market == value, onClick = { market = value }, label = { Text(value) })
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("All", "Open", "Closed", "Winners", "Losers").forEach { value ->
                 FilterChip(selected = outcome == value, onClick = { outcome = value }, label = { Text(value) })
             }
