@@ -11,6 +11,51 @@ internal const val MAX_TRADE_SPREAD_BPS = 10.0
 internal fun isTradeIdeaVolumeEligible(quoteVolume: Double): Boolean =
     quoteVolume.isFinite() && quoteVolume >= MIN_TRADE_QUOTE_VOLUME_USD
 
+internal enum class TradeIdeaStructure { BULLISH, BEARISH, MIXED, UNKNOWN }
+
+/** Uses confirmed two-candle-left/two-candle-right pivots; the newest two bars cannot be pivots. */
+internal fun classifyTradeIdeaStructure(candles: List<V2Candle>): TradeIdeaStructure {
+    if (candles.size < 9 || candles.any {
+        !it.high.isFinite() || !it.low.isFinite() || it.high < it.low
+    }) return TradeIdeaStructure.UNKNOWN
+
+    val pivotHighs = mutableListOf<Double>()
+    val pivotLows = mutableListOf<Double>()
+    for (i in 2 until candles.size - 2) {
+        val neighbours = (i - 2..i + 2).filter { it != i }
+        if (neighbours.all { candles[i].high > candles[it].high }) pivotHighs.add(candles[i].high)
+        if (neighbours.all { candles[i].low < candles[it].low }) pivotLows.add(candles[i].low)
+    }
+    if (pivotHighs.size < 2 || pivotLows.size < 2) return TradeIdeaStructure.UNKNOWN
+    val (previousHigh, latestHigh) = pivotHighs.takeLast(2)
+    val (previousLow, latestLow) = pivotLows.takeLast(2)
+    return when {
+        latestHigh > previousHigh && latestLow > previousLow -> TradeIdeaStructure.BULLISH
+        latestHigh < previousHigh && latestLow < previousLow -> TradeIdeaStructure.BEARISH
+        else -> TradeIdeaStructure.MIXED
+    }
+}
+
+/** Detects a sweep of the prior range followed by a close back inside that range. */
+internal fun hasTradeIdeaLiquiditySweep(
+    candles: List<V2Candle>, side: String, lookback: Int = 20
+): Boolean {
+    if (side !in setOf("LONG", "SHORT") || lookback < 2 || candles.size <= lookback) return false
+    val current = candles.last()
+    val prior = candles.subList(candles.size - lookback - 1, candles.lastIndex)
+    if (prior.isEmpty() || current.high < current.low) return false
+    val priorHigh = prior.maxOf { it.high }
+    val priorLow = prior.minOf { it.low }
+    val body = abs(current.close - current.open)
+    val lowerWick = min(current.open, current.close) - current.low
+    val upperWick = current.high - max(current.open, current.close)
+    return when (side) {
+        "LONG" -> current.low < priorLow && current.close > priorLow && lowerWick > 0.0 && lowerWick >= body * 0.5
+        "SHORT" -> current.high > priorHigh && current.close < priorHigh && upperWick > 0.0 && upperWick >= body * 0.5
+        else -> false
+    }
+}
+
 internal fun isTradeIdeaLiquidityAcceptable(
     side: String, spreadBps: Double?, bookImbalance: Double?,
     bidDepthUsd: Double?, askDepthUsd: Double?
@@ -26,9 +71,9 @@ internal fun isTradeIdeaLiquidityAcceptable(
 internal fun isConfluenceReady(
     liquid: Boolean, geometry: Boolean, rewardRisk: Boolean, funding: Boolean,
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
-    entryConfirmed: Boolean, score: Int
+    entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && entryConfirmed && score >= 75
+    notExtended && entryConfirmed && structureConfirmed && score >= 75
 
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
@@ -59,6 +104,7 @@ internal object ConfluenceScannerV4 {
         val up1=h1.last().close>e150&&e120>e150; val dn1=h1.last().close<e150&&e120<e150
         // 1H is the primary intraday directional filter; 4H remains contextual and may be neutral.
         val up=up1; val down=dn1
+        val h1Structure = classifyTradeIdeaStructure(h1)
         val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
         val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
         val rv=if(avg>0)cur.volume/avg else 0.0
@@ -94,6 +140,10 @@ internal object ConfluenceScannerV4 {
         val bidDepth=micro.bidDepthUsd; val askDepth=micro.askDepthUsd
         return setups.mapNotNull{s->
             val long=s.side=="LONG"; val sign=if(long)1.0 else -1.0
+            val structureAligned = h1Structure == if (long) TradeIdeaStructure.BULLISH else TradeIdeaStructure.BEARISH
+            val fourHourNotOpposed = if (long) !dn4 else !up4
+            val structureConfirmed = structureAligned && fourHourNotOpposed
+            val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
@@ -111,7 +161,7 @@ internal object ConfluenceScannerV4 {
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
             val score=confluenceScore(
                 regimeConfirmed = up || down || rangeMode,
-                structureConfirmed = true,
+                structureConfirmed = structureConfirmed,
                 entryConfirmed = entryOk,
                 relativeVolume = rv,
                 momentumConfirmed = momentum,
@@ -125,7 +175,7 @@ internal object ConfluenceScannerV4 {
             if(rv<1.0)blocks.add("low relative volume (scoring penalty)"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
                 liquid, geometry, rr, fundingOk || fundingUnavailable, volatility, extended, rv>=1.0,
-                momentum, entryOk, score
+                momentum, entryOk, score, structureConfirmed = structureConfirmed
             )
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
@@ -140,6 +190,7 @@ internal object ConfluenceScannerV4 {
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
                 if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (!structureConfirmed) add(TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED)
                 add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
             }
             val warning=when{
@@ -150,6 +201,7 @@ internal object ConfluenceScannerV4 {
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
+                !structureConfirmed->"WAIT: Confirmed 1H swing structure must agree with the setup and 4H must not oppose it."
                 rv<1.0->"WATCH: Relative volume is below 1.0×; volume confluence is weak."
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
@@ -158,7 +210,10 @@ internal object ConfluenceScannerV4 {
                 else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥1.5R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
-                s.detail,if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
+                s.detail,
+                "1H swing structure: "+h1Structure+" · 4H context: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
+                if(liquiditySweep)"15M liquidity sweep and reclaim detected (supporting evidence; not a standalone trigger)" else "No confirmed 15M liquidity sweep/reclaim (not required for trend continuation)",
+                if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
