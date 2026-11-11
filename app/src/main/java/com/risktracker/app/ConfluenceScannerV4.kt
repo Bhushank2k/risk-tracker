@@ -80,7 +80,7 @@ internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
-        if (h4.size < 20 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
+        if (h4.size < 50 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
         val freshness = when (horizon) {
