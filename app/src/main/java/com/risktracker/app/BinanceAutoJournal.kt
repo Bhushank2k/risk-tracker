@@ -303,7 +303,7 @@ class BinanceJournalWorker(context: Context, params: WorkerParameters) : Corouti
 
     companion object {
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<BinanceJournalWorker>(6, TimeUnit.HOURS).build()
+            val request = PeriodicWorkRequestBuilder<BinanceJournalWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "binance_auto_trade_journal", ExistingPeriodicWorkPolicy.KEEP, request
             )
