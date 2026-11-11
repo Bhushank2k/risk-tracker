@@ -691,6 +691,9 @@ internal object BinanceMarketScanner {
         val vwap = if (totalVolume > 0.0) typicalVolume / totalVolume else null
         val vwapAligned = lastSetup?.let { if (isLong) vwap != null && it.close > vwap else vwap != null && it.close < vwap }
         val emaAligned = lastSetup?.let { if (isLong) ema20 != null && it.close > ema20 else ema20 != null && it.close < ema20 }
+        val liquiditySweep = hasScanLiquiditySweep(setupRows, isLong)
+        val structureAligned = plan.riskCodes.none { it == TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED }
+        val orderBookValid = plan.riskCodes.none { it == TradeIdeaRiskCode.LOW_LIQUIDITY }
         val candle = executionRows.lastOrNull()
         val priorAverageVolume = executionRows.dropLast(1).takeLast(20).map { it.volume }.average()
         val volumeRatio = if (priorAverageVolume > 0.0) (candle?.volume ?: 0.0) / priorAverageVolume else 0.0
@@ -709,12 +712,32 @@ internal object BinanceMarketScanner {
         val netR = if (risk > 0.0) tradeIdeaNetReturnR(grossR, plan.entry, risk, heldBars = 8, setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
         return listOf(
             ("$trendInterval trend structure: " + (if (isLong) "higher highs + higher lows" else "lower highs + lower lows")) to trendAligned,
+            "1H swing structure aligned and 4H context not opposing" to structureAligned,
+            "Live spread, 5-level depth and directional book imbalance" to orderBookValid,
+            "$setupInterval liquidity sweep + reclaim (supporting evidence)" to liquiditySweep,
             ("$setupInterval VWAP: price " + (if (isLong) "above" else "below") + " rolling 24H VWAP") to vwapAligned,
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
             ("Target 1 minimum 1:1.5 estimated net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
         )
+    }
+
+    private fun hasScanLiquiditySweep(rows: List<ScanCandle>, isLong: Boolean, lookback: Int = 20): Boolean {
+        if (rows.size <= lookback || lookback < 2) return false
+        val current = rows.last()
+        val prior = rows.subList(rows.size - lookback - 1, rows.lastIndex)
+        if (prior.isEmpty()) return false
+        val body = abs(current.close - current.open)
+        return if (isLong) {
+            val sweptLow = prior.minOf { it.low }
+            val lowerWick = minOf(current.open, current.close) - current.low
+            current.low < sweptLow && current.close > sweptLow && lowerWick > 0.0 && lowerWick >= body * 0.5
+        } else {
+            val sweptHigh = prior.maxOf { it.high }
+            val upperWick = current.high - maxOf(current.open, current.close)
+            current.high > sweptHigh && current.close < sweptHigh && upperWick > 0.0 && upperWick >= body * 0.5
+        }
     }
 
     private fun hasHigherHighsAndLows(rows: List<ScanCandle>): Boolean =
