@@ -1339,6 +1339,62 @@ private fun ideaMaxAgeMs(idea: TradeIdea): Long = when {
     else -> 60 * 60_000L
 }
 
+private data class TradeHoldingGuide(val typicalWindow: String, val reviewAfterMs: Long)
+
+private fun tradeHoldingGuide(idea: TradeIdea): TradeHoldingGuide = when {
+    idea.horizon.contains("scalp", ignoreCase = true) ->
+        TradeHoldingGuide("5–30 minutes", 15 * 60_000L)
+    idea.horizon.contains("swing", ignoreCase = true) ->
+        TradeHoldingGuide("1–5 days", 24 * 60 * 60_000L)
+    else -> TradeHoldingGuide("30 minutes–6 hours", 2 * 60 * 60_000L)
+}
+
+private fun formatHoldingDuration(durationMs: Long): String {
+    val minutes = durationMs.coerceAtLeast(0L) / 60_000L
+    return when {
+        minutes < 60L -> "$minutes min"
+        minutes < 24L * 60L -> {
+            val hours = minutes / 60L
+            val remainingMinutes = minutes % 60L
+            if (remainingMinutes == 0L) "${hours}h" else "${hours}h ${remainingMinutes}m"
+        }
+        else -> {
+            val days = minutes / (24L * 60L)
+            val remainingHours = (minutes % (24L * 60L)) / 60L
+            if (remainingHours == 0L) "${days}d" else "${days}d ${remainingHours}h"
+        }
+    }
+}
+
+@Composable
+private fun HoldingTimeGuidance(idea: TradeIdea, trackedSinceMillis: Long?, nowMillis: Long) {
+    val guide = tradeHoldingGuide(idea)
+    val elapsed = trackedSinceMillis?.let { (nowMillis - it).coerceAtLeast(0L) }
+    val remaining = elapsed?.let { guide.reviewAfterMs - it }
+    val reviewDue = remaining?.let { it <= 0L } == true
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f), RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text("HOLDING-TIME GUIDE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+        Text("Typical planning window: ${guide.typicalWindow}.", style = MaterialTheme.typography.bodySmall)
+        if (elapsed == null) {
+            Text("First review checkpoint: ${formatHoldingDuration(guide.reviewAfterMs)} after your actual entry. This is a review reminder, not an automatic exit deadline.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Text("Tracked for ${formatHoldingDuration(elapsed)} · " +
+                if (reviewDue) "REVIEW DUE — reassess trend, stop and targets now."
+                else "Review in ${formatHoldingDuration(remaining ?: 0L)}.",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (reviewDue) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("Exit sooner if the stop is hit or the setup is invalidated. A time checkpoint never overrides risk controls.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Long = 0L): TradeIdeaStage {
     val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
     val invalidRisk = idea.side == "WAIT" || !tradeIdeaRiskValid(idea)
@@ -1412,10 +1468,21 @@ private fun TradeIdeaCard(
     val trackedPlanId = tradeIdeaTrackingId(idea)
     val trackedEntryKey = "plan_" + trackedPlanId
     var trackedEntry by remember(trackedPlanId) { mutableStateOf(trackingPrefs.getFloat(trackedEntryKey, 0f).toDouble().takeIf { it > 0.0 }) }
+    val trackedSinceKey = "started_at_" + trackedPlanId
+    var trackedSinceMillis by remember(trackedPlanId) {
+        mutableStateOf(trackingPrefs.getLong(trackedSinceKey, 0L).takeIf { it > 0L })
+    }
+    var holdingClockMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var livePrice by remember(trackedPlanId) { mutableStateOf(idea.last) }
     val trackingScope = rememberCoroutineScope()
     var expanded by remember(trackedPlanId, density) { mutableStateOf(false) }
     var levelsExpanded by remember(trackedPlanId) { mutableStateOf(false) }
+    LaunchedEffect(trackedEntry, trackedSinceMillis) {
+        while (trackedEntry != null && trackedSinceMillis != null) {
+            holdingClockMillis = System.currentTimeMillis()
+            delay(30_000)
+        }
+    }
     LaunchedEffect(idea.symbol) {
         // Poll only the in-memory WebSocket cache; this loop never makes a REST request.
         while (true) {
@@ -1524,6 +1591,7 @@ private fun TradeIdeaCard(
                 }
                 Text("Gross R:R is before fees, funding and slippage; verify net reward/risk remains at least 2R before entry.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (density != "Compact") TargetLadder(idea)
+                HoldingTimeGuidance(idea, trackedSinceMillis, holdingClockMillis)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Last price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1573,8 +1641,9 @@ private fun TradeIdeaCard(
                 LinearProgressIndicator(progress = { stopProgress.toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.error)
                 Text("P&L is price-only and excludes fees, funding, slippage and position size. Tracking is not connected to an exchange order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {
-                    trackingPrefs.edit().remove(trackedEntryKey).apply()
+                    trackingPrefs.edit().remove(trackedEntryKey).remove(trackedSinceKey).apply()
                     trackedEntry = null
+                    trackedSinceMillis = null
                     livePrice = idea.last
                     onTrackingChanged(trackedEntryKey, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
@@ -1584,7 +1653,13 @@ private fun TradeIdeaCard(
                     trackingScope.launch {
                         val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
                             ?: livePrice.takeIf { it > 0.0 } ?: idea.last
-                        trackingPrefs.edit().putFloat(trackedEntryKey, entry.toFloat()).apply()
+                        val startedAt = System.currentTimeMillis()
+                        trackingPrefs.edit()
+                            .putFloat(trackedEntryKey, entry.toFloat())
+                            .putLong(trackedSinceKey, startedAt)
+                            .apply()
+                        trackedSinceMillis = startedAt
+                        holdingClockMillis = startedAt
                         livePrice = entry
                         trackedEntry = entry
                         onTrackingChanged(trackedEntryKey, true)
