@@ -61,35 +61,21 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
     val netRealized = closedWithPnl.sumOf { it.realizedPnl ?: 0.0 }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Card(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(
+                value = symbolQuery,
+                onValueChange = { symbolQuery = it },
+                modifier = Modifier.weight(1f).height(48.dp),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                label = null,
+                placeholder = { Text("Search symbol", style = MaterialTheme.typography.bodySmall) }
+            )
+            TextButton(
+                onClick = { showFilters = !showFilters },
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
             ) {
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HistoryMetric("Positions", cycles.size.toString())
-                    HistoryMetric("Win", winRate?.let { it.pct(0) } ?: "—")
-                    HistoryMetric("Open", cycles.count { it.isUnclosed }.toString())
-                }
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(netRealized.usd(), color = pnlColor(netRealized), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Text("Net realized", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-
-        OutlinedTextField(
-            value = symbolQuery,
-            onValueChange = { symbolQuery = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Search symbol") },
-            placeholder = { Text("e.g. BTCUSDT") }
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { showFilters = !showFilters }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                Text(if (showFilters) "Hide filters" else "Filters  ·  ${if (market != "All" || outcome != "All" || periodDays != null || sort != "Latest") "Active" else "Optional"}")
+                Text(if (showFilters) "Hide" else "Filters")
             }
         }
         if (showFilters) {
@@ -118,7 +104,7 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
             filteredCycles.take(100).forEach { cycle ->
                 val isExpanded = cycle.key in expanded
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text("${cycle.symbol}  ·  ${cycle.direction}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
@@ -136,7 +122,7 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
                             Text("Exit ${cycle.averageExitPrice?.num(5) ?: "—"}", style = MaterialTheme.typography.labelSmall)
                             Text("${cycle.closedQuantity.num(4)}/${cycle.openedQuantity.num(4)} qty", style = MaterialTheme.typography.labelSmall)
                         }
-                        TextButton(onClick = { expanded = if (isExpanded) expanded - cycle.key else expanded + cycle.key }, contentPadding = PaddingValues(0.dp)) {
+                        TextButton(onClick = { expanded = if (isExpanded) expanded - cycle.key else expanded + cycle.key }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp), modifier = Modifier.heightIn(min = 28.dp)) {
                             Text(if (isExpanded) "Hide details" else "Details · ${cycle.fills.size} executions")
                         }
                         if (isExpanded) {
@@ -179,7 +165,7 @@ fun BinancePositionJournalSection(fills: List<BinanceJournalFill>) {
                                 Text("Quote turnover", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        TextButton(onClick = { expanded = if (isExpanded) expanded - key else expanded + key }, contentPadding = PaddingValues(0.dp)) {
+                        TextButton(onClick = { expanded = if (isExpanded) expanded - key else expanded + key }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp), modifier = Modifier.heightIn(min = 28.dp)) {
                             Text(if (isExpanded) "Hide fills" else "View fills")
                         }
                         if (isExpanded) {
