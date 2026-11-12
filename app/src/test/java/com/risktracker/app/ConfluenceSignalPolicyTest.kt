@@ -53,18 +53,34 @@ class ConfluenceSignalPolicyTest {
         assertTrue(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE.blocksEntry)
     }
 
-    @Test fun netRewardRiskIncludesEstimatedExecutionCosts() {
+    @Test fun scannerSizesGrossTargetSoEstimatedNetRewardRiskIsAtLeastTwoR() {
+        val grossTarget = tradeIdeaGrossRForMinimumNetReturn(
+            minimumNetR = 2.0, entry = 100.0, riskDistance = 1.0,
+            heldBars = 8, setupBarMinutes = 15
+        )
         val net = tradeIdeaNetReturnR(
-            grossR = 2.0, entry = 100.0, riskDistance = 1.0,
+            grossR = grossTarget, entry = 100.0, riskDistance = 1.0,
             heldBars = 8, setupBarMinutes = 15
         )
-        assertTrue(net.isFinite())
-        assertTrue(net >= 1.5)
+        assertTrue(grossTarget > 2.0)
+        assertEquals(2.0, net, 1e-9)
+
+        val tightStopGrossTarget = tradeIdeaGrossRForMinimumNetReturn(
+            minimumNetR = 2.0, entry = 100.0, riskDistance = 0.1,
+            heldBars = 8, setupBarMinutes = 15
+        )
         val tightStopNet = tradeIdeaNetReturnR(
-            grossR = 2.0, entry = 100.0, riskDistance = 0.1,
+            grossR = tightStopGrossTarget, entry = 100.0, riskDistance = 0.1,
             heldBars = 8, setupBarMinutes = 15
         )
-        assertTrue(tightStopNet < 1.5)
+        assertTrue(tightStopGrossTarget > grossTarget)
+        assertEquals(2.0, tightStopNet, 1e-9)
+    }
+
+    @Test fun invalidMinimumNetReturnProducesNaN() {
+        assertTrue(tradeIdeaGrossRForMinimumNetReturn(
+            Double.NaN, 100.0, 1.0, 8, 15
+        ).isNaN())
     }
 
     @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {

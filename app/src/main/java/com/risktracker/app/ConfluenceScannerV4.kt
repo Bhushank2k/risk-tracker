@@ -156,10 +156,15 @@ internal object ConfluenceScannerV4 {
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
-            val t1=entry+sign*risk*2; val t2=entry+sign*risk*3
             val setupBarMinutes=when(horizon){"Scalp"->5;"Swing"->60;else->15}
-            val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(2.0,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
-            val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=1.5
+            // Set Target 1 far enough away that estimated fees, slippage and funding still leave 2R net.
+            val target1GrossR=if(geometry&&risk>0) tradeIdeaGrossRForMinimumNetReturn(
+                minimumNetR=2.0, entry=entry, riskDistance=risk, heldBars=8, setupBarMinutes=setupBarMinutes
+            ) else Double.NaN
+            val target2GrossR=max(3.0,target1GrossR+1.0)
+            val t1=entry+sign*risk*target1GrossR; val t2=entry+sign*risk*target2GrossR
+            val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(target1GrossR,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
+            val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=2.0
             val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
             val score=confluenceScore(
                 regimeConfirmed = up || down || rangeMode,
@@ -172,7 +177,7 @@ internal object ConfluenceScannerV4 {
                 stopGeometryConfirmed = geometry
             )
             val blocks=mutableListOf<String>()
-            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("1.5R net R:R")
+            if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(rv<1.0)blocks.add("low relative volume (scoring penalty)"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
@@ -198,7 +203,7 @@ internal object ConfluenceScannerV4 {
             val warning=when{
                 !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
-                !rr->"BLOCK: Target 1 estimated net reward/risk is below 1.5R after costs."
+                !rr->"BLOCK: Target 1 estimated net reward/risk is below 2R after costs."
                 fundingUnavailable->"WATCH: Funding data unavailable; verify current funding before execution."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
@@ -209,7 +214,7 @@ internal object ConfluenceScannerV4 {
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
                 score<75->"WAIT: Setup qualifies, but score is below the 75-point READY threshold."
-                else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥1.5R."
+                else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 s.detail,
@@ -221,7 +226,7 @@ internal object ConfluenceScannerV4 {
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
-                "Risk plan: structural stop + 0.2 ATR; targets 2R/3R. Gross R:R excludes costs.")
+                "Risk plan: structural stop + 0.2 ATR; Target 1 is sized for ≥2R net after estimated costs, with Target 2 at least 1R farther.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
                 if (horizon == "Scalp") "Scalp · M5 setup / M1 execution"
                 else if (horizon == "Swing") "Swing · H1 setup / M15 execution"

@@ -61,6 +61,21 @@ class TradeIdeaBacktestCostTest {
     }
 
     @Test
+    fun requiredGrossTargetIncludesAllEstimatedCostComponents() {
+        val gross = tradeIdeaGrossRForMinimumNetReturn(
+            minimumNetR = 2.0, entry = 100.0, riskDistance = 0.5,
+            heldBars = 12, setupBarMinutes = 15,
+            roundTripFeeBps = 8.0, slippageBps = 4.0, fundingBpsPer8h = 1.0
+        )
+        val net = tradeIdeaNetReturnR(
+            grossR = gross, entry = 100.0, riskDistance = 0.5,
+            heldBars = 12, setupBarMinutes = 15,
+            roundTripFeeBps = 8.0, slippageBps = 4.0, fundingBpsPer8h = 1.0
+        )
+        assertEquals(2.0, net, 1e-9)
+    }
+
+    @Test
     fun longerHoldingPeriodAddsFundingCost() {
         val shortHold = tradeIdeaNetReturnR(1.0, 100.0, 2.0, 4, 15)
         val longHold = tradeIdeaNetReturnR(1.0, 100.0, 2.0, 64, 15)
