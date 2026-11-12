@@ -30,8 +30,8 @@ class ConfluenceSignalPolicyTest {
     }
     @Test fun readyRequiresHardGatesAndBalancedScoreButNotEverySoftSignal() {
         assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
-        // Volume and momentum are scoring inputs, not standalone hard gates.
-        assertTrue(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
+        // Volume is a hard execution gate; momentum remains a scored soft signal.
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
         assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,false,true,true,true,true,true,true,100))
@@ -43,8 +43,8 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
     }
 
-    @Test fun volumeAndMomentumAreSoftSignalsButSafetyFailuresRemainHard() {
-        assertFalse(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME.blocksEntry)
+    @Test fun relativeVolumeIsHardWhileMomentumRemainsSoft() {
+        assertTrue(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME.blocksEntry)
         assertFalse(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED.blocksEntry)
         assertFalse(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE.blocksEntry)
         assertTrue(TradeIdeaRiskCode.LOW_LIQUIDITY.blocksEntry)
@@ -84,7 +84,7 @@ class ConfluenceSignalPolicyTest {
         ).isNaN())
     }
 
-    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
+    @Test fun setupSpecificRelativeVolumeThresholdsAreEnforced() {\n        assertEquals(1.2, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)\n        assertEquals(1.2, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)\n        assertEquals(1.5, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)\n    }\n\n    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
         val base = listOf(true,true,true,true,true,true,false,false)
         fun score(volume: Double) = confluenceScore(
             regimeConfirmed=base[0], structureConfirmed=base[1], entryConfirmed=base[2],
