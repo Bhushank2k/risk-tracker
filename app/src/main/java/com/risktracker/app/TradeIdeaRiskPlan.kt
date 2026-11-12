@@ -18,7 +18,7 @@ internal data class EntryRiskSettings(
     val maxLeverage: Int = 3,
     val maxRiskPerTradePercent: Double = 2.0,
     val maxCombinedOpenRiskPercent: Double = 1.5,
-    val minRewardRisk: Double = 1.5,
+    val minRewardRisk: Double = 2.0,
     val maxActivePositions: Int = 2,
     val dailyLossLimitPercent: Double = 1.5,
     val maxConsecutiveLosses: Int = 2,
@@ -38,7 +38,7 @@ internal object EntryRiskSettingsStore {
             maxLeverage = p.getInt("max_leverage", 3).coerceIn(1, 3),
             maxRiskPerTradePercent = 2.0,
             maxCombinedOpenRiskPercent = 1.5,
-            minRewardRisk = 1.5,
+            minRewardRisk = 2.0,
             maxActivePositions = 2,
             dailyLossLimitPercent = 1.5,
             maxConsecutiveLosses = 2,
@@ -139,7 +139,7 @@ internal fun EntryRiskPlanSettingsCard(
             HorizontalDivider()
             RiskSettingRow("Maximum risk per trade", "2%")
             RiskSettingRow("Maximum combined open risk", "1.5%")
-            RiskSettingRow("Minimum net reward / risk", "1:1.5")
+            RiskSettingRow("Minimum net reward / risk", "1:2 net")
             RiskSettingRow("Maximum active positions", "2")
             RiskSettingRow("Daily loss limit", "1.5%")
             RiskSettingRow("Loss-streak lockout", "2 consecutive losses")
