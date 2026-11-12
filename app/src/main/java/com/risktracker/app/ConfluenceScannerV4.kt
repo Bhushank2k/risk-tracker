@@ -73,7 +73,7 @@ internal fun isConfluenceReady(
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && entryConfirmed && structureConfirmed && score >= 75
+    notExtended && volume && entryConfirmed && structureConfirmed && score >= 75
 
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
@@ -150,7 +150,7 @@ internal object ConfluenceScannerV4 {
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
-            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
+            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)\n            val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)\n            val volumeConfirmed = rv >= requiredRelativeVolume
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
             val entry=exec.close
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
@@ -179,9 +179,9 @@ internal object ConfluenceScannerV4 {
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
-            if(rv<1.0)blocks.add("low relative volume (scoring penalty)"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
+            if(!volumeConfirmed)blocks.add("relative volume below ${requiredRelativeVolume}x hard gate"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
-                liquid, geometry, rr, fundingOk || fundingUnavailable, volatility, extended, rv>=1.0,
+                liquid, geometry, rr, fundingOk || fundingUnavailable, volatility, extended, volumeConfirmed,
                 momentum, entryOk, score, structureConfirmed = structureConfirmed
             )
             val riskCodes = buildSet {
@@ -192,7 +192,7 @@ internal object ConfluenceScannerV4 {
                 else if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
                 if (!volatility) add(TradeIdeaRiskCode.VOLATILITY_OUT_OF_RANGE)
                 if (!extended) add(TradeIdeaRiskCode.EXTENDED_ENTRY)
-                if (rv < 1.0) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
+                if (!volumeConfirmed) add(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME)
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
@@ -209,7 +209,7 @@ internal object ConfluenceScannerV4 {
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
                 !structureConfirmed->"WAIT: Confirmed 1H swing structure must agree with the setup and 4H must not oppose it."
-                rv<1.0->"WATCH: Relative volume is below 1.0×; volume confluence is weak."
+                !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
@@ -222,7 +222,7 @@ internal object ConfluenceScannerV4 {
                 if(liquiditySweep)"15M liquidity sweep and reclaim detected (supporting evidence; not a standalone trigger)" else "No confirmed 15M liquidity sweep/reclaim (not required for trend continuation)",
                 if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
-                "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (baseline ≥1.2×; breakout ≥1.5×)",
+                "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (required ≥${requiredRelativeVolume}× for ${s.name})",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
