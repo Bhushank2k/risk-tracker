@@ -100,6 +100,23 @@ internal fun tradeIdeaNetReturnR(
     return grossR - entry * costBps / 10_000.0 / riskDistance
 }
 
+/**
+ * Converts a required net R multiple into the gross target multiple needed after the
+ * same estimated round-trip fees, slippage and holding-period funding costs.
+ */
+internal fun tradeIdeaGrossRForMinimumNetReturn(
+    minimumNetR: Double, entry: Double, riskDistance: Double, heldBars: Int, setupBarMinutes: Int,
+    roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
+): Double {
+    if (!minimumNetR.isFinite() || minimumNetR < 0.0) return Double.NaN
+    val netAtZeroGross = tradeIdeaNetReturnR(
+        grossR = 0.0, entry = entry, riskDistance = riskDistance, heldBars = heldBars,
+        setupBarMinutes = setupBarMinutes, roundTripFeeBps = roundTripFeeBps,
+        slippageBps = slippageBps, fundingBpsPer8h = fundingBpsPer8h
+    )
+    return if (netAtZeroGross.isFinite()) minimumNetR - netAtZeroGross else Double.NaN
+}
+
 internal fun isReplayTrendPullback(
     isLong: Boolean, current: V2Candle, previous: V2Candle, ema20: Double, atr: Double
 ): Boolean {
