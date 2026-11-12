@@ -25,9 +25,11 @@ internal fun confluenceMomentumConfirmed(
 }
 
 /**
- * A transparent 100-point confluence score. Hard safety gates remain independent.
- * Relative volume and momentum contribute
- * to confluence but are not standalone blockers for otherwise valid pullbacks.
+ * A transparent 100-point confluence score. Each decision family earns points once:
+ * regime, confirmed swing structure, execution, volume, momentum, liquidity, BTC context
+ * and stop geometry. Correlated raw indicators are combined within their family (for
+ * example RSI + MACD as momentum and spread + depth + imbalance as liquidity), never
+ * awarded separate points. Mandatory safety gates remain independent of this score.
  */
 internal fun confluenceScore(
     regimeConfirmed: Boolean,
