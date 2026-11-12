@@ -724,7 +724,7 @@ internal object BinanceMarketScanner {
             ("$setupInterval EMA20: price " + (if (isLong) "above" else "below") + " EMA20") to emaAligned,
             "$executionInterval directional confirmation candle (breakout volume >= 1.5x)" to candleAligned,
             ("Stop-loss beyond recent $executionInterval swing " + (if (isLong) "low" else "high")) to stopAligned,
-            ("Target 1 minimum 1:1.5 estimated net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 1.5)
+            ("Target 1 minimum 1:2.0 estimated net risk/reward (" + "%.2f".format(Locale.US, netR) + "R net)") to (netR.isFinite() && netR >= 2.0)
         )
     }
 
