@@ -56,7 +56,9 @@ internal data class TradeIdea(
     val fundingRate: Double?, val oiChangePct: Double?, val backtest: TradeIdeaBacktestStats,
     val volatilityPct: Double = 0.0,
     val strategyChecks: List<Pair<String, Boolean?>> = emptyList(),
-    val riskCodes: Set<TradeIdeaRiskCode> = emptySet()
+    val riskCodes: Set<TradeIdeaRiskCode> = emptySet(),
+    val bidDepthUsd: Double? = null,
+    val askDepthUsd: Double? = null
 )
 internal data class MarketMicrostructure(
     val spreadBps: Double?, val bookImbalance: Double?, val fundingRate: Double?, val oiChangePct: Double?,
@@ -87,6 +89,7 @@ internal object TradeIdeaCache {
                 bias5m = x.getString("bias5m"),
                 spreadBps = x.optNullableDouble("spreadBps"), bookImbalance = x.optNullableDouble("bookImbalance"),
                 fundingRate = x.optNullableDouble("fundingRate"), oiChangePct = x.optNullableDouble("oiChangePct"),
+                bidDepthUsd = x.optNullableDouble("bidDepthUsd"), askDepthUsd = x.optNullableDouble("askDepthUsd"),
                 backtest = TradeIdeaBacktestStats(
                     trades = stats.optInt("trades"),
                     wins = stats.optInt("wins"),
@@ -175,6 +178,8 @@ internal object TradeIdeaCache {
                     .put("bias5m", idea.bias5m)
                     .put("spreadBps", idea.spreadBps ?: JSONObject.NULL)
                     .put("bookImbalance", idea.bookImbalance ?: JSONObject.NULL)
+                    .put("bidDepthUsd", idea.bidDepthUsd ?: JSONObject.NULL)
+                    .put("askDepthUsd", idea.askDepthUsd ?: JSONObject.NULL)
                     .put("fundingRate", idea.fundingRate ?: JSONObject.NULL)
                     .put("oiChangePct", idea.oiChangePct ?: JSONObject.NULL)
                     .put("backtest", stats).put("volatilityPct", idea.volatilityPct).put("strategyChecks", strategyChecks)
@@ -666,7 +671,7 @@ internal object BinanceMarketScanner {
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
             plan.horizon, bias5, micro.spreadBps, micro.bookImbalance, micro.fundingRate,
             micro.oiChangePct, replay, t.volatilityPct,
-            strategyChecks, plan.riskCodes
+            strategyChecks, plan.riskCodes, micro.bidDepthUsd, micro.askDepthUsd
         )
     }
 
@@ -1130,7 +1135,8 @@ private data class EntryGuidance(
     val invalidation: String,
     val zoneLow: Double,
     val zoneHigh: Double,
-    val checks: List<Pair<String, Boolean?>>
+    val checks: List<Pair<String, Boolean?>>,
+    val hardGateBlocked: Boolean
 )
 
 private fun biasSupportsSide(bias: String, side: String): Boolean {
@@ -1156,17 +1162,18 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val trend1h = biasSupportsSide(idea.bias1h, idea.side)
     val trend5m = biasSupportsSide(idea.bias5m, idea.side)
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
-    val volumeThreshold = if (idea.setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
-    val volumeOk = idea.volumeRatio >= volumeThreshold
-    val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..10.0 }
-    // Match the scanner's hard liquidity gate: spread alone is insufficient.
-    val bookOk = idea.bookImbalance?.let {
-        it.isFinite() && it in -1.0..1.0 && (if (longSide) it >= -0.15 else it <= 0.15)
-    }
+    val volumeThreshold = confluenceExecutionVolumeThreshold(idea.setup)
+    val volumeOk = idea.volumeRatio.isFinite() && idea.volumeRatio >= volumeThreshold
+    val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..MAX_TRADE_SPREAD_BPS }
+    // Use the scanner's exact liquidity policy, including both five-level depth sides.
+    val bookOk = isTradeIdeaLiquidityAcceptable(
+        idea.side, idea.spreadBps, idea.bookImbalance, idea.bidDepthUsd, idea.askDepthUsd
+    )
     val riskDistance = abs(idea.entry - idea.stop)
     val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
     val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = when { idea.horizon.startsWith("Scalp", true) -> 5; idea.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
-    val rewardOk = netR.isFinite() && netR >= 1.5
+    val rewardOk = netR.isFinite() && netR >= 2.0
+    val hardGateBlocked = !volumeOk || spreadOk != true || !bookOk || !rewardOk
     val score = (if (trend1h) 20 else 0) + (if (trend4h) 5 else 0) +
         (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
@@ -1183,7 +1190,9 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val invalidated = livePriceInvalidatesPlan(idea)
     // Share the main card's final state; the coach score is informational only.
     val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-    val action = when (sharedStage) {
+    val action = if (hardGateBlocked) {
+        "AVOID: one or more hard checklist gates failed. Relative volume, spread, both order-book depth sides, directional imbalance and Target 1 net reward/risk must all pass."
+    } else when (sharedStage) {
         TradeIdeaStage.ENTRY_CONFIRMED -> "READY TO ENTER: scanner trigger and live-price safety checks pass. Recheck the live quote, spread and stop before acting."
         TradeIdeaStage.MONITOR -> "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
         TradeIdeaStage.WAIT_CONFIRMATION -> "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
@@ -1215,9 +1224,9 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
         "Spread at or below 10 bps" to spreadOk,
         "Directional order-book depth available and acceptable" to bookOk,
-        ("Target 1 offers at least 1.5R estimated net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
+        ("Target 1 offers at least 2.0R estimated net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
     ) + idea.strategyChecks
-    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks)
+    return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks, hardGateBlocked)
 }
 
 @Composable
@@ -1237,9 +1246,14 @@ private fun EntryGuidancePanel(
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed", style = MaterialTheme.typography.labelSmall,
-                    color = if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                    fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (guidance.hardGateBlocked) "HARD GATE · BLOCKED"
+                    else guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (guidance.hardGateBlocked) MaterialTheme.colorScheme.error
+                        else if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             Text("Planned entry zone: " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
                 fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
@@ -1262,14 +1276,26 @@ private fun EntryGuidancePanel(
             Text("Entry checklist (not trade approval)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             guidance.checks.forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (passed == true) "✓" else "○",
-                        color = if (passed == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    val hardGate = label.startsWith("Relative volume", true) ||
+                        label.startsWith("Spread at or below", true) ||
+                        label.startsWith("Directional order-book", true) ||
+                        label.startsWith("Target 1 offers", true)
+                    val blocked = hardGate && passed != true
+                    Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
+                        color = if (passed == true) MaterialTheme.colorScheme.primary
+                            else if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall)
-                    Text(label + if (passed == null) " · unavailable" else if (passed) " · pass" else " · review",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(label + when {
+                        passed == true -> " · pass"
+                        blocked && passed == null -> " · unavailable — BLOCKED"
+                        blocked -> " · BLOCKED"
+                        passed == null -> " · unavailable"
+                        else -> " · review"
+                    }, style = MaterialTheme.typography.labelSmall,
+                        color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Missing order-book depth fails the scanner's hard liquidity gate even when spread passes. The READY / WAIT / AVOID decision above always takes priority. Confluence V4 scoring and its existing hard risk gates determine scanner qualification.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Relative volume, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing depth is BLOCKED, not Review. The READY / WAIT / AVOID decision above always takes priority.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
