@@ -150,7 +150,9 @@ internal object ConfluenceScannerV4 {
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
-            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)\n            val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)\n            val volumeConfirmed = rv >= requiredRelativeVolume
+            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
+            val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)
+            val volumeConfirmed = rv >= requiredRelativeVolume
             val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
             val entry=exec.close
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
