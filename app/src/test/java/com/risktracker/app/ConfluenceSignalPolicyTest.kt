@@ -84,7 +84,13 @@ class ConfluenceSignalPolicyTest {
         ).isNaN())
     }
 
-    @Test fun setupSpecificRelativeVolumeThresholdsAreEnforced() {\n        assertEquals(1.2, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)\n        assertEquals(1.2, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)\n        assertEquals(1.5, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)\n    }\n\n    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
+    @Test fun setupSpecificRelativeVolumeThresholdsAreEnforced() {
+        assertEquals(1.2, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
+        assertEquals(1.2, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
+        assertEquals(1.5, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
+    }
+
+    @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {
         val base = listOf(true,true,true,true,true,true,false,false)
         fun score(volume: Double) = confluenceScore(
             regimeConfirmed=base[0], structureConfirmed=base[1], entryConfirmed=base[2],
