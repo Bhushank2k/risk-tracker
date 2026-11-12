@@ -1485,6 +1485,7 @@ private fun TradeIdeaCard(
                         Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
                         Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
                         Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
                     }
@@ -1501,7 +1502,7 @@ private fun TradeIdeaCard(
                     Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
-                    Text("Why this idea?")
+                    Text("Setup details")
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.ExpandMore, contentDescription = null)
                 }
@@ -1623,10 +1624,10 @@ private fun TradeIdeaCard(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
-            if (density == "Expanded") HistoricalOutcomePanel(idea) else Text(historyOneLine(idea), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded && density == "Compact") "Show less" else if (expanded) "Hide analysis" else "Why this result?") }
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide setup details" else "Setup details") }
             if (expanded) {
                 HorizontalDivider()
+                HistoricalOutcomePanel(idea)
                 if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, snapshotAgeMs)
                 val trendLabels = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) listOf("1H", "15M", "1M")
                     else if (idea.horizon.startsWith("Swing", ignoreCase = true)) listOf("1D", "4H", "15M")
@@ -1700,10 +1701,6 @@ private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modi
 }
 
 /** One-line history summary for the compact card. */
-private fun historyOneLine(idea: TradeIdea): String =
-    if (idea.backtest.hasUsableEstimate) "Historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% over " + idea.backtest.trades + " samples"
-    else "No history yet (" + idea.backtest.trades + " of 30 samples)"
-
 @Composable
 private fun IdeaLevel(label: String, value: Double) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
