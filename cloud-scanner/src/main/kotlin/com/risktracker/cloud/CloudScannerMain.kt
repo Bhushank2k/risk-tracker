@@ -14,6 +14,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
@@ -203,15 +204,18 @@ fun main() {
 
     val pool = Executors.newFixedThreadPool(6)
     try {
-        val futures = pool.invokeAll(candidates.map { candidate -> Callable { scanCandidate(candidate, btcBias) } })
+        val completed = ExecutorCompletionService<ScanResult>(pool)
+        candidates.forEach { candidate -> completed.submit(Callable { scanCandidate(candidate, btcBias) }) }
         var ready = 0; var failures = 0
         val seenThisRun = mutableSetOf<String>()
-        futures.forEach { future ->
-            val result = future.get()
+        // Relay each result as soon as its symbol finishes; waiting for every market
+        // would make early READY alerts stale before the relay's freshness check.
+        repeat(candidates.size) {
+            val result = completed.take().get()
             if (result.error != null) { failures++; println("Market data error: ${result.error}") }
-            val alert = result.alert ?: return@forEach
+            val alert = result.alert ?: return@repeat
             val id = alert.getString("alert_id")
-            if (!seenThisRun.add(id)) return@forEach
+            if (!seenThisRun.add(id)) return@repeat
             postAlert(alert)
             ready++
             println("Relayed READY Intraday: ${alert.getString("symbol")} ${alert.getString("side")} ${alert.getString("setup")} score=${alert.getInt("score")}")
