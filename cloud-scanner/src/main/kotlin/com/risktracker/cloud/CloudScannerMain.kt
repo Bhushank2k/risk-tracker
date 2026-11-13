@@ -187,11 +187,11 @@ private fun scanCandidate(candidate: Candidate, btcBias: String): ScanResult = t
     val m5 = BybitRest.candles(candidate.symbol, "5", 220)
     // Fetch the best quote, five-level depth and funding close together for this symbol.
     // A single all-market snapshot at scan start could be minutes old for later symbols.
-    val ticker = BybitRest.get("/v5/market/tickers?category=linear&symbol=\${candidate.symbol}")
+    val ticker = BybitRest.get("/v5/market/tickers?category=linear&symbol=${candidate.symbol}")
         .optJSONArray("list")?.optJSONObject(0) ?: error("Bybit ticker missing")
     val book = ticker
     val premium = ticker
-    val depth = JSONObject(BybitRest.get("/v5/market/orderbook?category=linear&symbol=${candidate.symbol}&limit=5"))
+    val depth = BybitRest.get("/v5/market/orderbook?category=linear&symbol=${candidate.symbol}&limit=5")
     val micro = buildMarketMicrostructure(
         book.optString("bid1Price").toDoubleOrNull(), book.optString("ask1Price").toDoubleOrNull(),
         levels(depth.optJSONArray("b") ?: JSONArray()), levels(depth.optJSONArray("a") ?: JSONArray()),
