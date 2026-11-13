@@ -199,8 +199,10 @@ fun TradingAnalyticsScreen(
                 Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Futures daily P&L includes Binance realized P&L, commissions, funding and insurance adjustments. Spot P&L is FIFO-estimated; third-asset commissions are not historically converted, so the combined total is best-known rather than a fully converted account-wide net.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AnalyticsMetric("Daily net P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
+                    AnalyticsMetric("Selected daily P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
                         if (dailySnapshot.netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                     AnalyticsMetric("Average daily P&L", dailySnapshot.averagePnl.usd(), Modifier.weight(1f))
                 }
