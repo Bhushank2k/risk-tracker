@@ -44,8 +44,8 @@ Set the project and region, enable the required APIs, and create the Artifact Re
 Create the job identity and grant it access to the existing relay token secret. The secret value must be the exact same high-entropy token configured on the alert relay; do not put it in source control:
 
     gcloud iam service-accounts create risk-tracker-scanner
-    gcloud secrets add-iam-policy-binding ALERT_API_TOKEN \\
-      --member="serviceAccount:risk-tracker-scanner@$PROJECT_ID.iam.gserviceaccount.com" \\
+    gcloud secrets add-iam-policy-binding ALERT_API_TOKEN \
+      --member="serviceAccount:risk-tracker-scanner@$PROJECT_ID.iam.gserviceaccount.com" \
       --role="roles/secretmanager.secretAccessor"
 
 If the relay secret has not been created yet, follow the Secret Manager steps in [the alert relay README](../cloud-alerts/README.md).
@@ -57,14 +57,14 @@ Build the container from the repository root (the Docker build context must incl
 
 Create the job. Replace the relay URL and service account with your deployed values:
 
-    gcloud run jobs create risk-tracker-cloud-scanner \\
-      --image "$IMAGE" --region "$REGION" --tasks 1 --parallelism 1 \\
-      --max-retries 0 --task-timeout 15m \\
-      --service-account "risk-tracker-scanner@$PROJECT_ID.iam.gserviceaccount.com" \\
-      --set-env-vars "ALERT_RELAY_URL=https://YOUR-RELAY-URL" \\
+    gcloud run jobs create risk-tracker-cloud-scanner \
+      --image "$IMAGE" --region "$REGION" --tasks 1 --parallelism 1 \
+      --max-retries 0 --task-timeout 15m \
+      --service-account "risk-tracker-scanner@$PROJECT_ID.iam.gserviceaccount.com" \
+      --set-env-vars "ALERT_RELAY_URL=https://YOUR-RELAY-URL" \
       --set-secrets "ALERT_API_TOKEN=ALERT_API_TOKEN:latest"
 
-Grant that service account Secret Manager access, then test a one-off execution:
+Then test a one-off execution:
 
     gcloud run jobs execute risk-tracker-cloud-scanner --region "$REGION" --wait
 
@@ -73,16 +73,16 @@ Grant that service account Secret Manager access, then test a one-off execution:
 Create a dedicated Scheduler identity and grant it permission to execute the Cloud Run Job:
 
     gcloud iam service-accounts create risk-tracker-scheduler
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" \\
-      --member="serviceAccount:risk-tracker-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \\
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:risk-tracker-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
       --role="roles/run.invoker"
 
 Then create the authenticated Scheduler trigger:
 
-    gcloud scheduler jobs create http risk-tracker-cloud-scanner-15m \\
-      --location "$REGION" --schedule "*/15 * * * *" --time-zone "UTC" \\
-      --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/risk-tracker-cloud-scanner:run" \\
-      --http-method POST --oauth-service-account "risk-tracker-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \\
+    gcloud scheduler jobs create http risk-tracker-cloud-scanner-15m \
+      --location "$REGION" --schedule "*/15 * * * *" --time-zone "UTC" \
+      --uri "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/risk-tracker-cloud-scanner:run" \
+      --http-method POST --oauth-service-account "risk-tracker-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \
       --message-body '{}'
 
 Check Cloud Run Job execution logs after the first run. The worker prints market counts, data errors and relayed READY alerts. A scan with zero READY setups is a normal outcome.
