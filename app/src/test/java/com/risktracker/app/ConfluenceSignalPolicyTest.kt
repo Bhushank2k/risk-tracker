@@ -47,8 +47,8 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isConfluenceReady(true,true,true,true,true,false,true,true,true,100))
         assertTrue(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
-        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,65))
-        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,64))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
     }
 
     @Test fun relativeVolumeIsHardWhileMomentumRemainsSoft() {
