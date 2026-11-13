@@ -23,7 +23,7 @@ class CloudMarketDataTest {
         val micro = buildMarketMicrostructure(99.9, 100.1, fourLevels, fiveAsks, null)
         assertNull(micro.bookImbalance)
         assertNull(micro.bidDepthUsd)
-        assertNull(micro.askDepthUsd)
+        assertNotNull(micro.askDepthUsd)
         assertNull(micro.fundingRate)
     }
 }
