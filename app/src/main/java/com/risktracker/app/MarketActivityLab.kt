@@ -41,7 +41,7 @@ object MarketActivityEngine {
         val compressed=range<2.5;val up=x.close>hi&&x.close>x.open;val down=x.close<lo&&x.close<x.open;val breakout=up||down
         val dir=when{up->ActivityDirection.BULLISH;down->ActivityDirection.BEARISH;ind.ema9!=null&&ind.ema20!=null&&ind.ema9>ind.ema20->ActivityDirection.BULLISH;ind.ema9!=null&&ind.ema20!=null&&ind.ema9<ind.ema20->ActivityDirection.BEARISH;else->ActivityDirection.NEUTRAL}
         val rv=ind.relativeVolume?:0.0;val rvPts=when{rv>=3->20;rv>=2->16;rv>=1.5->12;rv>=1.2->7;else->0}
-        val atrBase=c.dropLast(1).takeLast(20).mapIndexedNotNull{i,_->val end=c.size-20+i;if(end>=14)indicators(c.take(end+1)).atr14 else null}.takeIf{it.isNotEmpty()}?.average()
+        val atrBase=c.dropLast(1).takeLast(20).mapIndexedNotNull{i,_->val end=c.size-21+i;if(end>=14)indicators(c.take(end+1)).atr14 else null}.takeIf{it.isNotEmpty()}?.average()
         val ar=if(atrBase!=null&&atrBase>0&&ind.atr14!=null)ind.atr14/atrBase else 1.0
         val atrPts=when{ar>=1.8->15;ar>=1.4->11;ar>=1.15->7;else->0}
         val cp=if(compressed)15 else if(range<5)8 else 0
