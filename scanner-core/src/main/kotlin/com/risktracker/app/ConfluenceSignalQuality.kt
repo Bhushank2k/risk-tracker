@@ -46,6 +46,7 @@ package com.risktracker.app
         relativeVolume >= 1.5 -> 10
         relativeVolume >= 1.2 -> 7
         relativeVolume >= 1.0 -> 4
+        relativeVolume >= 0.9 -> 2
         else -> 0
     }
     return (if (regimeConfirmed) 20 else 0) +
