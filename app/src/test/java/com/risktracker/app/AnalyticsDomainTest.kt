@@ -33,6 +33,25 @@ class AnalyticsDomainTest {
         assertEquals(0.0, result.netAfterKnownStableFees, 0.0)
     }
 
+    @Test fun realizedOrdersAreChronologicalAndExposeExpectancyStreaksAndDrawdown() {
+        val fills = listOf(
+            fill("4", "SELL", 6.0, 0.0, "USDT", "d").copy(time = 40L),
+            fill("2", "SELL", -3.0, 0.0, "USDT", "b").copy(time = 20L),
+            fill("3", "BUY", 4.0, 0.0, "USDT", "c").copy(time = 30L),
+            fill("1", "BUY", -2.0, 0.0, "USDT", "a").copy(time = 10L)
+        )
+        val result = summarizeExchangeOrders(fills)
+        assertEquals(listOf(-2.0, -3.0, 4.0, 6.0), result.realizedOrders)
+        assertEquals(1.25, result.expectancyPerOrder!!, 0.0001)
+        assertEquals(2.0, result.averageWinLossRatio!!, 0.0001)
+        assertEquals("Win", result.currentStreakKind)
+        assertEquals(2, result.currentStreakCount)
+        assertEquals(2, result.longestWinStreak)
+        assertEquals(2, result.longestLossStreak)
+        assertEquals(5.0, result.maxOrderDrawdown, 0.0001)
+        assertEquals(listOf(-2.0, -5.0, -1.0, 5.0), result.cumulativePnl)
+    }
+
     private fun fill(id: String, side: String, pnl: Double, fee: Double, asset: String, order: String) =
         BinanceJournalFill(id, "Binance", "USDⓈ-M Futures", "BTCUSDT", side,
             1.0, 100.0, 100.0, fee, asset, pnl, 1_700_000_000_000L, order)
