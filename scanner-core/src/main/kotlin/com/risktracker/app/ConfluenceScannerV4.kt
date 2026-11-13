@@ -91,6 +91,7 @@ import kotlin.math.min
             "Swing" -> longArrayOf(48 * 3600000L, 8 * 3600000L, 2 * 3600000L, 30 * 60000L)
             else -> longArrayOf(8 * 3600000L, 2 * 3600000L, 30 * 60000L, 15 * 60000L)
         }
+        // Only evaluate exchange candles whose close timestamps have passed.
         if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
             !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
@@ -103,7 +104,9 @@ import kotlin.math.min
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
-        val atr=atr(m15)?:return null; val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
+        val atr=atr(m15)?:return null
+        val baselineAtr=atr(m15.dropLast(14))?:return null
+        val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
         val up4=e450?.let { h4.last().close>it&&e420>it } ?: false
         val dn4=e450?.let { h4.last().close<it&&e420<it } ?: false
         val up1=h1.last().close>e150&&e120>e150; val dn1=h1.last().close<e150&&e120<e150
@@ -117,10 +120,10 @@ import kotlin.math.min
         val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
         val prevMacd=(ema(c15.dropLast(1),12)?:macd)-(ema(c15.dropLast(1),26)?:0.0)
         val setups=mutableListOf<Setup>()
-        if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close)
-            setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 pullback reclaimed in aligned ${bias1Label}/${bias2Label} uptrend"))
-        if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close)
-            setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 pullback rejected in aligned ${bias1Label}/${bias2Label} downtrend"))
+        if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close&&confluencePullbackVolumeConfirmed(prev.volume,cur.volume,avg))
+            setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 reclaim after quiet pullback volume and renewed participation"))
+        if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close&&confluencePullbackVolumeConfirmed(prev.volume,cur.volume,avg))
+            setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 rejection after quiet pullback volume and renewed participation"))
         for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
             val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
             if(av<=0||m15[i].volume/av<1.5)continue
@@ -134,10 +137,10 @@ import kotlin.math.min
             val band=m15.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
             if(width>atr*2){
                 val lw=min(cur.open,cur.close)-cur.low; val uw=cur.high-max(cur.open,cur.close)
-                if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42)
-                    setups.add(Setup("Range reversal","LONG",lo,true,"Neutral ${bias1Label}/${bias2Label} regime; lower range rejection and RSI reclaim"))
-                if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58)
-                    setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral ${bias1Label}/${bias2Label} regime; upper range rejection and RSI rollover"))
+                if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42&&hasTradeIdeaLiquiditySweep(m15,"LONG"))
+                    setups.add(Setup("Range reversal","LONG",lo,true,"Neutral regime; lower-edge liquidity sweep, reclaim and RSI turn"))
+                if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58&&hasTradeIdeaLiquiditySweep(m15,"SHORT"))
+                    setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral regime; upper-edge liquidity sweep, reclaim and RSI turn"))
             }
         }
         if(setups.isEmpty())return null
@@ -158,7 +161,8 @@ import kotlin.math.min
             val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
             val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)
             val volumeConfirmed = rv >= requiredRelativeVolume
-            val atrPct=atr/cur.close*100; val volatility=atrPct in .12..3.0
+            val atrPct=atr/cur.close*100
+            val volatility=atrPct in .12..3.0 && confluenceVolatilityExpansionAcceptable(atr,baselineAtr)
             val entry=exec.close
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
@@ -215,7 +219,7 @@ import kotlin.math.min
                 !horizonSupported->"BLOCK: This mode is not validated. Current scanner inputs are H4/H1/M15/M5; only Intraday is supported until dedicated timeframe data and execution confirmation are implemented."
                 fundingUnavailable->"BLOCK: Funding data unavailable; READY requires verified funding data."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
-                !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
+                !volatility->"BLOCK: ATR% is outside 0.12–3.0% or volatility expanded over 1.8× versus the prior ATR window."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
                 !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
@@ -243,7 +247,7 @@ import kotlin.math.min
                 if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons,riskCodes)
         }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()
     }
-    private fun fresh(t:Long,n:Long,m:Long)=t<n&&n-t<=m
+    private fun fresh(t:Long,n:Long,m:Long)=isTradeIdeaCandleClosed(t,n)&&n-t<=m
     private fun valid(r:List<V2Candle>):Boolean{var last=Long.MIN_VALUE;return r.all{val ok=it.high.isFinite()&&it.low.isFinite()&&it.open.isFinite()&&it.close.isFinite()&&it.volume.isFinite()&&it.high>=it.low&&it.close in it.low..it.high&&it.open in it.low..it.high&&it.close>0&&it.volume>=0&&it.closeTime>last;last=it.closeTime;ok}}
     private fun ema(v:List<Double>,p:Int):Double?{if(v.size<p)return null;val a=2.0/(p+1);var x=v.take(p).average();v.drop(p).forEach{x=it*a+x*(1-a)};return x.takeIf{it.isFinite()}}
     private fun atr(r:List<V2Candle>):Double?{if(r.size<16)return null;return r.zipWithNext{p,c->max(c.high-c.low,max(abs(c.high-p.close),abs(c.low-p.close)))}.takeLast(14).average().takeIf{it.isFinite()&&it>0}}

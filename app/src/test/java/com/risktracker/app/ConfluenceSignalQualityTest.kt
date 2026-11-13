@@ -43,6 +43,27 @@ class ConfluenceSignalQualityTest {
     @Test fun unavailableVolumeDoesNotEarnVolumePoints() {
         assertEquals(90, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
     }
+    @Test fun pullbackRequiresQuietVolumeThenRenewedParticipation() {
+        assertTrue(confluencePullbackVolumeConfirmed(70.0, 120.0, 100.0))
+        assertFalse(confluencePullbackVolumeConfirmed(110.0, 120.0, 100.0))
+        assertFalse(confluencePullbackVolumeConfirmed(70.0, 90.0, 100.0))
+        assertFalse(confluencePullbackVolumeConfirmed(Double.NaN, 120.0, 100.0))
+    }
+
+    @Test fun volatilityExpansionRejectsSuddenSpikesAndInvalidInputs() {
+        assertTrue(confluenceVolatilityExpansionAcceptable(1.5, 1.0))
+        assertFalse(confluenceVolatilityExpansionAcceptable(1.81, 1.0))
+        assertFalse(confluenceVolatilityExpansionAcceptable(Double.NaN, 1.0))
+        assertFalse(confluenceVolatilityExpansionAcceptable(1.0, 0.0))
+    }
+
+    @Test fun candleMustBeFullyClosedBeforeSignalEvaluation() {
+        assertTrue(isTradeIdeaCandleClosed(99L, 100L))
+        assertFalse(isTradeIdeaCandleClosed(100L, 100L))
+        assertFalse(isTradeIdeaCandleClosed(101L, 100L))
+        assertFalse(isTradeIdeaCandleClosed(0L, 100L))
+    }
+
     @Test fun executionVolumeThresholdMatchesSetupFamily() {
         assertEquals(1.25, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
         assertEquals(1.25, confluenceExecutionVolumeThreshold("breakout + retest"), 0.0)
