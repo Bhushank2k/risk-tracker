@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ConfluenceSmcConfluenceTest {
     private fun candle(open: Double, high: Double, low: Double, close: Double, time: Long) =
-        V2Candle(open, high, low, close, 100.0, time)
+        V2Candle(high, low, close, 100.0, time, open)
 
     @Test fun smcEvidenceIsSoftAndCappedAtTenPoints() {
         val evidence = TradeIdeaSmcEvidence(true, true, true, true, true)
@@ -17,11 +17,11 @@ class ConfluenceSmcConfluenceTest {
 
     @Test fun bullishStructureBreakRequiresCloseAboveConfirmedSwing() {
         val bars = listOf(
-            candle(9.0,10.0,8.0,9.0,1), candle(9.0,11.0,8.5,10.0,2),
-            candle(10.0,10.5,8.0,9.0,3), candle(9.0,10.0,7.0,8.0,4),
-            candle(8.0,9.0,7.5,8.5,5), candle(8.5,9.5,8.0,9.0,6),
-            candle(9.0,10.0,8.5,9.5,7), candle(9.5,10.5,9.0,10.0,8),
-            candle(10.0,12.0,9.5,11.5,9), candle(11.5,12.0,10.5,11.0,10)
+            candle(9.0,9.0,7.0,8.0,1), candle(9.0,10.0,8.0,9.0,2),
+            candle(10.0,12.0,9.0,11.0,3), candle(10.0,10.0,8.0,9.0,4),
+            candle(9.0,9.0,7.0,8.0,5), candle(8.0,9.5,7.5,9.0,6),
+            candle(9.0,10.0,8.0,9.5,7), candle(9.5,11.0,9.0,10.5,8),
+            candle(11.0,12.5,10.5,12.3,9), candle(12.0,13.0,11.5,12.6,10)
         )
         assertTrue(hasTradeIdeaSmcStructureBreak(bars, "LONG"))
         assertFalse(hasTradeIdeaSmcStructureBreak(bars, "SHORT"))
@@ -57,7 +57,7 @@ class ConfluenceSmcConfluenceTest {
             candle(10.5,11.0,10.0,10.5,9),
             candle(10.5,11.0,10.0,10.5,10),
             candle(10.5,11.0,10.0,10.5,11),
-            candle(10.5,11.0,10.0,10.5,12)
+            candle(9.5,11.0,8.5,9.0,12)
         )
         assertTrue(evaluateTradeIdeaSmc(bars, "LONG", 1.0).premiumDiscountAligned)
         assertFalse(evaluateTradeIdeaSmc(bars, "SHORT", 1.0).premiumDiscountAligned)
