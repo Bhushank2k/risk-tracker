@@ -75,11 +75,14 @@ import kotlin.math.min
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
     notExtended && volume && entryConfirmed && structureConfirmed && score >= 75
 
+ fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
+
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
  object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
+        if (horizon !in setOf("Intraday", "Scalp", "Swing")) return null
         if (h4.size < 50 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
         val now = System.currentTimeMillis()
@@ -91,10 +94,12 @@ import kotlin.math.min
         if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
             !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
-        val bias1Label = if (horizon == "Scalp") "1H" else if (horizon == "Swing") "1D" else "1H"
-        val bias2Label = if (horizon == "Scalp") "15M" else if (horizon == "Swing") "4H" else "4H context"
-        val setupLabel = if (horizon == "Scalp") "5M" else if (horizon == "Swing") "1H" else "15M"
-        val executionLabel = if (horizon == "Scalp") "1M" else if (horizon == "Swing") "15M" else "5M"
+        // These are the actual supplied series for every horizon today; do not relabel them as 1D/M1/M15.
+        val bias1Label = "1H"
+        val bias2Label = "4H context"
+        val setupLabel = "15M"
+        val executionLabel = "5M"
+        val horizonSupported = isTradeIdeaHorizonSupported(horizon)
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
@@ -158,7 +163,8 @@ import kotlin.math.min
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
-            val setupBarMinutes=when(horizon){"Scalp"->5;"Swing"->60;else->15}
+            // Risk/cost assumptions follow the actual setup series, not the requested display horizon.
+            val setupBarMinutes=15
             // Set Target 1 far enough away that estimated fees, slippage and funding still leave 2R net.
             val target1GrossR=if(geometry&&risk>0) tradeIdeaGrossRForMinimumNetReturn(
                 minimumNetR=2.0, entry=entry, riskDistance=risk, heldBars=8, setupBarMinutes=setupBarMinutes
@@ -183,13 +189,14 @@ import kotlin.math.min
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(!volumeConfirmed)blocks.add("relative volume below ${requiredRelativeVolume}x hard gate"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
             val ready=isConfluenceReady(
-                liquid, geometry, rr, fundingOk || fundingUnavailable, volatility, extended, volumeConfirmed,
+                liquid, geometry, rr, fundingOk, volatility, extended, volumeConfirmed,
                 momentum, entryOk, score, structureConfirmed = structureConfirmed
-            )
+            ) && horizonSupported
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
                 if (!rr) add(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK)
+                if (!horizonSupported) add(TradeIdeaRiskCode.UNSUPPORTED_TIMEFRAME)
                 if (fundingUnavailable) add(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE)
                 else if (!fundingOk) add(TradeIdeaRiskCode.ADVERSE_FUNDING)
                 if (!volatility) add(TradeIdeaRiskCode.VOLATILITY_OUT_OF_RANGE)
@@ -200,13 +207,13 @@ import kotlin.math.min
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
                 if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 if (!structureConfirmed) add(TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED)
-                add(TradeIdeaRiskCode.COSTS_NOT_INCLUDED)
             }
             val warning=when{
                 !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
                 !rr->"BLOCK: Target 1 estimated net reward/risk is below 2R after costs."
-                fundingUnavailable->"WATCH: Funding data unavailable; verify current funding before execution."
+                !horizonSupported->"BLOCK: This mode is not validated. Current scanner inputs are H4/H1/M15/M5; only Intraday is supported until dedicated timeframe data and execution confirmation are implemented."
+                fundingUnavailable->"BLOCK: Funding data unavailable; READY requires verified funding data."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
@@ -230,10 +237,9 @@ import kotlin.math.min
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; Target 1 is sized for ≥2R net after estimated costs, with Target 2 at least 1R farther.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
-                if (horizon == "Scalp") "Scalp · M5 setup / M1 execution"
-                else if (horizon == "Swing") "Swing · H1 setup / M15 execution"
-                else if (s.range) "Intraday · M15 range / M5 execution"
-                else "Intraday · M15 setup / M5 execution",
+                if (horizonSupported && s.range) "Intraday · M15 range / M5 execution"
+                else if (horizonSupported) "Intraday · M15 setup / M5 execution"
+                else "$horizon · unsupported (current data: H4/H1/M15/M5)",
                 if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral",if(up1)"Bullish" else if(dn1)"Bearish" else "Neutral",
                 if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons,riskCodes)
         }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()
