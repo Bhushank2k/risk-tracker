@@ -1273,8 +1273,24 @@ private fun EntryGuidancePanel(
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            Text("Entry checklist (not trade approval)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            guidance.checks.forEach { (label, passed) ->
+            val criticalChecks = guidance.checks.filter { (label, passed) ->
+                (label.startsWith("Relative volume", true) ||
+                    label.startsWith("Spread at or below", true) ||
+                    label.startsWith("Directional order-book", true) ||
+                    label.startsWith("Target 1 offers", true)) && passed != true
+            }
+            var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+            TextButton(onClick = { checklistExpanded = !checklistExpanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text("Checklists · " + guidance.checks.count { it.second == true } + "/" +
+                    guidance.checks.count { it.second != null } + " passed · " +
+                    if (checklistExpanded) "Hide details" else "View details")
+            }
+            if (criticalChecks.isNotEmpty()) {
+                Text("Critical blockers", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+            (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     val hardGate = label.startsWith("Relative volume", true) ||
                         label.startsWith("Spread at or below", true) ||
