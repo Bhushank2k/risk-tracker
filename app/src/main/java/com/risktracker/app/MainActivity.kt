@@ -166,6 +166,9 @@ internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
     else -> 1 // Trade history
 }
 
+internal fun isPrimaryNavigationDestination(destination: Int): Boolean =
+    destination == 0 || destination == 21 || destination == 11 || destination == 1
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
@@ -254,7 +257,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Settings" to 7,
             "About Risk Tracker" to 5
         )
-    )
+    ).map { (group, destinations) ->
+        group to destinations.filterNot { isPrimaryNavigationDestination(it.second) }
+    }.filter { it.second.isNotEmpty() }
 
     val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 11 -> 2; 1 -> 3; else -> -1 }
     Scaffold(
