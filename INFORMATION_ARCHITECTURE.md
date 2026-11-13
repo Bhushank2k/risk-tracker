@@ -19,22 +19,21 @@ Use one authoritative screen for each kind of information. Other screens may sho
 
 ## Navigation structure
 
-Bottom navigation contains five destinations:
+Bottom navigation contains four destinations:
 - Market Overview
 - Daily Trade Ideas
-- Risk Monitor
 - Trade History
 - Explore
 
-Explore is a dedicated bottom-navigation screen, not a top-app-bar action. It presents specialist destinations as compact, colorful two-column cards grouped by task:
-- Trading: Live positions/orders and post-trade reviews.
-- Performance: P&L Calendar, Scanner Performance Lab and Market Activity Lab.
-- Ideas & Risk Tools: Confirmed Reversal Signals, Cloud Alerts, position calculator, risk alerts and scenario lab.
+Explore is a dedicated bottom-navigation screen, not a top-app-bar action. It contains only retained specialist tools and account services:
+- Trading: Live positions/orders.
+- Performance: P&L Calendar.
+- Ideas & Risk Tools: Position calculator and Trade Risk Gate functionality is removed from the screen layer; automated scanner risk validation remains in the scanner.
 - Connections & Account: Binance Sync/imports, sync health and account activity/statements.
 - Records & Reports: Crypto Tax Report.
 - App: Settings and About.
 
-The four core destinations are not repeated in Explore. Workspace and Quick Access shortcut panels are removed; specialist destinations remain grouped in Explore. The top app bar contains the current screen title and date/time only. Grouping destinations does not merge their underlying workflows or data sources.
+Risk Monitor, Trade Reviews, Scanner Performance Lab, Market Activity Lab, Confirmed Reversal Signals, Cloud Alerts, Risk Alerts and Risk Scenario Lab screens are removed from navigation. The app retains scanner generation, confirmation and risk-gating logic, background sync/notification processing where used, risk calculations, and all stored trade/account records. Workspace and Quick Access panels remain removed. The top app bar contains the current screen title and date/time only.
 
 ## Duplication rules
 
