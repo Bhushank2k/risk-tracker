@@ -160,10 +160,12 @@ class MainActivity : ComponentActivity() {
 }
 
 internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
-    0 -> 0 // Market overview
+    0 -> 0  // Market overview
     1 -> 21 // Daily trade ideas
     2 -> 11 // Risk monitor
-    else -> 1 // Trade history
+    3 -> 1  // Trade history
+    4 -> 29 // Explore
+    else -> 0
 }
 
 internal fun isPrimaryNavigationDestination(destination: Int): Boolean =
@@ -174,7 +176,6 @@ internal fun isPrimaryNavigationDestination(destination: Int): Boolean =
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
-    var menuExpanded by remember { mutableStateOf(false) }
     var importedPnl by remember { mutableStateOf(BinanceSyncData.load(context)) }
     var entries by remember { mutableStateOf(store.loadEntries()) }
     var input by remember { mutableStateOf(store.loadInput()) }
@@ -222,8 +223,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Market", "Ideas", "Risk", "History")
-    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.Lightbulb, Icons.Filled.Security, Icons.Filled.History)
+    val titles = listOf("Market", "Ideas", "Risk", "History", "Explore")
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.Lightbulb, Icons.Filled.Security, Icons.Filled.History, Icons.Filled.Apps)
     // Keep the bottom bar focused on the four core trading destinations; specialist tools live in Explore.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
@@ -261,7 +262,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         group to destinations.filterNot { isPrimaryNavigationDestination(it.second) }
     }.filter { it.second.isNotEmpty() }
 
-    val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 11 -> 2; 1 -> 3; else -> -1 }
+    val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 11 -> 2; 1 -> 3; 29 -> 4; else -> -1 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -285,7 +286,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 26 -> "Confirmed Reversals"
                 27 -> "Cloud Alerts"
                 28 -> "Market Activity Lab"
-                else -> "More"
+                29 -> "Explore"
+            else -> "Explore"
             }
 
             val barShape = RoundedCornerShape(18.dp)
@@ -390,10 +392,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                                 maxLines = 1
                             )
                         }
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Filled.Apps, contentDescription = "Explore tools",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                     }
                 }
             }
@@ -497,6 +495,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 26 -> ConfirmedReversalSignalsScreen()
                 27 -> CloudAlertsScreen()
                 28 -> MarketActivityLabScreen()
+                29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -507,47 +506,128 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    if (menuExpanded) {
-        ModalBottomSheet(
-            onDismissRequest = { menuExpanded = false },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 18.dp)
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Explore Risk Tracker", style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold)
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+
+}
+
+
+@Composable
+private fun ExploreScreen(
+    menuGroups: List<Pair<String, List<Pair<String, Int>>>>,
+    onNavigate: (Int) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "Specialist tools and account services",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        menuGroups.forEachIndexed { groupIndex, (group, destinations) ->
+            item(key = "explore-heading-$groupIndex") {
+                Text(
+                    group.lowercase().replaceFirstChar { it.uppercase() },
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            items(
+                destinations.chunked(2),
+                key = { row -> "explore-row-$groupIndex-${row.first().second}" }
+            ) { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    menuGroups.forEachIndexed { groupIndex, (group, destinations) ->
-                        item(key = "group-$groupIndex") {
-                            if (groupIndex > 0) HorizontalDivider(
-                                Modifier.padding(vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-                            )
-                            Text(group, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                        items(destinations, key = { it.second }) { (label, destination) ->
-                            NavigationDrawerItem(
-                                label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
-                                selected = tab == destination,
-                                onClick = { tab = destination; menuExpanded = false },
-                                icon = { Icon(pageIcon(destination), contentDescription = null) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                        }
+                    row.forEach { (label, destination) ->
+                        ExploreToolCard(
+                            label = label,
+                            destination = destination,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate(destination) }
+                        )
                     }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ExploreToolCard(
+    label: String,
+    destination: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val accent = when (destination) {
+        16, 18 -> Color(0xFF55C8FF)
+        2, 7 -> Color(0xFFFFC46B)
+        13, 19 -> Color(0xFF68E0AD)
+        25, 28 -> Color(0xFFD0A5FF)
+        23, 9, 14 -> Color(0xFFFF9FBD)
+        6, 17 -> Color(0xFF76DFE4)
+        26, 27 -> Color(0xFFFFA66B)
+        else -> Color(0xFF91A8FF)
+    }
+    val subtitle = when (destination) {
+        16 -> "Orders & exposure"
+        14 -> "Trade reviews"
+        23 -> "Daily performance"
+        25 -> "Scanner analytics"
+        28 -> "Market research"
+        26 -> "Confirmed signals"
+        27 -> "Market notifications"
+        2 -> "Position & leverage"
+        13 -> "Risk scenarios"
+        19 -> "Risk notifications"
+        6 -> "Exchange connection"
+        18 -> "Connection status"
+        17 -> "Statements & activity"
+        9 -> "Tax records"
+        7 -> "App preferences"
+        5 -> "App information"
+        else -> "Open tool"
+    }
+    Card(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 104.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = accent.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.20f else 0.13f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.34f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = pageIcon(destination),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(25.dp)
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                minLines = 2
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
         }
     }
 }
