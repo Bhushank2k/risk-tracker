@@ -39,6 +39,18 @@ class SmcStructureEngineTest {
         assertEquals(23, sweep.candleIndex)
     }
 
+
+    @Test fun equalSwingHighsCreateBuySideLiquidityPool() {
+        val highs = listOf(10.0, 11.0, 15.0, 12.0, 11.0, 12.0, 15.0, 12.0, 11.0, 10.0, 9.0)
+        val lows = listOf(8.0, 8.5, 9.0, 8.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0, 7.0)
+        val rows = highs.indices.map { i ->
+            val close = (highs[i] + lows[i]) / 2.0
+            V2Candle(highs[i], lows[i], close, 100.0, i.toLong(), close)
+        }
+        val pools = detectSmcLiquidityLevels(rows, atr = 1.0)
+        assertTrue(pools.any { it.type == SmcLiquidityType.BUY_SIDE && it.touches >= 2 })
+    }
+
     @Test fun invalidParametersReturnNoEvidence() {
         val rows = (0 until 30).map { i -> candle(101.0, 99.0, 100.0, i) }
         assertTrue(confirmedSmcSwings(rows, leftBars = 0).isEmpty())
