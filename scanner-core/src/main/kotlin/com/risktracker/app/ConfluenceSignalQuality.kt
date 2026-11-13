@@ -65,4 +65,4 @@ package com.risktracker.app
 
 /** Minimum relative volume required on the execution candle for this setup family. */
  fun confluenceExecutionVolumeThreshold(setup: String): Double =
-    if (setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
+    if (setup.contains("breakout", ignoreCase = true)) 1.25 else 1.0
