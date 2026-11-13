@@ -19,7 +19,7 @@ Phase 1 provides causal OHLCV primitives for confirmed swing pivots, market-stru
 
 - Equal-high/equal-low pools require at least two confirmed pivots within a configurable ATR tolerance (default 0.10 ATR).
 - A latest-bar sweep is measured against the prior lookback range, excluding the sweep candle itself.
-- A sweep requires a wick beyond the prior level and a close back through it; wick-only continuation is not a sweep.
+- A sweep requires a wick beyond the prior level and a close back through it; wick-only continuation is not a sweep. Minimum penetration defaults to zero ATR so small but genuine stop-runs are not discarded; it is configurable separately from equal-level clustering tolerance.
 - The engine returns SELL_SIDE for a low sweep (potential long-side liquidity event) and BUY_SIDE for a high sweep (potential short-side event).
 
 ## Integration and safety
