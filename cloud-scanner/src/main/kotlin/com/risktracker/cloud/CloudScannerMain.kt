@@ -19,7 +19,6 @@ import kotlin.math.abs
 
 private const val BINANCE = "https://fapi.binance.com"
 private data class Candidate(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double)
-private data class BestBook(val bid: Double, val ask: Double)
 private data class ScanResult(val alert: JSONObject? = null, val error: String? = null)
 
 private object BinanceRest {
@@ -154,18 +153,20 @@ private fun postAlert(alert: JSONObject) {
     if (response.statusCode() !in 200..299) throw IllegalStateException("Alert relay HTTP ${response.statusCode()}: ${response.body().take(200)}")
 }
 
-private fun scanCandidate(
-    candidate: Candidate, books: Map<String, BestBook>, funding: Map<String, Double>, btcBias: String
-): ScanResult = try {
+private fun scanCandidate(candidate: Candidate, btcBias: String): ScanResult = try {
     val h4 = BinanceRest.candles(candidate.symbol, "4h", 260)
     val h1 = BinanceRest.candles(candidate.symbol, "1h", 260)
     val m15 = BinanceRest.candles(candidate.symbol, "15m", 260)
     val m5 = BinanceRest.candles(candidate.symbol, "5m", 220)
+    // Fetch the best quote, five-level depth and funding close together for this symbol.
+    // A single all-market snapshot at scan start could be minutes old for later symbols.
+    val book = JSONObject(BinanceRest.get("/fapi/v1/ticker/bookTicker?symbol=${candidate.symbol}"))
+    val premium = JSONObject(BinanceRest.get("/fapi/v1/premiumIndex?symbol=${candidate.symbol}"))
     val depth = JSONObject(BinanceRest.get("/fapi/v1/depth?symbol=${candidate.symbol}&limit=5"))
-    val book = books[candidate.symbol]
     val micro = buildMarketMicrostructure(
-        book?.bid, book?.ask, levels(depth.optJSONArray("bids") ?: JSONArray()),
-        levels(depth.optJSONArray("asks") ?: JSONArray()), funding[candidate.symbol]
+        book.optString("bidPrice").toDoubleOrNull(), book.optString("askPrice").toDoubleOrNull(),
+        levels(depth.optJSONArray("bids") ?: JSONArray()), levels(depth.optJSONArray("asks") ?: JSONArray()),
+        premium.optString("lastFundingRate").toDoubleOrNull()
     )
     val plan = ConfluenceScannerV4.evaluate(h4, h1, m15, m5, micro, candidate.quoteVolume, btcBias, "Intraday")
         ?: return ScanResult()
@@ -192,19 +193,6 @@ fun main() {
         Candidate(symbol, quote, change, last, ((high - low) / last * 100.0).coerceAtLeast(0.0))
     }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
 
-    val bookRows = JSONArray(BinanceRest.get("/fapi/v1/ticker/bookTicker"))
-    val books = (0 until bookRows.length()).mapNotNull { i ->
-        val row = bookRows.optJSONObject(i) ?: return@mapNotNull null
-        val bid = row.optString("bidPrice").toDoubleOrNull() ?: return@mapNotNull null
-        val ask = row.optString("askPrice").toDoubleOrNull() ?: return@mapNotNull null
-        row.optString("symbol") to BestBook(bid, ask)
-    }.toMap()
-    val premiumRows = JSONArray(BinanceRest.get("/fapi/v1/premiumIndex"))
-    val funding = (0 until premiumRows.length()).mapNotNull { i ->
-        val row = premiumRows.optJSONObject(i) ?: return@mapNotNull null
-        val rate = row.optString("lastFundingRate").toDoubleOrNull() ?: return@mapNotNull null
-        row.optString("symbol") to rate
-    }.toMap()
     val btcH4 = BinanceRest.candles("BTCUSDT", "4h", 260)
     val btcH1 = BinanceRest.candles("BTCUSDT", "1h", 260)
     val btcBias = btcRegime(btcH4, btcH1)
@@ -212,7 +200,7 @@ fun main() {
 
     val pool = Executors.newFixedThreadPool(6)
     try {
-        val futures = pool.invokeAll(candidates.map { candidate -> Callable { scanCandidate(candidate, books, funding, btcBias) } })
+        val futures = pool.invokeAll(candidates.map { candidate -> Callable { scanCandidate(candidate, btcBias) } })
         var ready = 0; var failures = 0
         val seenThisRun = mutableSetOf<String>()
         futures.forEach { future ->
