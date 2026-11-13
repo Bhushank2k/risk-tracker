@@ -6,6 +6,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfluenceSignalPolicyTest {
+    @Test fun onlyIntradayIsEnabledUntilDedicatedTimeframeSeriesExist() {
+        assertTrue(isTradeIdeaHorizonSupported("Intraday"))
+        assertFalse(isTradeIdeaHorizonSupported("Scalp"))
+        assertFalse(isTradeIdeaHorizonSupported("Swing"))
+        assertFalse(isTradeIdeaHorizonSupported("Unknown"))
+    }
+
     @Test fun volumeFloorExpandsCandidatesAndRejectsInvalidValues() {
         assertFalse(isTradeIdeaVolumeEligible(1_999_999.99))
         assertTrue(isTradeIdeaVolumeEligible(2_000_000.0))
@@ -46,7 +53,8 @@ class ConfluenceSignalPolicyTest {
     @Test fun relativeVolumeIsHardWhileMomentumRemainsSoft() {
         assertTrue(TradeIdeaRiskCode.LOW_RELATIVE_VOLUME.blocksEntry)
         assertFalse(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED.blocksEntry)
-        assertFalse(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE.blocksEntry)
+        assertTrue(TradeIdeaRiskCode.UNSUPPORTED_TIMEFRAME.blocksEntry)
         assertTrue(TradeIdeaRiskCode.LOW_LIQUIDITY.blocksEntry)
         assertTrue(TradeIdeaRiskCode.INVALID_STOP.blocksEntry)
         assertTrue(TradeIdeaRiskCode.INSUFFICIENT_REWARD_RISK.blocksEntry)
