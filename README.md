@@ -44,3 +44,6 @@ Use a Binance API key with read-only permissions only. The app does not request 
 - [Google Sheets sync (experimental / unsupported)](docs/sheets-sync.md)
 
 Older backup bundles remain importable. When an older bundle does not contain trade plans or review notes, importing it leaves the existing plans and reviews unchanged. Import validation, audit, and pre-import recovery behavior are retained.
+
+
+Trading performance analytics (realized order P&L, expectancy, streaks, equity curve, monthly reconciliation and data-quality checks) are documented in [Trading analytics methodology](docs/trading-analytics.md).
