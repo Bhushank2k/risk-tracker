@@ -26,6 +26,7 @@ fun MarketActivityLabScreen() {
     val symbols=listOf("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","LINKUSDT")
     var interval by remember{mutableStateOf(MarketInterval.M15)}
     var rows by remember{mutableStateOf<List<ActivityAnalysis>>(emptyList())}
+    var tickerMap by remember{mutableStateOf<Map<String,MarketTicker>>(emptyMap())}
     var selected by remember{mutableStateOf("BTCUSDT")}
     var watch by remember{mutableStateOf(prefs.getStringSet("watchlist",setOf("BTCUSDT","ETHUSDT"))?.toSet()?:setOf("BTCUSDT","ETHUSDT"))}
     var loading by remember{mutableStateOf(false)}
@@ -38,6 +39,7 @@ fun MarketActivityLabScreen() {
         if(loading)return
         loading=true
         scope.launch{
+            tickerMap=runCatching{MarketActivityDataSource.tickers()}.getOrDefault(emptyMap())
             val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval))}.getOrNull()}}.awaitAll()
             rows=result.mapNotNull{it.second};errors=result.filter{it.second==null}.map{it.first}
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
@@ -66,8 +68,8 @@ fun MarketActivityLabScreen() {
             if(errors.isNotEmpty())Text("Unavailable: "+errors.joinToString()+". Missing values are not estimated.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
             rows.sortedByDescending{it.score.total}.forEach{x->
                 Row(Modifier.fillMaxWidth().clickable{selected=x.symbol}.padding(vertical=6.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                    Column(Modifier.weight(1f)){Text(x.symbol,fontWeight=FontWeight.SemiBold);Text(x.state.name.replace('_',' ')+" · "+x.direction.name,style=MaterialTheme.typography.labelSmall,color=activityStateColor(x.state))}
-                    Text("%.5f".format(x.last.close),style=MaterialTheme.typography.bodySmall)
+                    Column(Modifier.weight(1f)){Text(x.symbol,fontWeight=FontWeight.SemiBold);val t=tickerMap[x.symbol];Text((t?.let{String.format(Locale.US,"%.2f%% · Quote vol %.0f",it.changePercent,it.quoteVolume)}?:"24h ticker unavailable")+" · "+x.state.name.replace('_',' '),style=MaterialTheme.typography.labelSmall,color=activityStateColor(x.state))}
+                    Text("%.5f".format(tickerMap[x.symbol]?.lastPrice?:x.last.close),style=MaterialTheme.typography.bodySmall)
                     Text(x.score.total.toString()+"/100",fontWeight=FontWeight.Bold)
                     Text(if(watch.contains(x.symbol))"★" else "☆",Modifier.clickable{watch=if(watch.contains(x.symbol))watch-x.symbol else watch+x.symbol;prefs.edit().putStringSet("watchlist",watch).apply()},color=MaterialTheme.colorScheme.primary)
                 }
@@ -78,7 +80,8 @@ fun MarketActivityLabScreen() {
         if(a!=null){
             item{Card{Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 Text(a.symbol+" · "+interval.label,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                Text("Reference price  "+a.last.close,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                Text("Current reference  "+(tickerMap[a.symbol]?.lastPrice?:a.last.close),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                Text("24h change  "+(tickerMap[a.symbol]?.let{"%.2f%%".format(it.changePercent)}?:"Unavailable")+" · Quote volume  "+(tickerMap[a.symbol]?.let{"%.0f USDT".format(it.quoteVolume)}?:"Unavailable"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Last completed candle · "+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(a.last.closeTime)),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Candlesticks + volume · recent 60 bars",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
                 val candles=chartCandles
@@ -93,7 +96,7 @@ fun MarketActivityLabScreen() {
                 HorizontalDivider()
                 Text("Indicators",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
                 val i=a.indicators
-                val values=listOf("EMA 9 / 20 / 50 / 200" to listOf(i.ema9,i.ema20,i.ema50,i.ema200).joinToString(" / "){v->v?.let{"%.4f".format(it)}?:"—"},"RSI 14" to (i.rsi14?.let{"%.1f".format(it)}?:"—"),"MACD / signal" to (i.macd?.let{"%.4f".format(it)}?:"—")+" / "+(i.macdSignal?.let{"%.4f".format(it)}?:"—"),"Bollinger width" to (i.bbWidthPercent?.let{"%.2f%%".format(it)}?:"—"),"ATR 14" to (i.atr14?.let{"%.5f".format(it)}?:"—"),"VWAP (20 bars)" to (i.vwap?.let{"%.5f".format(it)}?:"—"),"Historical volatility" to (i.historicalVolatility?.let{"%.2f%%".format(it)}?:"—"),"Relative volume" to (i.relativeVolume?.let{"%.2f×".format(it)}?:"—"))
+                val values=listOf("EMA 9 / 20 / 50 / 200" to listOf(i.ema9,i.ema20,i.ema50,i.ema200).joinToString(" / "){v->v?.let{"%.4f".format(it)}?:"—"},"RSI 14" to (i.rsi14?.let{"%.1f".format(it)}?:"—"),"MACD / signal" to (i.macd?.let{"%.4f".format(it)}?:"—")+" / "+(i.macdSignal?.let{"%.4f".format(it)}?:"—"),"Bollinger width" to (i.bbWidthPercent?.let{"%.2f%%".format(it)}?:"—"),"ATR 14" to (i.atr14?.let{"%.5f".format(it)}?:"—"),"VWAP (20 bars)" to (i.vwap?.let{"%.5f".format(it)}?:"—"),"Historical volatility (20 bars)" to (i.historicalVolatility?.let{"%.2f%%".format(it)}?:"—"),"Relative volume" to (i.relativeVolume?.let{"%.2f×".format(it)}?:"—"))
                 values.forEach{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(it.first,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(it.second,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.Medium)}}
                 a.explanation.forEach{Text("• "+it,style=MaterialTheme.typography.bodySmall)}
             }}}
