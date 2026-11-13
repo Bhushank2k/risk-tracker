@@ -8,6 +8,7 @@ import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 import kotlin.math.*
 
+data class MarketTicker(val symbol:String,val lastPrice:Double,val changePercent:Double,val quoteVolume:Double)
 data class MarketCandle(val openTime:Long,val open:Double,val high:Double,val low:Double,val close:Double,val volume:Double,val closeTime:Long,val quoteVolume:Double)
 enum class MarketInterval(val api:String,val label:String){M5("5m","5m"),M15("15m","15m"),H1("1h","1h"),H4("4h","4h"),D1("1d","1D")}
 enum class ActivityState{WATCH,CONFIRMED_HISTORICAL_BREAKOUT,INVALIDATED,NO_SETUP}
@@ -29,7 +30,7 @@ object MarketActivityEngine {
         val tr=cs.mapIndexed{i,x->if(i==0)x.high-x.low else max(x.high-x.low,max(abs(x.high-cs[i-1].close),abs(x.low-cs[i-1].close)))}
         val atr=if(tr.size>=14)tr.takeLast(14).average()else null
         val rets=c.zipWithNext().takeLast(20).map{ln(it.second/it.first)}
-        val hv=if(rets.size>=2)sd(rets)*sqrt(365.0*24)*100 else null
+        val hv=if(rets.size>=2)sd(rets)*100 else null
         val vb=if(cs.size>=21)cs.dropLast(1).takeLast(20).map{it.volume}.average()else null
         val vwapBars=cs.takeLast(20);val vd=vwapBars.sumOf{it.volume};val vw=if(vd>0)vwapBars.sumOf{((it.high+it.low+it.close)/3)*it.volume}/vd else null
         return IndicatorSnapshot(e9,e20,e50,e200,rsi(c),ml.lastOrNull{it!=null},ms,up,mid,low,if(up!=null&&low!=null&&mid!=null&&mid!=0.0)(up-low)/mid*100 else null,atr,if(atr!=null)atr/c.last()*100 else null,vw,hv,if(vb!=null&&vb>0)cs.last().volume/vb else null,vb)
@@ -66,6 +67,21 @@ object MarketActivityEngine {
 object MarketActivityDataSource {
     private val client=OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).build()
     private val cache=java.util.concurrent.ConcurrentHashMap<String,Pair<Long,List<MarketCandle>>>()
+    @Volatile private var tickerCache:Pair<Long,Map<String,MarketTicker>>?=null
+    suspend fun tickers():Map<String,MarketTicker> = withContext(Dispatchers.IO) {
+        val now=System.currentTimeMillis()
+        tickerCache?.takeIf{now-it.first<60_000L}?.let{return@withContext it.second}
+        val req=Request.Builder().url("https://fapi.binance.com/fapi/v1/ticker/24hr").build()
+        client.newCall(req).execute().use{res->
+            if(!res.isSuccessful)error("Binance 24h ticker HTTP ${res.code}")
+            val arr=JSONArray(res.body?.string()?:error("Empty Binance ticker response"))
+            val map=(0 until arr.length()).mapNotNull{i->val o=arr.getJSONObject(i);val symbol=o.optString("symbol")
+                val last=o.optString("lastPrice").toDoubleOrNull();val change=o.optString("priceChangePercent").toDoubleOrNull();val volume=o.optString("quoteVolume").toDoubleOrNull()
+                if(symbol.isNotBlank()&&last!=null&&change!=null&&volume!=null)symbol to MarketTicker(symbol,last,change,volume) else null}.toMap()
+            tickerCache=now to map
+            map
+        }
+    }
     suspend fun candles(symbol:String,interval:MarketInterval,limit:Int=240):List<MarketCandle> = withContext(Dispatchers.IO){
         require(symbol.matches(Regex("[A-Z0-9]{5,20}"))&&limit in 30..500);val key="$symbol:${interval.api}:$limit";val now=System.currentTimeMillis()
         cache[key]?.takeIf{now-it.first<60_000}?.let{return@withContext it.second}
