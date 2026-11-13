@@ -48,7 +48,12 @@ data class BinanceFuturesAccountBalance(
 )
 data class BinanceLiveTrade(val id: String, val symbol: String, val market: String, val side: String, val quantity: Double, val entryPrice: Double, val markPrice: Double, val unrealizedPnl: Double, val leverage: Int, val liquidationPrice: Double, val status: String)
 
-data class BinanceDailyResult(val date: String, val spotPnl: Double, val futuresPnl: Double) {
+data class BinanceDailyResult(
+    val date: String,
+    val spotPnl: Double,
+    val futuresPnl: Double,
+    val futuresIncomeByType: Map<String, Double> = emptyMap()
+) {
     val total: Double get() = spotPnl + futuresPnl
 }
 
@@ -573,10 +578,12 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         return symbols
     }
 
-    fun futuresDailyPnl(): Map<String, Double> {
-        val daily = mutableMapOf<String, Double>()
+    /** Fetches the official USDⓈ-M income ledger and retains each P&L component by UTC day. */
+    fun futuresDailyIncomeByType(): Map<String, Map<String, Double>> {
+        val daily = mutableMapOf<String, MutableMap<String, Double>>()
+        val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-        // Binance's income-history endpoint has a limited retention window; request the latest 90 days.
+        // Binance income history is retention-limited; keep the same rolling 90-day coverage.
         var cursor = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
         var more = true
         var pages = 0
@@ -590,18 +597,23 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
                 for (i in 0 until page.length()) {
                     val row = page.getJSONObject(i)
                     val type = row.optString("incomeType")
-                    if (type in setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")) {
+                    val value = row.optString("income").toDoubleOrNull() ?: row.optDouble("income")
+                    if (type in includedTypes && value.isFinite()) {
                         val day = sdf.format(Date(row.optLong("time")))
-                        val value = row.optString("income").toDoubleOrNull() ?: row.optDouble("income")
-                        daily[day] = (daily[day] ?: 0.0) + value
+                        val byType = daily.getOrPut(day) { mutableMapOf() }
+                        byType[type] = (byType[type] ?: 0.0) + value
                     }
                     maxTime = maxOf(maxTime, row.optLong("time"))
                 }
                 if (page.length() < 1000 || maxTime <= cursor) more = false else cursor = maxTime + 1
             }
         }
-        return daily
+        return daily.mapValues { (_, values) -> values.toMap() }
     }
+
+    /** Net Futures P&L includes realized P&L, commissions, funding and insurance adjustments. */
+    fun futuresDailyPnl(): Map<String, Double> =
+        futuresDailyIncomeByType().mapValues { (_, values) -> values.values.sum() }
 
     private fun signedGetArray(base: String, path: String, params: List<Pair<String, String>>): JSONArray =
         JSONArray(signedRequest(base, path, params))
@@ -633,32 +645,57 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 object BinanceSyncData {
     private const val PREFS = "binance_import_v1"
 
+    private fun toJson(row: BinanceDailyResult): JSONObject {
+        val breakdown = JSONObject()
+        row.futuresIncomeByType.forEach { (type, amount) -> breakdown.put(type, amount) }
+        return JSONObject().put("date", row.date).put("spotPnl", row.spotPnl)
+            .put("futuresPnl", row.futuresPnl).put("futuresIncomeByType", breakdown)
+    }
+
+    private fun fromJson(row: JSONObject): BinanceDailyResult {
+        val breakdownJson = row.optJSONObject("futuresIncomeByType")
+        val breakdown = mutableMapOf<String, Double>()
+        if (breakdownJson != null) {
+            val keys = breakdownJson.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val amount = breakdownJson.optDouble(key, Double.NaN)
+                if (amount.isFinite()) breakdown[key] = amount
+            }
+        }
+        return BinanceDailyResult(
+            row.getString("date"), row.optDouble("spotPnl"), row.optDouble("futuresPnl"), breakdown
+        )
+    }
+
     /**
-     * Merge only dates returned by each source. A recent Futures API refresh must not erase
-     * older saved years merely because the income endpoint cannot return them.
+     * Merge only dates returned by each source. Recent API refreshes do not erase older history.
+     * The Futures income components are retained separately so the net total can be audited.
      */
-    fun merge(context: Context, spot: Map<String, Double>, futures: Map<String, Double>) {
+    fun merge(
+        context: Context,
+        spot: Map<String, Double>,
+        futures: Map<String, Double>,
+        futuresIncomeByType: Map<String, Map<String, Double>> = emptyMap()
+    ) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = load(context).associateBy { it.date }.toMutableMap()
-        (spot.keys + futures.keys).forEach { day ->
+        (spot.keys + futures.keys + futuresIncomeByType.keys).forEach { day ->
             val previous = merged[day]
             merged[day] = BinanceDailyResult(
                 date = day,
                 spotPnl = spot[day] ?: previous?.spotPnl ?: 0.0,
-                futuresPnl = futures[day] ?: previous?.futuresPnl ?: 0.0
+                futuresPnl = futures[day] ?: previous?.futuresPnl ?: 0.0,
+                futuresIncomeByType = futuresIncomeByType[day] ?: if (day in futures.keys) emptyMap()
+                    else previous?.futuresIncomeByType.orEmpty()
             )
         }
         val array = JSONArray()
-        merged.values.sortedBy { it.date }.forEach {
-            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
-        }
+        merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
-    /**
-     * Replace the selected year's Futures net-income values from a complete user-selected
-     * Binance export while preserving Spot totals and every other year.
-     */
+    /** Replaces the selected year's Futures totals from a complete export; component detail is not in this importer. */
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -666,16 +703,14 @@ object BinanceSyncData {
         val yearPrefix = "$year-"
         merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
             val previous = merged.getValue(day)
-            merged[day] = previous.copy(futuresPnl = daily[day] ?: 0.0)
+            merged[day] = previous.copy(futuresPnl = daily[day] ?: 0.0, futuresIncomeByType = emptyMap())
         }
         daily.forEach { (day, amount) ->
             val previous = merged[day]
             merged[day] = BinanceDailyResult(day, previous?.spotPnl ?: 0.0, amount)
         }
         val array = JSONArray()
-        merged.values.sortedBy { it.date }.forEach {
-            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
-        }
+        merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
@@ -685,9 +720,7 @@ object BinanceSyncData {
             "Imported Binance rows must have valid dates and finite P&L values."
         }
         val array = JSONArray()
-        data.distinctBy { it.date }.sortedBy { it.date }.forEach {
-            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
-        }
+        data.distinctBy { it.date }.sortedBy { it.date }.forEach { array.put(toJson(it)) }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
@@ -698,15 +731,13 @@ object BinanceSyncData {
         val merged = load(context).associateBy { it.date }.toMutableMap()
         data.forEach { merged[it.date] = it }
         val array = JSONArray()
-        merged.values.sortedBy { it.date }.forEach {
-            array.put(JSONObject().put("date", it.date).put("spotPnl", it.spotPnl).put("futuresPnl", it.futuresPnl))
-        }
+        merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
     fun load(context: Context): List<BinanceDailyResult> = try {
         val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
-        (0 until a.length()).map { i -> a.getJSONObject(i).let { BinanceDailyResult(it.getString("date"), it.optDouble("spotPnl"), it.optDouble("futuresPnl")) } }
+        (0 until a.length()).map { i -> fromJson(a.getJSONObject(i)) }
     } catch (_: Exception) { emptyList() }
 
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
@@ -731,8 +762,9 @@ object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(D
         BinanceAccountSnapshotRunner.refresh(context)
         val api = BinanceApi(credentials.first, credentials.second)
         val spot = api.spotDailyPnl()
-        val futures = api.futuresDailyPnl()
-        BinanceSyncData.merge(context, spot, futures)
+        val futuresIncome = api.futuresDailyIncomeByType()
+        val futures = futuresIncome.mapValues { (_, values) -> values.values.sum() }
+        BinanceSyncData.merge(context, spot, futures, futuresIncome)
     }
 }
 
