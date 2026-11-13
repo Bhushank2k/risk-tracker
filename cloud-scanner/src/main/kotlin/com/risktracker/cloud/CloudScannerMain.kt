@@ -18,61 +18,55 @@ import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
-private const val BINANCE = "https://fapi.binance.com"
+private const val BYBIT = "https://api.bybit.com"
 private data class Candidate(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double)
 private data class ScanResult(val alert: JSONObject? = null, val error: String? = null)
 
-private object BinanceRest {
+/** Public Bybit linear USDT perpetual market data. No API key or trading permission is used. */
+private object BybitRest {
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
     private val paceLock = Any()
     private var nextRequestAt = 0L
-    private var blockedUntil = 0L
 
-    fun get(path: String): String {
-        for (attempt in 0..2) {
-            pace()
-            val request = HttpRequest.newBuilder(URI.create(BINANCE + path))
-                .timeout(Duration.ofSeconds(18)).header("User-Agent", "RiskTrackerCloudScanner/1.0").GET().build()
-            val response = try { client.send(request, HttpResponse.BodyHandlers.ofString()) }
-            catch (e: Exception) {
-                if (attempt == 2) throw IllegalStateException("Binance request failed: ${e.message}", e)
-                Thread.sleep(500L * (1L shl attempt)); continue
-            }
-            if (response.statusCode() in 200..299) return response.body()
-            val code = response.statusCode()
-            if (code == 418) throw IllegalStateException("Binance returned HTTP 418 (IP ban/rate limit); scanner stopped fail-closed")
-            if (code == 429 || code >= 500) {
-                if (attempt == 2) throw IllegalStateException("Binance HTTP $code: ${response.body().take(240)}")
-                val wait = response.headers().firstValue("Retry-After").orElse("2").toLongOrNull()?.coerceIn(1, 60) ?: 2L
-                synchronized(paceLock) { blockedUntil = maxOf(blockedUntil, System.currentTimeMillis() + wait * 1_000L) }
-                continue
-            }
-            throw IllegalStateException("Binance HTTP $code: ${response.body().take(240)}")
+    fun get(path: String): JSONObject {
+        pace()
+        val request = HttpRequest.newBuilder(URI.create(BYBIT + path))
+            .timeout(Duration.ofSeconds(20)).header("User-Agent", "RiskTrackerCloudScanner/1.0").GET().build()
+        val response = try { client.send(request, HttpResponse.BodyHandlers.ofString()) }
+        catch (e: Exception) { throw IllegalStateException("Bybit request failed: ${e.message}", e) }
+        if (response.statusCode() !in 200..299) {
+            throw IllegalStateException("Bybit HTTP ${response.statusCode()}: ${response.body().take(240)}")
         }
-        error("Binance retry loop exhausted")
+        val body = JSONObject(response.body())
+        if (body.optInt("retCode", -1) != 0) {
+            throw IllegalStateException("Bybit API ${body.optInt("retCode")}: ${body.optString("retMsg").take(200)}")
+        }
+        return body.optJSONObject("result") ?: error("Bybit response did not contain result")
     }
 
     private fun pace() = synchronized(paceLock) {
-        val now = System.currentTimeMillis()
-        val waitUntil = maxOf(nextRequestAt, blockedUntil)
-        val wait = waitUntil - now
+        val wait = nextRequestAt - System.currentTimeMillis()
         if (wait > 0) Thread.sleep(wait)
         nextRequestAt = System.currentTimeMillis() + 120L
     }
 
     fun candles(symbol: String, interval: String, limit: Int): List<V2Candle> {
-        val rows = JSONArray(get("/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"))
+        val rows = get("/v5/market/kline?category=linear&symbol=$symbol&interval=$interval&limit=$limit")
+            .optJSONArray("list") ?: JSONArray()
         val now = System.currentTimeMillis()
+        // Bybit returns newest candle first; the scanner expects chronological order.
         return (0 until rows.length()).mapNotNull { i ->
             val row = rows.optJSONArray(i) ?: return@mapNotNull null
             runCatching {
                 V2Candle(
-                    high = row.getString(2).toDouble(), low = row.getString(3).toDouble(),
-                    close = row.getString(4).toDouble(), volume = row.getString(5).toDouble(),
-                    closeTime = row.getLong(6), open = row.getString(1).toDouble()
+                    open = row.getString(1).toDouble(), high = row.getString(2).toDouble(),
+                    low = row.getString(3).toDouble(), close = row.getString(4).toDouble(),
+                    volume = row.getString(5).toDouble(), closeTime = row.getString(0).toLong() +
+                        when (interval) { "240" -> 240L; "60" -> 60L; "15" -> 15L; "5" -> 5L; else -> error("Unsupported Bybit interval: $interval") } *
+                        60L * 1000L
                 )
             }.getOrNull()
-        }.filter { it.closeTime < now && it.close > 0.0 }
+        }.filter { it.closeTime < now && it.close > 0.0 }.sortedBy { it.closeTime }
     }
 }
 
@@ -187,19 +181,21 @@ private fun postAlert(alert: JSONObject) {
 }
 
 private fun scanCandidate(candidate: Candidate, btcBias: String): ScanResult = try {
-    val h4 = BinanceRest.candles(candidate.symbol, "4h", 260)
-    val h1 = BinanceRest.candles(candidate.symbol, "1h", 260)
-    val m15 = BinanceRest.candles(candidate.symbol, "15m", 260)
-    val m5 = BinanceRest.candles(candidate.symbol, "5m", 220)
+    val h4 = BybitRest.candles(candidate.symbol, "240", 260)
+    val h1 = BybitRest.candles(candidate.symbol, "60", 260)
+    val m15 = BybitRest.candles(candidate.symbol, "15", 260)
+    val m5 = BybitRest.candles(candidate.symbol, "5", 220)
     // Fetch the best quote, five-level depth and funding close together for this symbol.
     // A single all-market snapshot at scan start could be minutes old for later symbols.
-    val book = JSONObject(BinanceRest.get("/fapi/v1/ticker/bookTicker?symbol=${candidate.symbol}"))
-    val premium = JSONObject(BinanceRest.get("/fapi/v1/premiumIndex?symbol=${candidate.symbol}"))
-    val depth = JSONObject(BinanceRest.get("/fapi/v1/depth?symbol=${candidate.symbol}&limit=5"))
+    val ticker = BybitRest.get("/v5/market/tickers?category=linear&symbol=${candidate.symbol}")
+        .optJSONArray("list")?.optJSONObject(0) ?: error("Bybit ticker missing")
+    val book = ticker
+    val premium = ticker
+    val depth = BybitRest.get("/v5/market/orderbook?category=linear&symbol=${candidate.symbol}&limit=5")
     val micro = buildMarketMicrostructure(
-        book.optString("bidPrice").toDoubleOrNull(), book.optString("askPrice").toDoubleOrNull(),
-        levels(depth.optJSONArray("bids") ?: JSONArray()), levels(depth.optJSONArray("asks") ?: JSONArray()),
-        premium.optString("lastFundingRate").toDoubleOrNull()
+        book.optString("bid1Price").toDoubleOrNull(), book.optString("ask1Price").toDoubleOrNull(),
+        levels(depth.optJSONArray("b") ?: JSONArray()), levels(depth.optJSONArray("a") ?: JSONArray()),
+        premium.optString("fundingRate").toDoubleOrNull()
     )
     val plan = ConfluenceScannerV4.evaluate(h4, h1, m15, m5, micro, candidate.quoteVolume, btcBias, "Intraday")
         ?: return ScanResult()
@@ -209,27 +205,30 @@ private fun scanCandidate(candidate: Candidate, btcBias: String): ScanResult = t
 }
 
 fun main() {
-    val info = JSONArray(BinanceRest.get("/fapi/v1/exchangeInfo"))
-    val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
-        it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
+    val instruments = BybitRest.get("/v5/market/instruments-info?category=linear&limit=1000")
+        .optJSONArray("list") ?: JSONArray()
+    val allowed = (0 until instruments.length()).mapNotNull { instruments.optJSONObject(it) }.filter {
+        it.optString("status") == "Trading" && it.optString("contractType") == "LinearPerpetual" &&
+            it.optString("quoteCoin") == "USDT" && it.optString("settleCoin") == "USDT"
     }.map { it.optString("symbol") }.toSet()
-    val tickers = JSONArray(BinanceRest.get("/fapi/v1/ticker/24hr"))
+    val tickers = BybitRest.get("/v5/market/tickers?category=linear")
+        .optJSONArray("list") ?: JSONArray()
     val candidates = (0 until tickers.length()).mapNotNull { i ->
         val row = tickers.optJSONObject(i) ?: return@mapNotNull null
         val symbol = row.optString("symbol")
-        val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+        val quote = row.optString("turnover24h").toDoubleOrNull() ?: 0.0
         val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
         if (symbol !in allowed || !isTradeIdeaVolumeEligible(quote) || last <= 0.0) return@mapNotNull null
-        val change = row.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
-        val high = row.optString("highPrice").toDoubleOrNull() ?: last
-        val low = row.optString("lowPrice").toDoubleOrNull() ?: last
+        val change = (row.optString("price24hPcnt").toDoubleOrNull() ?: 0.0) * 100.0
+        val high = row.optString("highPrice24h").toDoubleOrNull() ?: last
+        val low = row.optString("lowPrice24h").toDoubleOrNull() ?: last
         Candidate(symbol, quote, change, last, ((high - low) / last * 100.0).coerceAtLeast(0.0))
     }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
 
-    val btcH4 = BinanceRest.candles("BTCUSDT", "4h", 260)
-    val btcH1 = BinanceRest.candles("BTCUSDT", "1h", 260)
+    val btcH4 = BybitRest.candles("BTCUSDT", "240", 260)
+    val btcH1 = BybitRest.candles("BTCUSDT", "60", 260)
     val btcBias = btcRegime(btcH4, btcH1)
-    println("Cloud scan: ${candidates.size} active USDT perpetuals above the \$2M 24h quote-volume floor; BTC regime=$btcBias")
+    println("Bybit scan: ${candidates.size} active USDT linear perpetuals above the $2M 24h turnover floor; BTC regime=$btcBias")
 
     val pool = Executors.newFixedThreadPool(6)
     try {
@@ -247,9 +246,9 @@ fun main() {
             if (!seenThisRun.add(id)) return@repeat
             postAlert(alert)
             ready++
-            println("Relayed READY Intraday: ${alert.getString("symbol")} ${alert.getString("side")} ${alert.getString("setup")} score=${alert.getInt("score")}")
+            println("Sent READY Intraday: ${alert.getString("symbol")} ${alert.getString("side")} ${alert.getString("setup")} score=${alert.getInt("score")}")
         }
-        println("Cloud scan complete: ${candidates.size} markets, $ready READY alerts relayed, $failures market-data failures.")
+        println("Bybit scan complete: ${candidates.size} markets, $ready READY alerts relayed, $failures market-data failures.")
     } finally {
         pool.shutdownNow()
     }
