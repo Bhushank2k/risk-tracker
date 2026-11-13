@@ -6,7 +6,7 @@ on:
       - "cloud-alerts/**"
       - ".github/workflows/cloud-alerts.yml"
   push:
-    branches: [main]
+    branches: [main, feat/cloud-intraday-scanner]
     paths:
       - "cloud-alerts/**"
       - ".github/workflows/cloud-alerts.yml"

@@ -7,7 +7,7 @@ package com.risktracker.app
  * A range reversal instead requires MACD to turn toward the trade; requiring it
  * to already be above/below zero would systematically reject early reversals.
  */
-internal fun confluenceMomentumConfirmed(
+ fun confluenceMomentumConfirmed(
     side: String,
     rangeReversal: Boolean,
     rsi: Double,
@@ -31,7 +31,7 @@ internal fun confluenceMomentumConfirmed(
  * example RSI + MACD as momentum and spread + depth + imbalance as liquidity), never
  * awarded separate points. Mandatory safety gates remain independent of this score.
  */
-internal fun confluenceScore(
+ fun confluenceScore(
     regimeConfirmed: Boolean,
     structureConfirmed: Boolean,
     entryConfirmed: Boolean,
@@ -59,10 +59,10 @@ internal fun confluenceScore(
 }
 
 /** Reject an execution price that has already run too far from the setup level. */
-internal fun confluenceEntryWithinExtension(entry: Double, setupLevel: Double, atr: Double): Boolean =
+ fun confluenceEntryWithinExtension(entry: Double, setupLevel: Double, atr: Double): Boolean =
     entry.isFinite() && setupLevel.isFinite() && atr.isFinite() && atr > 0.0 &&
         kotlin.math.abs(entry - setupLevel) <= atr * 0.9
 
 /** Minimum relative volume required on the execution candle for this setup family. */
-internal fun confluenceExecutionVolumeThreshold(setup: String): Double =
+ fun confluenceExecutionVolumeThreshold(setup: String): Double =
     if (setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
