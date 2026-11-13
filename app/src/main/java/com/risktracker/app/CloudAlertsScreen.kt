@@ -129,7 +129,7 @@ fun CloudAlertsScreen() {
         finally { loading = false }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(baseUrl, token) {
         if (baseUrl.isNotBlank() && token.isNotBlank()) refresh()
         while (isActive) {
             delay(60_000)
