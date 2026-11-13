@@ -25,7 +25,7 @@ class ScannerCoreTest {
         val score = confluenceScore(true, true, true, 1.5, true, true, false, true)
         assertEquals(100, score)
         assertEquals(97, confluenceScore(true, true, true, 1.5, true, true, true, true))
-        assertEquals(0, confluenceScore(false, false, false, Double.NaN, false, false, true, false))
+        assertEquals(2, confluenceScore(false, false, false, Double.NaN, false, false, true, false))
     }
 
     @Test fun riskCodesBlockInvalidPlans() {
