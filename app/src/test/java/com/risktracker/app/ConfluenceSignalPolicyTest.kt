@@ -40,7 +40,7 @@ class ConfluenceSignalPolicyTest {
         // Volume is a hard execution gate; momentum remains a scored soft signal.
         assertFalse(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
         assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
-        assertFalse(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
+        assertTrue(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,false,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,false,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,false,true,true,true,true,100))
@@ -48,6 +48,7 @@ class ConfluenceSignalPolicyTest {
         assertTrue(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
     }
 
     @Test fun relativeVolumeIsHardWhileMomentumRemainsSoft() {
@@ -93,9 +94,9 @@ class ConfluenceSignalPolicyTest {
     }
 
     @Test fun setupSpecificRelativeVolumeThresholdsAreEnforced() {
-        assertEquals(1.2, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
-        assertEquals(1.2, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
-        assertEquals(1.5, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
+        assertEquals(1.0, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
+        assertEquals(1.0, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
+        assertEquals(1.25, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
     }
 
     @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {

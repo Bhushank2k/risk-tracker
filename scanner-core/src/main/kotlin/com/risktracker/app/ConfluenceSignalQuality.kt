@@ -46,6 +46,7 @@ package com.risktracker.app
         relativeVolume >= 1.5 -> 10
         relativeVolume >= 1.2 -> 7
         relativeVolume >= 1.0 -> 4
+        relativeVolume >= 0.9 -> 2
         else -> 0
     }
     return (if (regimeConfirmed) 20 else 0) +
@@ -65,4 +66,4 @@ package com.risktracker.app
 
 /** Minimum relative volume required on the execution candle for this setup family. */
  fun confluenceExecutionVolumeThreshold(setup: String): Double =
-    if (setup.contains("breakout", ignoreCase = true)) 1.5 else 1.2
+    if (setup.contains("breakout", ignoreCase = true)) 1.25 else 1.0

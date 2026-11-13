@@ -44,10 +44,10 @@ class ConfluenceSignalQualityTest {
         assertEquals(90, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
     }
     @Test fun executionVolumeThresholdMatchesSetupFamily() {
-        assertEquals(1.5, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
-        assertEquals(1.5, confluenceExecutionVolumeThreshold("breakout + retest"), 0.0)
-        assertEquals(1.2, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
-        assertEquals(1.2, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
+        assertEquals(1.25, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
+        assertEquals(1.25, confluenceExecutionVolumeThreshold("breakout + retest"), 0.0)
+        assertEquals(1.0, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
+        assertEquals(1.0, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
     }
 
 }
