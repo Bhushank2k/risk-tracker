@@ -150,7 +150,11 @@ private fun postAlert(alert: JSONObject) {
     val url = if (base.endsWith("/alerts")) base else "$base/alerts"
     val token = System.getenv("ALERT_API_TOKEN")?.takeIf { it.isNotBlank() }
         ?: error("ALERT_API_TOKEN is required")
-    val request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15))
+    val uri = URI.create(url)
+    require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
+        "ALERT_RELAY_URL must be an HTTPS URL"
+    }
+    val request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15))
         .header("Authorization", "Bearer $token").header("Content-Type", "application/json")
         .POST(HttpRequest.BodyPublishers.ofString(alert.toString())).build()
     val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
