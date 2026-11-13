@@ -42,3 +42,5 @@ jobs:
           gradle-version: '8.13'
       - name: Test shared strategy engine and cloud market adapter
         run: gradle :scanner-core:test :cloud-scanner:test :cloud-scanner:installDist --no-daemon
+      - name: Build cloud scanner container
+        run: docker build -f cloud-scanner/Dockerfile -t risk-tracker-cloud-scanner:test .
