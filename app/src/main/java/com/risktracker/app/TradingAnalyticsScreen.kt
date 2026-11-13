@@ -61,7 +61,7 @@ fun TradingAnalyticsScreen(
         it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
             it.quantity.isFinite() && it.quantity >= 0.0 &&
             it.price.isFinite() && it.price >= 0.0 &&
-            it.fee.isFinite() && it.fee >= 0.0 &&
+            it.fee.isFinite() &&
             (it.realizedPnl == null || it.realizedPnl.isFinite())
     }
     val invalidFillCount = filtered.size - validFills.size
@@ -109,7 +109,7 @@ fun TradingAnalyticsScreen(
         .sortedByDescending { it.realizedPnl }
     val bestPair = pairStats.firstOrNull { it.realizedPnl > 0.0 }
     val worstPair = pairStats.lastOrNull { it.realizedPnl < 0.0 }
-    val feeTotals = validFills.filter { it.fee.isFinite() && it.fee > 0.0 }
+    val feeTotals = validFills.filter { it.fee.isFinite() && it.fee != 0.0 }
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" } }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
         .toList().sortedByDescending { it.second }
