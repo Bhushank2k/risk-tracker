@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 _seen: dict[str, float] = {}
+_inflight: set[str] = set()
 _alerts: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
 
@@ -36,15 +37,53 @@ def validate_alert(payload: Any, now: float | None = None) -> dict[str, Any]:
     for field in ("entry","stop","target1"): number(payload.get(field), field)
     return payload
 
-def remember_once(alert_id: str, now: float | None = None) -> bool:
+def _expire_seen(current: float) -> None:
+    ttl = int(os.getenv("DEDUP_TTL_SECONDS", "86400"))
+    for key in [k for k, seen_at in _seen.items() if current - seen_at > ttl]:
+        _seen.pop(key, None)
+
+
+def claim_once(alert_id: str, now: float | None = None) -> bool:
+    """Reserve an ID while delivery is in flight; do not mark it delivered yet."""
     current = time.time() if now is None else now
-    ttl, limit = int(os.getenv("DEDUP_TTL_SECONDS","86400")), int(os.getenv("MAX_DEDUP_ENTRIES","2000"))
     with _lock:
-        for key in [k for k,v in _seen.items() if current-v > ttl]: _seen.pop(key,None)
-        if alert_id in _seen: return False
-        if len(_seen) >= limit: _seen.pop(min(_seen,key=_seen.get),None)
-        _seen[alert_id] = current
+        _expire_seen(current)
+        if alert_id in _seen or alert_id in _inflight:
+            return False
+        _inflight.add(alert_id)
         return True
+
+
+def complete_once(alert: dict[str, Any], now: float | None = None) -> None:
+    """Commit deduplication and the in-memory alert view only after Telegram succeeds."""
+    current = time.time() if now is None else now
+    alert_id = alert["alert_id"]
+    limit = int(os.getenv("MAX_DEDUP_ENTRIES", "2000"))
+    with _lock:
+        _inflight.discard(alert_id)
+        _expire_seen(current)
+        if len(_seen) >= limit and alert_id not in _seen:
+            _seen.pop(min(_seen, key=_seen.get), None)
+        _seen[alert_id] = current
+        _alerts[alert_id] = alert
+        if len(_alerts) > 100:
+            oldest = min(_alerts, key=lambda key: _alerts[key]["created_at"])
+            _alerts.pop(oldest, None)
+
+
+def release_claim(alert_id: str) -> None:
+    with _lock:
+        _inflight.discard(alert_id)
+
+
+def remember_once(alert_id: str, now: float | None = None) -> bool:
+    """Compatibility helper for unit tests; production uses claim/complete/release."""
+    if not claim_once(alert_id, now):
+        return False
+    with _lock:
+        _inflight.discard(alert_id)
+        _seen[alert_id] = time.time() if now is None else now
+    return True
 
 def send_telegram(alert: dict[str, Any]) -> None:
     token, chat_id = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"]
@@ -86,13 +125,14 @@ class Handler(BaseHTTPRequestHandler):
             size=int(self.headers.get("Content-Length","0"))
             if size<=0 or size>32768: raise AlertError("invalid request body size")
             payload=validate_alert(json.loads(self.rfile.read(size)))
-            if not remember_once(payload["alert_id"]): return self.reply(200,{"ok":True,"duplicate":True})
-            send_telegram(payload)
-            with _lock:
-                _alerts[payload["alert_id"]] = payload
-                if len(_alerts) > 100:
-                    oldest = min(_alerts, key=lambda key: _alerts[key]["created_at"])
-                    _alerts.pop(oldest, None)
+            alert_id = payload["alert_id"]
+            if not claim_once(alert_id): return self.reply(200,{"ok":True,"duplicate":True})
+            try:
+                send_telegram(payload)
+            except Exception:
+                release_claim(alert_id)
+                raise
+            complete_once(payload)
             self.reply(202,{"ok":True,"delivered":True})
         except (AlertError,ValueError,json.JSONDecodeError) as exc: self.reply(400,{"error":str(exc)})
         except (KeyError,urllib.error.URLError,TimeoutError,RuntimeError): self.reply(502,{"error":"telegram_delivery_failed"})
