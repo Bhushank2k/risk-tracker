@@ -1245,7 +1245,7 @@ private fun EntryGuidancePanel(
     ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (idea.side == "LONG") "BUY STRATEGY CHECKLIST" else "SELL STRATEGY CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(if (idea.side == "LONG") "BUY CHECKLIST" else "SELL CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (guidance.hardGateBlocked) "HARD GATE · BLOCKED"
                     else guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed",
@@ -1273,8 +1273,24 @@ private fun EntryGuidancePanel(
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            Text("Entry checklist (not trade approval)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            guidance.checks.forEach { (label, passed) ->
+            val criticalChecks = guidance.checks.filter { (label, passed) ->
+                (label.startsWith("Relative volume", true) ||
+                    label.startsWith("Spread at or below", true) ||
+                    label.startsWith("Directional order-book", true) ||
+                    label.startsWith("Target 1 offers", true)) && passed != true
+            }
+            var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+            TextButton(onClick = { checklistExpanded = !checklistExpanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text("Checklists · " + guidance.checks.count { it.second == true } + "/" +
+                    guidance.checks.count { it.second != null } + " passed · " +
+                    if (checklistExpanded) "Hide details" else "View details")
+            }
+            if (criticalChecks.isNotEmpty()) {
+                Text("Critical blockers", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+            (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     val hardGate = label.startsWith("Relative volume", true) ||
                         label.startsWith("Spread at or below", true) ||
@@ -1701,8 +1717,15 @@ private fun TradeIdeaCard(
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
                 if (idea.strategyChecks.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("Scanner checks", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    idea.strategyChecks.forEach { (label, passed) ->
+                    var scannerChecksExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+                    val scannerBlockers = idea.strategyChecks.filter { it.second != true }
+                    TextButton(onClick = { scannerChecksExpanded = !scannerChecksExpanded },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                        Text("Scanner checks · " + (idea.strategyChecks.size - scannerBlockers.size) +
+                            " passed · " + scannerBlockers.size + " to review · " +
+                            if (scannerChecksExpanded) "Hide" else "Details")
+                    }
+                    (if (scannerChecksExpanded) idea.strategyChecks else scannerBlockers).forEach { (label, passed) ->
                         val status = when (passed) { true -> "PASS"; false -> "WAIT"; null -> "N/A" }
                         val statusColor = when (passed) {
                             true -> MaterialTheme.colorScheme.primary
@@ -1717,15 +1740,17 @@ private fun TradeIdeaCard(
                 }
                 if (idea.reasons.isNotEmpty()) {
                     HorizontalDivider()
-                    Text("Signal reasons", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
+                    var reasonsExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+                    TextButton(onClick = { reasonsExpanded = !reasonsExpanded },
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                        Text("Signal reasons · " + idea.reasons.size + " · " +
+                            if (reasonsExpanded) "Show less" else "Top " + minOf(3, idea.reasons.size))
+                    }
+                    (if (reasonsExpanded) idea.reasons else idea.reasons.take(3))
+                        .forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
                 }
                 HorizontalDivider()
-                Text("Historical replay · " + idea.backtest.trades + " closed samples (30 required for estimates)", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
-                    else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
-                        "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
-                    style = MaterialTheme.typography.bodySmall)
+                // Historical metrics are shown once in the compact Historical Performance row above.
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             }
@@ -1799,79 +1824,55 @@ private fun ScannerMetric(label: String, value: String) {
 @Composable
 private fun HistoricalOutcomePanel(idea: TradeIdea) {
     val stats = idea.backtest
-    val sideLabel = if (idea.side == "WAIT") "Combined LONG + SHORT replay" else idea.side + " historical replay"
+    var expanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
     RiskCard(
         Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Historical win / loss", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Historical performance", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall,
+                    color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(sideLabel + " · " + stats.trades + " completed samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Historical replay uses closed candles and a 24-hour time stop. It is a simplified estimate, not a live fill simulation; fees, funding payments, spread and slippage can reduce actual results.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (stats.hasUsableEstimate) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Historical wins", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("%.1f%%".format(Locale.US, stats.winRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text("Historical losses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("%.1f%%".format(Locale.US, stats.lossRatePercent), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Text(
-                    "Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
-                        " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "LONG " + stats.longTrades + " trades · " +
-                        (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                        "  |  SHORT " + stats.shortTrades + " trades · " +
-                        (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "TREND " + stats.trendTrades + " trades · " +
-                        (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                        "  |  RANGE " + stats.rangeTrades + " trades · " +
-                        (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "BREAKOUT " + stats.breakoutTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades)) +
-                        " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "PULLBACK " + stats.pullbackTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades)) +
-                        " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "REVERSAL " + stats.reversalTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades)) +
-                        " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(stats.trades.toString() + " samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (stats.hasUsableEstimate) "%.1f%% win · %+.2fR avg".format(Locale.US, stats.winRatePercent, stats.averageR)
+                    else "Insufficient sample · 30 needed",
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            }
+            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text(if (expanded) "Hide breakdown" else "View breakdown")
+            }
+            if (expanded) {
+                Text("LONG " + stats.longTrades + " · " + (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                    "  |  SHORT " + stats.shortTrades + " · " + (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("TREND " + stats.trendTrades + " · " + (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                    "  |  RANGE " + stats.rangeTrades + " · " + (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("BREAKOUT " + stats.breakoutTrades + " · " + setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades) +
+                    " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("PULLBACK " + stats.pullbackTrades + " · " + setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades) +
+                    " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("REVERSAL " + stats.reversalTrades + " · " + setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades) +
+                    " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
                 val lower = stats.winRateLower95 ?: 0.0
                 val upper = stats.winRateUpper95 ?: 100.0
-                Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
+                Text("Approx. 95% win-rate range: %.1f–%.1f%%".format(Locale.US, lower, upper),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
+                    " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
+                    style = MaterialTheme.typography.labelSmall)
+                Text("Closed-candle replay, not live fills; fees, funding, spread and slippage can reduce results.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text("Win/loss estimate hidden — requires at least 30 completed replay samples. Current: " + stats.trades + ".",
-                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
-
 private data class TradeSessionSlot(
     val name: String,
     val timeZoneId: String,
