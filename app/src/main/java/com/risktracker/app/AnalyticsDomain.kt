@@ -139,7 +139,7 @@ fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnaly
     val losses = orders.filter { it < 0.0 }
     val grossProfit = wins.sum()
     val grossLoss = -losses.sum()
-    val feeByAsset = fills.filter { it.fee.isFinite() && it.fee > 0.0 }
+    val feeByAsset = fills.filter { it.fee.isFinite() && it.fee != 0.0 }
         .groupBy { it.feeAsset.ifBlank { "Unknown asset" }.uppercase(Locale.ROOT) }
         .mapValues { (_, rows) -> rows.sumOf { it.fee } }
     val stableFees = feeByAsset.filterKeys { it in setOf("USDT", "USDC") }.values.sum()
