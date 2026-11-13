@@ -33,12 +33,25 @@ Run locally with:
 
 ## Deploy as a Cloud Run Job
 
-Prerequisites: enable Cloud Run, Cloud Build, Artifact Registry, Cloud Scheduler and Secret Manager APIs. Choose a project, region and Artifact Registry Docker repository. Create a Secret Manager secret named `ALERT_API_TOKEN` containing the same token configured on the alert relay. Grant the Cloud Run Job service account `roles/secretmanager.secretAccessor` on that secret.
-
-Build the container from the repository root (the Docker build context must include `scanner-core/`):
+Set the project and region, enable the required APIs, and create the Artifact Registry repository:
 
     export PROJECT_ID="YOUR_PROJECT_ID"
     export REGION="YOUR_REGION"
+    gcloud config set project "$PROJECT_ID"
+    gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com
+    gcloud artifacts repositories create containers --repository-format=docker --location="$REGION"
+
+Create the job identity and grant it access to the existing relay token secret. The secret value must be the exact same high-entropy token configured on the alert relay; do not put it in source control:
+
+    gcloud iam service-accounts create risk-tracker-scanner
+    gcloud secrets add-iam-policy-binding ALERT_API_TOKEN \\
+      --member="serviceAccount:risk-tracker-scanner@$PROJECT_ID.iam.gserviceaccount.com" \\
+      --role="roles/secretmanager.secretAccessor"
+
+If the relay secret has not been created yet, follow the Secret Manager steps in [the alert relay README](../cloud-alerts/README.md).
+
+Build the container from the repository root (the Docker build context must include `scanner-core/`):
+
     export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/containers/risk-tracker-scanner:latest"
     gcloud builds submit --config cloud-scanner/cloudbuild.yaml --substitutions=_IMAGE="$IMAGE" .
 
@@ -57,7 +70,14 @@ Grant that service account Secret Manager access, then test a one-off execution:
 
 ### Run every 15 minutes
 
-Create a dedicated Scheduler service account and grant it `roles/run.invoker` on the project/job. Then create the authenticated Scheduler trigger:
+Create a dedicated Scheduler identity and grant it permission to execute the Cloud Run Job:
+
+    gcloud iam service-accounts create risk-tracker-scheduler
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \\
+      --member="serviceAccount:risk-tracker-scheduler@$PROJECT_ID.iam.gserviceaccount.com" \\
+      --role="roles/run.invoker"
+
+Then create the authenticated Scheduler trigger:
 
     gcloud scheduler jobs create http risk-tracker-cloud-scanner-15m \\
       --location "$REGION" --schedule "*/15 * * * *" --time-zone "UTC" \\
