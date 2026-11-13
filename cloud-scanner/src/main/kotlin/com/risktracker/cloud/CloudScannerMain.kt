@@ -145,11 +145,36 @@ private fun buildAlert(candidate: Candidate, plan: V2TradePlan, setupCloseTime: 
 }
 
 private fun postAlert(alert: JSONObject) {
+    val telegramToken = System.getenv("TELEGRAM_BOT_TOKEN")?.takeIf { it.isNotBlank() }
+    val telegramChatId = System.getenv("TELEGRAM_CHAT_ID")?.takeIf { it.isNotBlank() }
+    if (telegramToken != null && telegramChatId != null) {
+        fun html(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        val message = buildString {
+            append("<b>Risk Tracker · READY ${html(alert.getString("horizon"))}</b>\n")
+            append("<b>${html(alert.getString("symbol"))} · ${html(alert.getString("side"))}</b>\n")
+            append("Setup: ${html(alert.getString("setup"))}\n")
+            append("Entry: ${alert.get("entry")} · Stop: ${alert.get("stop")}\n")
+            append("Target 1: ${alert.get("target1")}\n")
+            append("Alert ID: <code>${html(alert.getString("alert_id"))}</code>\n")
+            append("<i>Informational signal only. Verify live market conditions.</i>")
+        }
+        val payload = JSONObject().put("chat_id", telegramChatId).put("text", message)
+            .put("parse_mode", "HTML").put("disable_web_page_preview", true)
+        val request = HttpRequest.newBuilder(URI.create("https://api.telegram.org/bot${telegramToken}/sendMessage"))
+            .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(payload.toString())).build()
+        val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
+        if (response.statusCode() !in 200..299 || !JSONObject(response.body()).optBoolean("ok", false)) {
+            throw IllegalStateException("Telegram delivery failed: HTTP ${response.statusCode()}")
+        }
+        return
+    }
+
     val base = System.getenv("ALERT_RELAY_URL")?.trim()?.trimEnd('/')
-        ?: error("ALERT_RELAY_URL is required")
+        ?: error("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or configure ALERT_RELAY_URL and ALERT_API_TOKEN")
     val url = if (base.endsWith("/alerts")) base else "$base/alerts"
     val token = System.getenv("ALERT_API_TOKEN")?.takeIf { it.isNotBlank() }
-        ?: error("ALERT_API_TOKEN is required")
+        ?: error("ALERT_API_TOKEN is required when using ALERT_RELAY_URL")
     val uri = URI.create(url)
     require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
         "ALERT_RELAY_URL must be an HTTPS URL"
