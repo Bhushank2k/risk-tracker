@@ -219,9 +219,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Overview", "Ideas", "Risk", "History")
+    val titles = listOf("Market", "Ideas", "Risk", "History")
     val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.Lightbulb, Icons.Filled.Security, Icons.Filled.History)
-    // Keep the bottom bar focused on frequent destinations; expose every specialist screen here.
+    // Keep the bottom bar focused on the four core trading destinations; specialist tools live in Explore.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
     // Keep route IDs unchanged: these values are consumed by the screen router below.
@@ -262,8 +262,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
-                0 -> "Overview"
-                1 -> "Trade Journal"
+                0 -> "Market Overview"
+                1 -> "Trade History"
                 2 -> "Position Calculator"
                 5 -> "About"
                 6 -> "Binance Sync"
@@ -276,7 +276,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 17 -> "Account Activity"
                 18 -> "Sync Health"
                 19 -> "Risk Alerts"
-                21 -> "Trade Ideas"
+                21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
                 25 -> "Strategy Performance Lab"
                 26 -> "Confirmed Reversals"
