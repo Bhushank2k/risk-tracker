@@ -7,7 +7,7 @@ This is the scheduled cloud execution of the **same Kotlin Confluence V4 engine 
 - Public Binance USD-M Futures data only; no API key or exchange account is used.
 - Universe: active USDT perpetual contracts with 24-hour quote volume at least USD 2,000,000.
 - BTC context: the same H4/H1 EMA20/50/200 regime classifier as the Android scanner.
-- Per symbol: completed H4, H1, M15 and M5 candles, best bid/ask, five-level order-book depth and current premium-index funding rate.
+- Per symbol: completed H4, H1, M15 and M5 candles, fresh per-symbol best bid/ask, five-level order-book depth and current premium-index funding rate.
 - Candle rows whose close time has not passed are excluded. The shared engine also enforces timeframe-specific freshness.
 - Five-level depth notional, spread and directional imbalance use the same calculations as `BinanceFuturesStream`.
 - Only a READY Intraday plan with a supported timeframe, confirmed entry, score >=75, valid stop/targets, all hard gates true and verified funding can be sent to the relay.
