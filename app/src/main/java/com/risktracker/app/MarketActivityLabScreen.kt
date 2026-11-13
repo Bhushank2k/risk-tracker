@@ -32,6 +32,7 @@ fun MarketActivityLabScreen() {
     var errors by remember{mutableStateOf<List<String>>(emptyList())}
     var updated by remember{mutableLongStateOf(0L)}
     var replay by remember{mutableStateOf<MarketActivityEngine.ReplayStats?>(null)}
+    var chartCandles by remember{mutableStateOf<List<MarketCandle>>(emptyList())}
     val scope=rememberCoroutineScope()
     fun refresh(){
         if(loading)return
@@ -41,11 +42,15 @@ fun MarketActivityLabScreen() {
             rows=result.mapNotNull{it.second};errors=result.filter{it.second==null}.map{it.first}
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
             updated=System.currentTimeMillis()
-            replay=runCatching{MarketActivityEngine.replay(MarketActivityDataSource.candles(selected,interval))}.getOrNull()
             loading=false
         }
     }
     LaunchedEffect(interval){refresh()}
+    LaunchedEffect(selected,interval){
+        val loaded=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
+        chartCandles=loaded
+        replay=if(loaded.isNotEmpty()) MarketActivityEngine.replay(loaded) else null
+    }
     val a=rows.firstOrNull{it.symbol==selected}
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         item{Column(verticalArrangement=Arrangement.spacedBy(5.dp)){
@@ -76,8 +81,8 @@ fun MarketActivityLabScreen() {
                 Text("Reference price  "+a.last.close,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                 Text("Last completed candle · "+SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(a.last.closeTime)),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Candlesticks + volume · recent 60 bars",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
-                val candles=runCatching{MarketActivityDataSource.candles(a.symbol,interval)}.getOrNull()
-                if(candles!=null)Canvas(Modifier.fillMaxWidth().height(170.dp)){
+                val candles=chartCandles
+                if(candles.isNotEmpty())Canvas(Modifier.fillMaxWidth().height(170.dp)){
                     val ds=candles.takeLast(60);if(ds.isNotEmpty()){val low=ds.minOf{it.low};val high=ds.maxOf{it.high};val span=(high-low).takeIf{it>0}?:1.0;val step=size.width/ds.size
                         ds.forEachIndexed{i,c->val x=step*(i+.5f);val y1=size.height*.05f+((high-c.high)/span).toFloat()*size.height*.72f;val y2=size.height*.05f+((high-c.low)/span).toFloat()*size.height*.72f;val yo=size.height*.05f+((high-c.open)/span).toFloat()*size.height*.72f;val yc=size.height*.05f+((high-c.close)/span).toFloat()*size.height*.72f;val col=if(c.close>=c.open)Color(0xFF35B77A)else Color(0xFFE16B70);drawLine(col,Offset(x,y1),Offset(x,y2),1.5f);drawLine(col,Offset(x,yo),Offset(x,yc),maxOf(3f,step*.55f));val maxVol=ds.maxOf{it.volume}.takeIf{it>0}?:1.0;drawLine(col.copy(alpha=.35f),Offset(x,size.height),Offset(x,size.height-(c.volume/maxVol).toFloat()*size.height*.16f),maxOf(2f,step*.5f))}
                     }
