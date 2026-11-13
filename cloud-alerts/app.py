@@ -19,7 +19,7 @@ def number(value: Any, name: str) -> float:
 
 def validate_alert(payload: Any, now: float | None = None) -> dict[str, Any]:
     if not isinstance(payload, dict): raise AlertError("JSON object required")
-    required = ("alert_id","symbol","side","setup","horizon","status","created_at")
+    required = ("alert_id","symbol","side","setup","horizon","status")
     if any(not isinstance(payload.get(k), str) or not payload[k].strip() for k in required):
         raise AlertError("missing or invalid required string field")
     if payload["status"] != "READY": raise AlertError("only READY alerts are accepted")
