@@ -162,14 +162,13 @@ class MainActivity : ComponentActivity() {
 internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
     0 -> 0  // Market overview
     1 -> 21 // Daily trade ideas
-    2 -> 11 // Risk monitor
-    3 -> 1  // Trade history
-    4 -> 29 // Explore
+    2 -> 1  // Trade history
+    3 -> 29 // Explore
     else -> 0
 }
 
 internal fun isPrimaryNavigationDestination(destination: Int): Boolean =
-    destination == 0 || destination == 21 || destination == 11 || destination == 1
+    destination == 0 || destination == 21 || destination == 1
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -223,28 +222,21 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             }
         }
     }
-    val titles = listOf("Market", "Ideas", "Risk", "History", "Explore")
-    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.Lightbulb, Icons.Filled.Security, Icons.Filled.History, Icons.Filled.Apps)
-    // Keep the bottom bar focused on the four core trading destinations; specialist tools live in Explore.
+    val titles = listOf("Market", "Ideas", "History", "Explore")
+    val icons = listOf(Icons.Filled.Dashboard, Icons.Filled.Lightbulb, Icons.Filled.History, Icons.Filled.Apps)
+    // Keep the bottom bar focused on the remaining core destinations; specialist tools live in Explore.
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
     // Keep route IDs unchanged: these values are consumed by the screen router below.
     val menuGroups = listOf(
         "TRADING" to listOf(
             "Live positions & orders" to 16,
-            "Post-trade reviews" to 14
         ),
         "PERFORMANCE" to listOf(
             "P&L Calendar" to 23,
-            "Scanner Performance Lab" to 25,
-            "Market Activity Lab" to 28
         ),
         "IDEAS & RISK TOOLS" to listOf(
-            "Confirmed Reversal Signals" to 26,
-            "Cloud Alerts" to 27,
             "Position & leverage calculator" to 2,
-            "Risk alerts" to 19,
-            "Risk Scenario Lab" to 13,
         ),
         "CONNECTIONS & ACCOUNT" to listOf(
             "Binance Sync & imports" to 6,
@@ -262,7 +254,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         group to destinations.filterNot { isPrimaryNavigationDestination(it.second) }
     }.filter { it.second.isNotEmpty() }
 
-    val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 11 -> 2; 1 -> 3; 29 -> 4; else -> -1 }
+    val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 1 -> 2; 29 -> 3; else -> -1 }
     Scaffold(
         topBar = {
             val pageTitle = when (tab) {
@@ -273,19 +265,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 6 -> "Binance Sync"
                 7 -> "Settings"
                 9 -> "Tax Report"
-                11 -> "Risk Monitor"
-                13 -> "Scenario Lab"
-                14 -> "Trade Reviews"
                 16 -> "Live Trades"
                 17 -> "Account Activity"
                 18 -> "Sync Health"
-                19 -> "Risk Alerts"
                 21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
-                25 -> "Strategy Performance Lab"
-                26 -> "Confirmed Reversals"
-                27 -> "Cloud Alerts"
-                28 -> "Market Activity Lab"
                 29 -> "Explore"
             else -> "Explore"
             }
@@ -467,34 +451,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 5 -> AboutScreen()
                 6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 9 -> CryptoTaxReportScreen()
-                11 -> TradeRiskGateScreen(TradeRiskSettings(
-                    maxTradeRisk = store.maxTradeRisk,
-                    maxDailyLoss = store.maxDailyLoss,
-                    dailyPnl = todayReconciledPnl?.selectedPnl ?: 0.0,
-                    maxTradesPerDay = 10,
-                    tradesTakenToday = trades.count { canonicalPnlDate(it.date) == todayPnlDate },
-                    dailyPnlKnown = todayReconciledPnl != null
-                ))
-                13 -> RiskScenarioLabScreen()
-                14 -> TradeReviewScreen(trades, exchangeFills, exchangeSyncStatus, onSyncExchange = {
-                    if (BinanceCredentialStore(context).read() != null) {
-                        appScope.launch {
-                            runCatching { withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) } }
-                            exchangeFills = BinanceAutoJournalStore.load(context)
-                            exchangeSyncStatus = BinanceAutoJournalStore.syncStatus(context)
-                        }
-                    }
-                })
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
                 18 -> BinanceSyncHealthScreen()
-                19 -> RiskAlertsScreen(entries, trades, todayReconciledPnl?.selectedPnl, store.maxDailyLoss)
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                25 -> ScannerPerformanceLabScreen()
-                26 -> ConfirmedReversalSignalsScreen()
-                27 -> CloudAlertsScreen()
-                28 -> MarketActivityLabScreen()
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
