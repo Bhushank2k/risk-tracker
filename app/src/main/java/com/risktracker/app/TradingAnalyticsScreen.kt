@@ -130,6 +130,11 @@ fun TradingAnalyticsScreen(
         )
     }
 
+    val futuresIncomeTotals = remember(importedDailyPnl, reconciledDaily) {
+        summarizeFuturesIncomeByType(importedDailyPnl, reconciledDaily.map { it.date }.toSet())
+    }
+    val rMultipleSummary = remember(manualTrades) { summarizeTradeRMultiples(manualTrades) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -194,8 +199,10 @@ fun TradingAnalyticsScreen(
                 Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Futures daily P&L includes Binance realized P&L, commissions, funding and insurance adjustments. Spot P&L is FIFO-estimated; third-asset commissions are not historically converted, so the combined total is best-known rather than a fully converted account-wide net.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AnalyticsMetric("Daily net P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
+                    AnalyticsMetric("Selected daily P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
                         if (dailySnapshot.netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                     AnalyticsMetric("Average daily P&L", dailySnapshot.averagePnl.usd(), Modifier.weight(1f))
                 }
@@ -364,6 +371,69 @@ fun TradingAnalyticsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+        item {
+            if (futuresIncomeTotals.isNotEmpty()) {
+                RiskCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Futures income breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        val labels = listOf(
+                            "REALIZED_PNL" to "Realized trading P&L",
+                            "COMMISSION" to "Trading commissions",
+                            "FUNDING_FEE" to "Funding fees",
+                            "INSURANCE_CLEAR" to "Insurance adjustments"
+                        )
+                        labels.forEach { (type, label) ->
+                            val amount = futuresIncomeTotals[type] ?: 0.0
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text((if (amount > 0.0) "+" else "") + amount.usd(),
+                                    color = pnlColor(amount), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        val ledgerTotal = futuresIncomeTotals.values.sum()
+                        HorizontalDivider()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Net Futures income")
+                            Text((if (ledgerTotal > 0.0) "+" else "") + ledgerTotal.usd(), fontWeight = FontWeight.Bold,
+                                color = pnlColor(ledgerTotal))
+                        }
+                        Text("Official Binance USDⓈ-M income history. Components are already included in the Futures daily P&L total above; do not add this breakdown again. Transfers are excluded.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item {
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("R-multiple analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (rMultipleSummary.sampleCount == 0) {
+                        Text("R-multiple is unavailable: record a positive Risk USD amount for each journal trade. Exchange fills do not contain your original stop-loss risk, so R cannot be inferred safely.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AnalyticsMetric("Average R / trade", rMultipleSummary.averageR?.let { "%+.2fR".format(Locale.US, it) } ?: "—",
+                                Modifier.weight(1f), rMultipleSummary.averageR?.let { if (it >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error } ?: MaterialTheme.colorScheme.onSurface,
+                                "Average net P&L ÷ recorded initial cash risk")
+                            AnalyticsMetric("Total R", rMultipleSummary.totalR?.let { "%+.2fR".format(Locale.US, it) } ?: "—",
+                                Modifier.weight(1f))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AnalyticsMetric("R win rate", rMultipleSummary.winRatePercent?.let { "%.1f%%".format(Locale.US, it) } ?: "—",
+                                Modifier.weight(1f))
+                            AnalyticsMetric("Valid R samples", rMultipleSummary.sampleCount.toString(),
+                                Modifier.weight(1f))
+                        }
+                        if (rMultipleSummary.missingRiskCount > 0) {
+                            Text("${rMultipleSummary.missingRiskCount} journal trade(s) excluded because Risk USD is missing or invalid.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                        }
+                    }
+                    Text("R uses the journal's recorded initial cash risk and after-fee trade P&L. It is not calculated from leverage or margin.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

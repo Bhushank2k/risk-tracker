@@ -210,3 +210,37 @@ fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnaly
         maxOrderDrawdown = maxDrawdown
     )
 }
+
+/** R-multiple summary for journal trades that recorded their original cash risk. */
+data class TradeRMultipleSummary(
+    val sampleCount: Int,
+    val averageR: Double?,
+    val totalR: Double?,
+    val winRatePercent: Double?,
+    val missingRiskCount: Int
+)
+
+fun summarizeTradeRMultiples(trades: List<TradeEntry>): TradeRMultipleSummary {
+    val validTrades = trades.filter { it.pnl.isFinite() }
+    val withRisk = validTrades.filter { it.riskUsd.isFinite() && it.riskUsd > 0.0 }
+    val multiples = withRisk.map { it.pnl / it.riskUsd }.filter { it.isFinite() }
+    val decisive = multiples.filter { it != 0.0 }
+    return TradeRMultipleSummary(
+        sampleCount = multiples.size,
+        averageR = multiples.takeIf { it.isNotEmpty() }?.average(),
+        totalR = multiples.takeIf { it.isNotEmpty() }?.sum(),
+        winRatePercent = decisive.takeIf { it.isNotEmpty() }?.let { values ->
+            values.count { it > 0.0 } * 100.0 / values.size
+        },
+        missingRiskCount = validTrades.count { !it.riskUsd.isFinite() || it.riskUsd <= 0.0 }
+    )
+}
+/** Sums the saved USDⓈ-M income components only for dates selected by the analytics period. */
+fun summarizeFuturesIncomeByType(
+    rows: List<BinanceDailyResult>,
+    includedDates: Set<String>
+): Map<String, Double> = rows.asSequence()
+    .filter { it.date in includedDates }
+    .flatMap { it.futuresIncomeByType.entries.asSequence() }
+    .groupBy({ it.key }, { it.value })
+    .mapValues { (_, values) -> values.sum() }

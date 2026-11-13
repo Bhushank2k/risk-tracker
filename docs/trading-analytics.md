@@ -12,6 +12,23 @@ The Performance section is available from **Trade Journal → Performance**. It 
 - Realized-order drawdown is measured in quote-currency units from the running peak of cumulative realized P&L. It is not account-equity drawdown and is not a percentage.
 - Stablecoin fees in USDT/USDC are subtracted from realized P&L in the displayed net-after-known-fees metric. Other fee assets are itemized separately because historical conversion rates are not available. Negative fee values (rebates) are retained.
 
+## Futures income ledger and net P&L
+
+- The USDⓈ-M Futures daily result is sourced from Binance's official income-history endpoint and includes `REALIZED_PNL`, `COMMISSION`, `FUNDING_FEE`, and `INSURANCE_CLEAR`.
+- The app stores the four income components separately by UTC day. The income breakdown is an audit view of the Futures daily total; it must not be added to that total a second time.
+- Transfers and other non-trading cash movements are excluded from trading P&L.
+- The API collector retains the latest 90 days available from the income-history endpoint. Older history can be supplied through the supported Binance income CSV import.
+- CSV imports provide the daily Futures net total and row counts by type, but do not retain per-day component detail in this screen.
+
+Spot daily P&L is estimated using FIFO matching across the discovered Spot symbols. USDT/USDC quote commissions are subtracted; base-asset commission on buys reduces the received lot quantity. Third-asset commissions (for example BNB) are not converted using historical FX, and some old or closed Spot pairs may not be discoverable automatically. Therefore, combined Spot + Futures daily P&L is a best-known result, not a guaranteed fully converted account-wide net figure.
+
+## R-multiple analysis
+
+- R-multiple is calculated only for manual journal rows with a finite, positive recorded `riskUsd`.
+- Each trade's R is its after-fee journal P&L divided by its original cash risk: `R = net trade P&L / initial cash risk`.
+- Trades without a valid recorded risk amount are excluded and counted as missing-risk rows.
+- Exchange fills do not include the original planned stop-loss risk. The app deliberately does not infer R from leverage, margin, or a guessed stop price.
+
 ## Daily P&L and monthly view
 
 Daily results use the existing non-additive reconciliation priority: Binance imported P&L, then manually entered daily P&L, then estimated manual-journal P&L. Overlapping sources are not added. Where manual and Binance rows overlap, the absolute difference is surfaced for review. Monthly summaries aggregate these selected daily values.
@@ -27,7 +44,7 @@ These checks are diagnostics, not proof that exchange history is complete. API p
 ## Limitations
 
 - Expectancy is before fees; the separate net-after-known-stable-fees value is not a full net result when commissions were charged in non-stable assets.
-- Funding payments, rebates in assets without conversion rates, borrow interest and tax are not fully normalized into one reporting currency by this screen.
+- Futures funding, commissions and insurance adjustments are included in the official income total; Spot third-asset fees, borrow interest and tax are not fully normalized into one reporting currency.
 - P&L amounts from different quote assets should not be summed as USD unless the underlying records are USD/USDT-denominated. The volume panel explicitly groups quote assets rather than assuming conversion.
 - The cumulative realized-P&L curve begins at zero and is not a capital-weighted return curve. No annualized return or Sharpe ratio is claimed.
 - Small samples, incomplete history and changing market conditions make historical metrics descriptive rather than predictive.
