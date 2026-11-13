@@ -1,5 +1,6 @@
 package com.risktracker.app
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,8 +59,16 @@ fun TradingAnalyticsScreen(
     }
     val validFills = filtered.filter {
         it.quoteAmount.isFinite() && it.quoteAmount >= 0.0 &&
-            it.quantity.isFinite() && it.price.isFinite()
+            it.quantity.isFinite() && it.quantity >= 0.0 &&
+            it.price.isFinite() && it.price >= 0.0 &&
+            it.fee.isFinite() && it.fee >= 0.0 &&
+            (it.realizedPnl == null || it.realizedPnl.isFinite())
     }
+    val invalidFillCount = filtered.size - validFills.size
+    val realizedFillCount = validFills.count { it.realizedPnl?.isFinite() == true }
+    val realizedCoverage = if (validFills.isEmpty()) null else realizedFillCount * 100.0 / validFills.size
+    val staleSync = syncStatus.lastSuccess <= 0L ||
+        now - syncStatus.lastSuccess > 24L * 60L * 60L * 1000L
     fun quoteAsset(symbol: String): String {
         val normalized = symbol.uppercase(Locale.ROOT)
         return listOf("USDT", "USDC", "BUSD", "FDUSD", "TUSD", "BTC", "ETH", "BNB", "EUR", "TRY", "USD")
@@ -248,6 +258,55 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Expectancy & consistency", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Expectancy / close order", orderAnalytics.expectancyPerOrder?.usd() ?: "—",
+                        Modifier.weight(1f), orderAnalytics.expectancyPerOrder?.let { if (it >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error } ?: MaterialTheme.colorScheme.onSurface,
+                        "Average realized P&L before fees")
+                    AnalyticsMetric("Average win / loss", orderAnalytics.averageWinLossRatio?.let { "%.2f×".format(Locale.US,it) } ?: "—",
+                        Modifier.weight(1f), supporting = "Average win ÷ absolute average loss")
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AnalyticsMetric("Current streak", if (orderAnalytics.currentStreakCount == 0) "—" else "${orderAnalytics.currentStreakKind} × ${orderAnalytics.currentStreakCount}",
+                        Modifier.weight(1f))
+                    AnalyticsMetric("Longest W / L streak", "${orderAnalytics.longestWinStreak} / ${orderAnalytics.longestLossStreak}",
+                        Modifier.weight(1f))
+                }
+                AnalyticsMetric("Realized-order drawdown", orderAnalytics.maxOrderDrawdown.usd(),
+                    Modifier.fillMaxWidth(), MaterialTheme.colorScheme.error,
+                    "Peak-to-trough on cumulative realized order P&L")
+                Text("Realized order equity curve", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                if (orderAnalytics.cumulativePnl.size < 2) {
+                    Text("At least two realized orders are needed to draw an equity curve.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Canvas(Modifier.fillMaxWidth().height(112.dp)) {
+                        val values = orderAnalytics.cumulativePnl
+                        val minValue = minOf(0.0, values.minOrNull() ?: 0.0)
+                        val maxValue = maxOf(0.0, values.maxOrNull() ?: 0.0)
+                        val range = (maxValue - minValue).takeIf { it > 0.0 } ?: 1.0
+                        val points = values.mapIndexed { index, value ->
+                            Offset(
+                                x = if (values.size <= 1) 0f else size.width * index / (values.size - 1),
+                                y = size.height - (((value - minValue) / range).toFloat() * size.height)
+                            )
+                        }
+                        val zeroY = size.height - (((0.0 - minValue) / range).toFloat() * size.height)
+                        drawLine(MaterialTheme.colorScheme.outlineVariant, Offset(0f,zeroY), Offset(size.width,zeroY), 1.dp.toPx())
+                        points.zipWithNext().forEach { (from,to) ->
+                            drawLine(
+                                if ((values.lastOrNull() ?: 0.0) >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                from,to,strokeWidth=3.dp.toPx()
+                            )
+                        }
+                    }
+                }
+                Text("Chronological realized P&L grouped by exchange order. Expectancy excludes fees; fees in non-stable assets are not converted. Drawdown is in quote-currency units, not a percentage of account equity.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
             Text("Pair performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AnalyticsMetric("Top profitable pair", bestPair?.symbol ?: "—", Modifier.weight(1f),
@@ -284,6 +343,29 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
+            val monthly = reconciledDaily.groupBy { it.date.take(7) }
+                .toSortedMap(compareByDescending { it })
+            if (monthly.isNotEmpty()) {
+                RiskCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Monthly reconciled P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        monthly.entries.take(12).forEach { (month, days) ->
+                            val net = days.sumOf { it.selectedPnl }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column {
+                                    Text(month, fontWeight = FontWeight.Medium)
+                                    Text("${days.size} days · ${days.count { it.selectedPnl > 0 }} up · ${days.count { it.selectedPnl < 0 }} down",
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text((if(net > 0) "+" else "") + net.usd(), fontWeight = FontWeight.SemiBold,
+                                    color = pnlColor(net))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trading fees", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -300,6 +382,34 @@ fun TradingAnalyticsScreen(
                         Text("Fees are grouped by their original asset. They are not converted into USD without a verified historical conversion rate.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+        }
+        item {
+            RiskCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Data quality checks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    val syncColor = if (staleSync || syncStatus.symbolsFailed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    Text("Sync: ${syncStatus.state}", color = syncColor, style = MaterialTheme.typography.bodySmall)
+                    Text(if(syncStatus.lastSuccess > 0L) "Last successful sync: " + SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(syncStatus.lastSuccess))
+                        else "No successful Binance sync recorded.", style = MaterialTheme.typography.bodySmall)
+                    if(staleSync) Text("Check: data may be stale (last success over 24 hours ago or never synced).", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                    if(syncStatus.symbolsFailed > 0) Text("Check: ${syncStatus.symbolsFailed} symbol request(s) failed in the last attempt; imported history may be incomplete.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text("Realized P&L coverage: ${realizedCoverage?.let { "%.1f%%".format(Locale.US,it) } ?: "No fill data"} ($realizedFillCount / ${validFills.size} fills)",
+                        style = MaterialTheme.typography.bodySmall)
+                    if(invalidFillCount > 0) Text("Check: ${invalidFillCount} malformed fill row(s) excluded from analytics.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    if(decisiveCount < 30) Text("Suggestion: treat win rate and expectancy as provisional until you have at least 30 realized close orders.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                    val discrepancies = reconciledDaily.filter { (it.discrepancy ?: 0.0) > 1.0 }
+                    if(discrepancies.isNotEmpty()) {
+                        Text("P&L source mismatches over $1: ${discrepancies.size} day(s). Review the manual-vs-Binance records before trusting totals.",
+                            color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                        discrepancies.takeLast(3).asReversed().forEach { row ->
+                            Text("${row.date}: Binance ${row.binancePnl?.usd()} vs manual ${row.manualPnl?.usd()}",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if(realizedCoverage != null && realizedCoverage < 50.0) Text("Suggestion: sync or import the full trade history; less than half of the fills currently carry realized P&L.",
+                        color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
