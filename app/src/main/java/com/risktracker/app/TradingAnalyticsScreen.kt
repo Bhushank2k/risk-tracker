@@ -131,11 +131,7 @@ fun TradingAnalyticsScreen(
     }
 
     val futuresIncomeTotals = remember(importedDailyPnl, reconciledDaily) {
-        val visibleDates = reconciledDaily.map { it.date }.toSet()
-        importedDailyPnl.filter { it.date in visibleDates }
-            .flatMap { row -> row.futuresIncomeByType.entries.map { it.key to it.value } }
-            .groupBy({ it.first }, { it.second })
-            .mapValues { (_, values) -> values.sum() }
+        summarizeFuturesIncomeByType(importedDailyPnl, reconciledDaily.map { it.date }.toSet())
     }
     val rMultipleSummary = remember(manualTrades) { summarizeTradeRMultiples(manualTrades) }
 
