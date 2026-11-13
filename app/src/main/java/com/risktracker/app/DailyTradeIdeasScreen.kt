@@ -967,13 +967,15 @@ fun DailyTradeIdeasScreen() {
                         }
                         TextButton(onClick = { scanExpanded = !scanExpanded }) { Text(if (scanExpanded) "Less" else "Details") }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SnapshotMetric("LONG ideas", longCount.toString(), Color(0xFF1FAD72), Modifier.weight(1f))
-                        SnapshotMetric("SHORT ideas", shortCount.toString(), Color(0xFFE05B64), Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        SnapshotMetric("LONG", longCount.toString(), Color(0xFF1FAD72), Modifier.weight(1f))
+                        SnapshotMetric("SHORT", shortCount.toString(), Color(0xFFE05B64), Modifier.weight(1f))
+                        SnapshotMetric("NO BIAS", waitCount.toString(), MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         SnapshotMetric("READY", readyCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                        SnapshotMetric("WAITING", monitorCount.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                        SnapshotMetric("WAIT", monitorCount.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                        SnapshotMetric("AVOID", blockedCount.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
                     }
                     Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                         if (loading) {
