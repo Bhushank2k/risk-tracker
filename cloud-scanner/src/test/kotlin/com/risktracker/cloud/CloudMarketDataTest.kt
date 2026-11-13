@@ -10,7 +10,9 @@ class CloudMarketDataTest {
         val micro = buildMarketMicrostructure(99.9, 100.1, bids, asks, 0.0001)
         assertNotNull(micro.spreadBps)
         assertEquals(20.0, micro.spreadBps!!, 0.0001)
-        assertEquals(0.0, micro.bookImbalance!!, 0.0001)
+        val expectedBid = bids.sumOf { it.first * it.second }
+        val expectedAsk = asks.sumOf { it.first * it.second }
+        assertEquals((expectedBid - expectedAsk) / (expectedBid + expectedAsk), micro.bookImbalance!!, 0.0001)
         assertTrue(micro.bidDepthUsd!! > 0.0)
         assertEquals(0.0001, micro.fundingRate!!, 0.0000001)
     }
