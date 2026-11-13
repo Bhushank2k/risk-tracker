@@ -161,6 +161,14 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
+    0 -> 0 // Market overview
+    1 -> 21 // Daily trade ideas
+    2 -> 11 // Risk monitor
+    else -> 1 // Trade history
+}
+
+@Composable
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) }
@@ -418,7 +426,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 titles.forEachIndexed { i, title ->
                     val selected = activeNavIndex == i
                     NavigationBarItem(selected = selected,
-                        onClick = { tab = when (i) { 0 -> 0; 1 -> 21; 2 -> 11; else -> 1 } },
+                        onClick = { tab = primaryDestinationForNavItem(i) },
                         icon = { Icon(icons[i], contentDescription = null, modifier = Modifier.size(if (selected) 23.dp else 21.dp)) },
                         label = { Text(title, style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) },
@@ -1000,10 +1008,6 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
-    var tradingExpanded by remember { mutableStateOf(true) }
-    var riskExpanded by remember { mutableStateOf(false) }
-    var exchangeExpanded by remember { mutableStateOf(false) }
-    var reportsExpanded by remember { mutableStateOf(false) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -1020,30 +1024,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        MoreMenuSection("Analytics", "Execution results and trade quality", tradingExpanded, { tradingExpanded = !tradingExpanded }) {
-            MoreDestinationCard("Trading Analytics", "Volume, realized P&L, fees and pair performance") { onNavigate(20) }
-            MoreDestinationCard("P&L Calendar", "Daily realized results with manual and Binance Futures sources") { onNavigate(23) }
-            MoreDestinationCard("Post-trade reviews", "Review closed trades and plan adherence") { onNavigate(14) }
-            MoreDestinationCard("Ledger audit", "Check imported history, duplicates and daily totals") { onNavigate(15) }
-        }
-        MoreMenuSection("Risk workspace", "Plan position size and control trading risk", riskExpanded, { riskExpanded = !riskExpanded }) {
-            MoreDestinationCard("Position & leverage calculator", "Calculate position size, stop-loss risk and liquidation estimates") { onNavigate(2) }
-            MoreDestinationCard("Trade Risk Gate", "Review planned risk and daily limits before a trade") { onNavigate(11) }
-            MoreDestinationCard("Risk alerts", "Review daily loss limits and risk warnings") { onNavigate(19) }
-            MoreDestinationCard("Risk Scenario Lab", "Simulate loss streaks and risk scenarios") { onNavigate(13) }
-            MoreDestinationCard("Target Planner", "Plan a balance goal and required daily net-profit pace") { onNavigate(22) }
-        }
-        MoreMenuSection("Exchange & data", "Binance connection, imports and reconciliation", exchangeExpanded, { exchangeExpanded = !exchangeExpanded }) {
-            MoreDestinationCard("Binance data & imports", "Connect read-only API access and import account history") { onNavigate(6) }
-            MoreDestinationCard("Sync health", "Review automatic sync status and coverage") { onNavigate(18) }
-            MoreDestinationCard("Live positions & orders", "Read-only view of open positions and pending orders") { onNavigate(16) }
-            MoreDestinationCard("Account activity", "Recent deposits, withdrawals, transfers and Futures income") { onNavigate(17) }
-        }
-        MoreMenuSection("Reports & app", "Tax summaries, app information and account records", reportsExpanded, { reportsExpanded = !reportsExpanded }) {
-            MoreDestinationCard("Crypto tax report", "Review imported history by Indian financial year") { onNavigate(9) }
-            MoreDestinationCard("About Risk Tracker", "App version, developer and important disclosures") { onNavigate(5) }
-        }
-        HorizontalDivider()
+        Text("Settings & data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
