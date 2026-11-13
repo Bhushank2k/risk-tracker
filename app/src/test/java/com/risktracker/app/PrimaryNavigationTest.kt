@@ -9,6 +9,12 @@ class PrimaryNavigationTest {
         assertEquals(21, primaryDestinationForNavItem(1)) // Daily trade ideas
         assertEquals(11, primaryDestinationForNavItem(2)) // Risk monitor
         assertEquals(1, primaryDestinationForNavItem(3))  // Trade history
+        assertEquals(29, primaryDestinationForNavItem(4)) // Explore
+    }
+
+    @Test fun exploreIsASeparateBottomNavigationDestination() {
+        assertEquals(29, primaryDestinationForNavItem(4))
+        org.junit.Assert.assertFalse(isPrimaryNavigationDestination(29))
     }
 
     @Test fun coreDestinationsAreNeverDuplicatedInSecondaryNavigation() {
