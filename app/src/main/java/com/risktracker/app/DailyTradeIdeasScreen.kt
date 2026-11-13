@@ -801,6 +801,7 @@ fun DailyTradeIdeasScreen() {
     }
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
     var filter by remember { mutableStateOf("All") }
+    var directionFilter by remember { mutableStateOf("All") }
     var horizonFilter by remember { mutableStateOf("All") }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
@@ -890,9 +891,10 @@ fun DailyTradeIdeasScreen() {
         }.thenByDescending { it.score }
     )
     val visible = rankedIdeas.filter { idea ->
+        val directionMatches = directionFilter == "All" || idea.side == directionFilter
         val stage = tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs)
         val nearSetup = isWithinSetupWatchRange(idea)
-        when (filter) {
+        directionMatches && when (filter) {
             "Ready" -> stage == TradeIdeaStage.ENTRY_CONFIRMED
             "Wait" -> (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) && nearSetup
             "Tracking" -> isPlanTracked(idea)
@@ -959,27 +961,32 @@ fun DailyTradeIdeasScreen() {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Find trade ideas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(longCount.toString() + " long · " + shortCount.toString() + " short · " + waitCount.toString() + " no direction",
+                            Text("Futures overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Binance USDT-M perpetuals · LONG and SHORT opportunities", 
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick = { scanExpanded = !scanExpanded }) { Text(if (scanExpanded) "Less" else "Details") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        SnapshotMetric("LONG", longCount.toString(), Color(0xFF1FAD72), Modifier.weight(1f))
+                        SnapshotMetric("SHORT", shortCount.toString(), Color(0xFFE05B64), Modifier.weight(1f))
+                        SnapshotMetric("NO BIAS", waitCount.toString(), MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        SnapshotMetric("READY", readyCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                        SnapshotMetric("WAIT", monitorCount.toString(), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                        SnapshotMetric("AVOID", blockedCount.toString(), MaterialTheme.colorScheme.error, Modifier.weight(1f))
                     }
                     Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                         if (loading) {
                             CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(9.dp))
                         }
-                        Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
+                        Text(if (loading) "Scanning eligible USDT-M pairs…" else "Scan eligible USDT-M pairs")
                     }
                     if (scanExpanded) {
                         Text("Source · Binance Futures public market data. The scanner discovers all active USDT perpetuals, filters by 24h quote volume, then fully validates every eligible pair in bounded parallel batches. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
-                            ScannerStat("SHORT", shortCount.toString(), Modifier.weight(1f))
-                            ScannerStat("No direction", waitCount.toString(), Modifier.weight(1f))
-                        }
                         HorizontalDivider()
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1018,9 +1025,15 @@ fun DailyTradeIdeasScreen() {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Live trade ideas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("All", "LONG", "SHORT", "WAIT").forEach { option ->
+                        FilterChip(selected = directionFilter == option, onClick = { directionFilter = option },
+                            label = { Text(if (option == "WAIT") "NO BIAS" else option) })
+                    }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
