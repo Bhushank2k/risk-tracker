@@ -1,0 +1,9 @@
+substitutions:
+  _IMAGE: risk-tracker-cloud-scanner:latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'cloud-scanner/Dockerfile', '-t', '${_IMAGE}', '.']
+
+images:
+  - '${_IMAGE}'
