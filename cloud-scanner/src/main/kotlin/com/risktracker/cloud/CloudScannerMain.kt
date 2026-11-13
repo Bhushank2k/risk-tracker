@@ -25,6 +25,7 @@ private object BinanceRest {
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
     private val paceLock = Any()
     private var nextRequestAt = 0L
+    private var blockedUntil = 0L
 
     fun get(path: String): String {
         for (attempt in 0..2) {
@@ -42,7 +43,8 @@ private object BinanceRest {
             if (code == 429 || code >= 500) {
                 if (attempt == 2) throw IllegalStateException("Binance HTTP $code: ${response.body().take(240)}")
                 val wait = response.headers().firstValue("Retry-After").orElse("2").toLongOrNull()?.coerceIn(1, 60) ?: 2L
-                Thread.sleep(wait * 1_000L); continue
+                synchronized(paceLock) { blockedUntil = maxOf(blockedUntil, System.currentTimeMillis() + wait * 1_000L) }
+                continue
             }
             throw IllegalStateException("Binance HTTP $code: ${response.body().take(240)}")
         }
@@ -51,7 +53,8 @@ private object BinanceRest {
 
     private fun pace() = synchronized(paceLock) {
         val now = System.currentTimeMillis()
-        val wait = nextRequestAt - now
+        val waitUntil = maxOf(nextRequestAt, blockedUntil)
+        val wait = waitUntil - now
         if (wait > 0) Thread.sleep(wait)
         nextRequestAt = System.currentTimeMillis() + 120L
     }
