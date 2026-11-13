@@ -987,11 +987,6 @@ fun DailyTradeIdeasScreen() {
                     if (scanExpanded) {
                         Text("Source · Binance Futures public market data. The scanner discovers all active USDT perpetuals, filters by 24h quote volume, then fully validates every eligible pair in bounded parallel batches. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
-                            ScannerStat("SHORT", shortCount.toString(), Modifier.weight(1f))
-                            ScannerStat("No direction", waitCount.toString(), Modifier.weight(1f))
-                        }
                         HorizontalDivider()
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1036,7 +1031,8 @@ fun DailyTradeIdeasScreen() {
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "LONG", "SHORT", "WAIT").forEach { option ->
-                        FilterChip(selected = directionFilter == option, onClick = { directionFilter = option }, label = { Text(option) })
+                        FilterChip(selected = directionFilter == option, onClick = { directionFilter = option },
+                            label = { Text(if (option == "WAIT") "NO BIAS" else option) })
                     }
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
