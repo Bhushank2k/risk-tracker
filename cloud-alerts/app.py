@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 _seen: dict[str, float] = {}
+_alerts: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
 
 class AlertError(ValueError): pass
@@ -68,6 +69,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_GET(self)->None:
         if self.path=="/healthz": return self.reply(200,{"ok":True,"service":"telegram-alert-relay"})
+        if self.path=="/alerts":
+            expected=os.getenv("ALERT_API_TOKEN","")
+            if not expected or self.headers.get("Authorization","")!=f"Bearer {expected}":
+                return self.reply(401,{"error":"unauthorized"})
+            with _lock:
+                rows=sorted(_alerts.values(),key=lambda item:item["created_at"],reverse=True)
+            return self.reply(200,{"alerts":rows[:100],"updated_at":time.time()})
         self.reply(404,{"error":"not_found"})
     def do_POST(self)->None:
         if self.path!="/alerts": return self.reply(404,{"error":"not_found"})
@@ -80,6 +88,11 @@ class Handler(BaseHTTPRequestHandler):
             payload=validate_alert(json.loads(self.rfile.read(size)))
             if not remember_once(payload["alert_id"]): return self.reply(200,{"ok":True,"duplicate":True})
             send_telegram(payload)
+            with _lock:
+                _alerts[payload["alert_id"]] = payload
+                if len(_alerts) > 100:
+                    oldest = min(_alerts, key=lambda key: _alerts[key]["created_at"])
+                    _alerts.pop(oldest, None)
             self.reply(202,{"ok":True,"delivered":True})
         except (AlertError,ValueError,json.JSONDecodeError) as exc: self.reply(400,{"error":str(exc)})
         except (KeyError,urllib.error.URLError,TimeoutError,RuntimeError): self.reply(502,{"error":"telegram_delivery_failed"})
