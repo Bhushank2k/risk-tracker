@@ -1,0 +1,28 @@
+name: Cloud alert service
+
+on:
+  pull_request:
+    paths:
+      - "cloud-alerts/**"
+      - ".github/workflows/cloud-alerts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cloud-alerts/**"
+      - ".github/workflows/cloud-alerts.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud-alerts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: python -m unittest -v
+      - name: Build container
+        run: docker build -t risk-tracker-alerts:test .
