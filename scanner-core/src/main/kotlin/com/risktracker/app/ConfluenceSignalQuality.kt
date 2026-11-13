@@ -59,6 +59,20 @@ package com.risktracker.app
         (if (stopGeometryConfirmed) 5 else 0)
 }
 
+/** Require quiet pullback volume followed by renewed participation on the reclaim candle. */
+ fun confluencePullbackVolumeConfirmed(previousVolume: Double, reclaimVolume: Double, baselineVolume: Double): Boolean =
+    previousVolume.isFinite() && reclaimVolume.isFinite() && baselineVolume.isFinite() &&
+        previousVolume >= 0.0 && baselineVolume > 0.0 && previousVolume < baselineVolume &&
+        reclaimVolume >= baselineVolume && reclaimVolume >= previousVolume
+
+/** Reject sudden volatility expansion relative to the preceding ATR window. */
+ fun confluenceVolatilityExpansionAcceptable(currentAtr: Double, baselineAtr: Double, maxExpansion: Double = 1.8): Boolean =
+    currentAtr.isFinite() && baselineAtr.isFinite() && maxExpansion.isFinite() &&
+        currentAtr > 0.0 && baselineAtr > 0.0 && maxExpansion >= 1.0 && currentAtr <= baselineAtr * maxExpansion
+
+/** A candle is confirmed only after its exchange close timestamp has passed. */
+ fun isTradeIdeaCandleClosed(closeTime: Long, now: Long): Boolean = closeTime > 0L && closeTime < now
+
 /** Reject an execution price that has already run too far from the setup level. */
  fun confluenceEntryWithinExtension(entry: Double, setupLevel: Double, atr: Double): Boolean =
     entry.isFinite() && setupLevel.isFinite() && atr.isFinite() && atr > 0.0 &&
