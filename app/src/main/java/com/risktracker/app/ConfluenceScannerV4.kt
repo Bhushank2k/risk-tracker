@@ -75,6 +75,8 @@ internal fun isConfluenceReady(
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
     notExtended && volume && entryConfirmed && structureConfirmed && score >= 75
 
+internal fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
+
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
 internal object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
@@ -97,7 +99,7 @@ internal object ConfluenceScannerV4 {
         val bias2Label = "4H context"
         val setupLabel = "15M"
         val executionLabel = "5M"
-        val horizonSupported = horizon == "Intraday"
+        val horizonSupported = isTradeIdeaHorizonSupported(horizon)
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
