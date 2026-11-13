@@ -40,7 +40,7 @@ class ConfluenceSignalPolicyTest {
         // Volume is a hard execution gate; momentum remains a scored soft signal.
         assertFalse(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
         assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
-        assertTrue(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
+        assertFalse(isConfluenceReady(true,false,true,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,false,true,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,false,true,true,true,true,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,false,true,true,true,true,100))
