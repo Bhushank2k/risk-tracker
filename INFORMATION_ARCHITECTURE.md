@@ -19,22 +19,22 @@ Use one authoritative screen for each kind of information. Other screens may sho
 
 ## Navigation structure
 
-Primary bottom navigation is limited to the four decision-making destinations:
+Bottom navigation contains five destinations:
 - Market Overview
 - Daily Trade Ideas
 - Risk Monitor
 - Trade History
+- Explore
 
-The app bar's Explore action groups specialist destinations without competing with primary navigation:
+Explore is a dedicated bottom-navigation screen, not a top-app-bar action. It presents specialist destinations as compact, colorful two-column cards grouped by task:
 - Trading: Live positions/orders and post-trade reviews.
-- Performance: P&L Calendar and Scanner Performance Lab.
-- Market Research: Market Activity Lab (public market data, no account credentials).
-- Ideas & Risk Tools: Daily Trade Ideas, position calculator, Trade Risk Gate, risk alerts, scenario lab and target planner.
+- Performance: P&L Calendar, Scanner Performance Lab and Market Activity Lab.
+- Ideas & Risk Tools: Confirmed Reversal Signals, Cloud Alerts, position calculator, risk alerts and scenario lab.
 - Connections & Account: Binance Sync/imports, sync health and account activity/statements.
-- Records & Reports: Crypto Tax Report and Ledger Audit.
+- Records & Reports: Crypto Tax Report.
 - App: Settings and About.
 
-The four primary destinations are not repeated in Explore. Workspace and Quick Access shortcut panels are removed; specialist destinations remain grouped in Explore. Grouping destinations does not merge their underlying workflows or data sources.
+The four core destinations are not repeated in Explore. Workspace and Quick Access shortcut panels are removed; specialist destinations remain grouped in Explore. The top app bar contains the current screen title and date/time only. Grouping destinations does not merge their underlying workflows or data sources.
 
 ## Duplication rules
 
