@@ -159,8 +159,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
     0 -> 0 // Market overview
     1 -> 21 // Daily trade ideas
@@ -168,6 +166,7 @@ internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
     else -> 1 // Trade history
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val context = LocalContext.current
