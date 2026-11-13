@@ -33,6 +33,15 @@ class AlertTests(unittest.TestCase):
         self.assertTrue(app.claim_once("retryable", 12))
         app.release_claim("retryable")
 
+    def test_dedup_commits_only_after_delivery(self):
+        self.assertTrue(app.claim_once("delivered", 10))
+        self.assertNotIn("delivered", app._seen)
+        delivered = dict(self.payload, alert_id="delivered")
+        app.complete_once(delivered, 11)
+        self.assertIn("delivered", app._seen)
+        self.assertIn("delivered", app._alerts)
+        self.assertFalse(app.claim_once("delivered", 12))
+
     def test_dedup_and_expiry(self):
         self.assertTrue(app.remember_once("x",10))
         self.assertFalse(app.remember_once("x",11))
