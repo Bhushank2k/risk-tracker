@@ -36,7 +36,7 @@ class SmcStructureEngineTest {
         val sweep = detectLatestSmcLiquiditySweep(reclaim, atr = 1.0, lookback = 20)
         assertNotNull(sweep)
         assertEquals(SmcLiquidityType.SELL_SIDE, sweep!!.type)
-        assertEquals(23, sweep.candleIndex)
+        assertEquals(reclaim.lastIndex, sweep.candleIndex)
     }
 
 
