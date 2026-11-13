@@ -46,8 +46,10 @@ fun evaluateTradeIdeaSmc(
             !it.close.isFinite() || it.high < it.low }) return TradeIdeaSmcEvidence()
 
     val long = side == "LONG"
-    val sweep = hasTradeIdeaLiquiditySweep(candles, side)
-    val structure = hasTradeIdeaSmcStructureBreak(candles, side)
+    val sweepType = detectLatestSmcLiquiditySweep(candles, atr)?.type
+    val sweep = if (side == "LONG") sweepType == SmcLiquidityType.SELL_SIDE
+        else sweepType == SmcLiquidityType.BUY_SIDE
+    val structure = hasTradeIdeaSmcStructureBreak(candles, side, atr)
     val fvg = hasTradeIdeaSmcFvgRetest(candles, side, lookback)
     val orderBlock = hasTradeIdeaSmcOrderBlockRetest(candles, side, atr, lookback)
     val range = candles.takeLast(lookback)
@@ -61,17 +63,11 @@ fun evaluateTradeIdeaSmc(
 }
 
 /** A close beyond the latest confirmed two-left/two-right swing level. */
-fun hasTradeIdeaSmcStructureBreak(candles: List<V2Candle>, side: String): Boolean {
-    if (side !in setOf("LONG", "SHORT") || candles.size < 9) return false
-    val lastIndex = candles.lastIndex
-    val highs = mutableListOf<Double>()
-    val lows = mutableListOf<Double>()
-    for (i in 2 until lastIndex - 1) {
-        if ((i - 2..i + 2).filter { it != i }.all { candles[i].high > candles[it].high }) highs.add(candles[i].high)
-        if ((i - 2..i + 2).filter { it != i }.all { candles[i].low < candles[it].low }) lows.add(candles[i].low)
-    }
-    return if (side == "LONG") highs.isNotEmpty() && candles.last().close > highs.last()
-    else lows.isNotEmpty() && candles.last().close < lows.last()
+fun hasTradeIdeaSmcStructureBreak(candles: List<V2Candle>, side: String, atr: Double? = null): Boolean {
+    if (side !in setOf("LONG", "SHORT")) return false
+    val event = analyzeSmcStructure(candles, atr = atr).event ?: return false
+    return if (side == "LONG") event.direction == SmcDirection.BULLISH
+    else event.direction == SmcDirection.BEARISH
 }
 
 /** Detect a recent three-candle imbalance whose zone is being revisited now. */
