@@ -401,7 +401,7 @@ fun TradingAnalyticsScreen(
                     if(decisiveCount < 30) Text("Suggestion: treat win rate and expectancy as provisional until you have at least 30 realized close orders.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                     val discrepancies = reconciledDaily.filter { (it.discrepancy ?: 0.0) > 1.0 }
                     if(discrepancies.isNotEmpty()) {
-                        Text("P&L source mismatches over $1: ${discrepancies.size} day(s). Review the manual-vs-Binance records before trusting totals.",
+                        Text("P&L source mismatches over USD 1: ${discrepancies.size} day(s). Review the manual-vs-Binance records before trusting totals.",
                             color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                         discrepancies.takeLast(3).asReversed().forEach { row ->
                             Text("${row.date}: Binance ${row.binancePnl?.usd()} vs manual ${row.manualPnl?.usd()}",
