@@ -1654,26 +1654,79 @@ private fun TradeIdeaCard(
             if (expanded) {
                 HorizontalDivider()
                 HistoricalOutcomePanel(idea)
-                if (idea.side == "LONG" || idea.side == "SHORT") EntryGuidancePanel(liveIdea, snapshotAgeMs)
+                Text("WHY THIS SETUP?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    idea.setup + " · " + idea.side + " · " + idea.score + "/100 confluence",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (idea.side == "LONG" || idea.side == "SHORT") {
+                    val signedDriftPct = (if (idea.side == "LONG") 1.0 else -1.0) *
+                        (livePrice - idea.entry) / idea.entry * 100.0
+                    ScannerMetric("Live price vs planned entry", "%+.2f%%".format(Locale.US, signedDriftPct))
+                    if (entryTooFarFromPlan(liveIdea)) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                "PRICE DRIFT · DO NOT CHASE. Live price is outside the permitted entry distance. Wait for a fresh pullback and a new scan confirmation.",
+                                modifier = Modifier.padding(10.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        Text(
+                            "Price remains within the scanner's entry-distance limit. Recheck the live quote and confirmation before acting.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    EntryGuidancePanel(liveIdea, snapshotAgeMs)
+                }
                 val trendLabels = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) listOf("1H", "15M", "1M")
                     else if (idea.horizon.startsWith("Swing", ignoreCase = true)) listOf("1D", "4H", "15M")
                     else listOf("4H", "1H", "5M")
                 val setupInterval = if (idea.horizon.startsWith("Scalp", ignoreCase = true)) "5M"
                     else if (idea.horizon.startsWith("Swing", ignoreCase = true)) "1H" else "15M"
-                Text("Trend: " + trendLabels[0] + " " + idea.bias4h + " · " + trendLabels[1] + " " + idea.bias1h + " · " + trendLabels[2] + " " + idea.bias5m, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                Text(setupInterval + " RSI " + "%.1f".format(Locale.US, idea.rsi) + " · volume " + "%.2f".format(Locale.US, idea.volumeRatio) + "× recent average", style = MaterialTheme.typography.bodySmall)
+                ScannerMetric("Trend alignment", trendLabels[0] + " " + idea.bias4h + " · " + trendLabels[1] + " " + idea.bias1h + " · " + trendLabels[2] + " " + idea.bias5m)
+                ScannerMetric(setupInterval + " RSI", "%.1f".format(Locale.US, idea.rsi))
+                ScannerMetric("Relative volume", "%.2f× recent average".format(Locale.US, idea.volumeRatio))
+                ScannerMetric("Volatility", "%.2f%% ATR/range".format(Locale.US, idea.volatilityPct))
                 ScannerMetric("Order-book spread", idea.spreadBps?.let { "%.1f bps".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Depth imbalance", idea.bookImbalance?.let { "%+.2f".format(Locale.US, it) } ?: "Unavailable")
                 ScannerMetric("Funding rate", idea.fundingRate?.let { "%+.4f%%".format(Locale.US, it * 100.0) } ?: "Unavailable")
                 ScannerMetric("Open-interest change", idea.oiChangePct?.let { "%+.2f%%".format(Locale.US, it) } ?: "Unavailable")
+                if (idea.strategyChecks.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Scanner checks", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    idea.strategyChecks.forEach { (label, passed) ->
+                        val status = when (passed) { true -> "PASS"; false -> "WAIT"; null -> "N/A" }
+                        val statusColor = when (passed) {
+                            true -> MaterialTheme.colorScheme.primary
+                            false -> MaterialTheme.colorScheme.error
+                            null -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Text(status, style = MaterialTheme.typography.labelSmall, color = statusColor, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                if (idea.reasons.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Signal reasons", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
+                }
                 HorizontalDivider()
                 Text("Historical replay · " + idea.backtest.trades + " closed samples (30 required for estimates)", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
                 Text(if (!idea.backtest.hasUsableEstimate) "Win/loss estimate is hidden until at least 30 completed historical examples are available. The replay currently has " + idea.backtest.trades + "."
                     else "Observed historical win rate " + "%.1f".format(Locale.US, idea.backtest.winRatePercent) + "% · average " +
                         "%+.2f".format(Locale.US, idea.backtest.averageR) + "R.",
                     style = MaterialTheme.typography.bodySmall)
-                idea.reasons.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             }
         }
