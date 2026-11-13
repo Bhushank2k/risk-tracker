@@ -110,8 +110,8 @@ object MarketActivityPreferences {
         val close = analysis.last.close
         val invalidated = when (previousState) {
             ActivityState.WATCH -> when (previousDirection) {
-                ActivityDirection.BULLISH -> analysis.rangeLow != null && close < analysis.rangeLow
-                ActivityDirection.BEARISH -> analysis.rangeHigh != null && close > analysis.rangeHigh
+                ActivityDirection.BULLISH -> previous?.optDouble("rangeLow")?.let { close < it } ?: false
+                ActivityDirection.BEARISH -> previous?.optDouble("rangeHigh")?.let { close > it } ?: false
                 else -> false
             }
             ActivityState.CONFIRMED_HISTORICAL_BREAKOUT -> when (previousDirection) {
