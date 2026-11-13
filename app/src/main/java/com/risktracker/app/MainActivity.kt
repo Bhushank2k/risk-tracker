@@ -166,6 +166,9 @@ internal fun primaryDestinationForNavItem(index: Int): Int = when (index) {
     else -> 1 // Trade history
 }
 
+internal fun isPrimaryNavigationDestination(destination: Int): Boolean =
+    destination == 0 || destination == 21 || destination == 11 || destination == 1
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
@@ -236,11 +239,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Market Activity Lab" to 28
         ),
         "IDEAS & RISK TOOLS" to listOf(
-            "Daily Trade Ideas" to 21,
             "Confirmed Reversal Signals" to 26,
             "Cloud Alerts" to 27,
             "Position & leverage calculator" to 2,
-            "Trade Risk Gate" to 11,
             "Risk alerts" to 19,
             "Risk Scenario Lab" to 13,
         ),
@@ -256,7 +257,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Settings" to 7,
             "About Risk Tracker" to 5
         )
-    )
+    ).map { (group, destinations) ->
+        group to destinations.filterNot { isPrimaryNavigationDestination(it.second) }
+    }.filter { it.second.isNotEmpty() }
 
     val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 11 -> 2; 1 -> 3; else -> -1 }
     Scaffold(
@@ -518,8 +521,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             ) {
                 Text("Explore Risk Tracker", style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold)
-                Text("All tools and destinations", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -726,15 +727,6 @@ fun LiveTradesScreen() {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (status.contains("not connected", true) || status.contains("Could not", true) || status.contains("failed", true)) {
-                        Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-        }
         if (liveTrades.isNotEmpty()) {
             item {
                 val futuresPositions = liveTrades.filter { it.market == "USDⓈ-M Futures" }
@@ -743,7 +735,6 @@ fun LiveTradesScreen() {
                 val futuresNotional = futuresPositions.sumOf { it.quantity * it.markPrice }
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("LIVE ACCOUNT SUMMARY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Column(Modifier.weight(1f)) {
                                 Text("Open Futures positions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -864,7 +855,7 @@ fun BalanceChart(entries: List<PnlEntry>) {
     val hi = points.maxOrNull() ?: 0.0
     val line = MaterialTheme.colorScheme.primary
     RiskCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(if (metric == "Balance") "Balance trend" else "Cumulative net P&L",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -877,7 +868,7 @@ fun BalanceChart(entries: List<PnlEntry>) {
                     FilterChip(selected = range == option, onClick = { range = option }, label = { Text(option) })
                 }
             }
-            Canvas(Modifier.fillMaxWidth().height(132.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(112.dp)) {
                 val rangeValue = (hi - lo).takeIf { it > 0 } ?: 1.0
                 val path = Path()
                 points.forEachIndexed { i, value ->
@@ -892,10 +883,6 @@ fun BalanceChart(entries: List<PnlEntry>) {
                 Text("Low ${lo.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("High ${hi.usd()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(
-                if (range == "All") "All recorded entries" else "Window is based on the latest saved entry date",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
