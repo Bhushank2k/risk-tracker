@@ -39,7 +39,33 @@ jobs:
       - name: Test scanner and build it
         run: gradle :scanner-core:test :cloud-scanner:test :cloud-scanner:installDist --no-daemon
 
-      - name: Scan Binance markets and send READY alerts to Telegram
+      - name: Probe Kraken public market-data access from GitHub runner
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://futures.kraken.com/derivatives/api/v3"
+          charts="https://futures.kraken.com/api/charts/v1"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          curl --fail --silent --show-error --max-time 20 "$base/instruments" -o "$tmp/instruments.json"
+          jq -e '.result == "success" and (.instruments | length > 0)' "$tmp/instruments.json" >/dev/null
+          echo "Kraken instruments: OK"
+
+          curl --fail --silent --show-error --max-time 20 "$base/tickers" -o "$tmp/tickers.json"
+          jq -e '.result == "success" and (.tickers | length > 0)' "$tmp/tickers.json" >/dev/null
+          echo "Kraken tickers: OK"
+
+          curl --fail --silent --show-error --max-time 20 "$base/orderbook?symbol=PF_XBTUSD" -o "$tmp/orderbook.json"
+          jq -e '.result == "success" and (.orderBook.bids | length > 0) and (.orderBook.asks | length > 0)' "$tmp/orderbook.json" >/dev/null
+          echo "Kraken futures order book: OK"
+
+          curl --fail --silent --show-error --max-time 20 "$charts/trade/PF_XBTUSD/1h?count=3" -o "$tmp/candles.json"
+          jq -e '(.candles | length > 0)' "$tmp/candles.json" >/dev/null
+          echo "Kraken futures candles: OK"
+
+      - name: Scan markets and send READY alerts to Telegram
         if: github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
