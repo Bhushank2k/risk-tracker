@@ -35,11 +35,11 @@ object MarketActivityEngine {
         val vwapBars=cs.takeLast(20);val vd=vwapBars.sumOf{it.volume};val vw=if(vd>0)vwapBars.sumOf{((it.high+it.low+it.close)/3)*it.volume}/vd else null
         return IndicatorSnapshot(e9,e20,e50,e200,rsi(c),ml.lastOrNull{it!=null},ms,up,mid,low,if(up!=null&&low!=null&&mid!=null&&mid!=0.0)(up-low)/mid*100 else null,atr,if(atr!=null)atr/c.last()*100 else null,vw,hv,if(vb!=null&&vb>0)cs.last().volume/vb else null,vb)
     }
-    fun analyze(symbol:String,interval:MarketInterval,cs:List<MarketCandle>):ActivityAnalysis? {
+    fun analyze(symbol:String,interval:MarketInterval,cs:List<MarketCandle>,thresholds:ActivityThresholds=ActivityThresholds()):ActivityAnalysis? {
         val c=cs.filter{listOf(it.open,it.high,it.low,it.close,it.volume).all{v->v.isFinite()}&&it.close>0&&it.volume>=0};if(c.size<30)return null
         val x=c.last();val p=c.dropLast(1).takeLast(20);val hi=p.maxOf{it.high};val lo=p.minOf{it.low};val range=(hi-lo)/lo*100
         val ind=indicators(c);val prev=indicators(c.dropLast(1)).bbWidthPercent;val contracted=ind.bbWidthPercent!=null&&prev!=null&&ind.bbWidthPercent<prev
-        val compressed=range<2.5;val up=x.close>hi&&x.close>x.open;val down=x.close<lo&&x.close<x.open;val breakout=up||down
+        val compressed=range<thresholds.rangeCompressionPercent;val up=x.close>hi&&x.close>x.open;val down=x.close<lo&&x.close<x.open;val breakout=up||down
         val dir=when{up->ActivityDirection.BULLISH;down->ActivityDirection.BEARISH;ind.ema9!=null&&ind.ema20!=null&&ind.ema9>ind.ema20->ActivityDirection.BULLISH;ind.ema9!=null&&ind.ema20!=null&&ind.ema9<ind.ema20->ActivityDirection.BEARISH;else->ActivityDirection.NEUTRAL}
         val rv=ind.relativeVolume?:0.0;val rvPts=when{rv>=3->20;rv>=2->16;rv>=1.5->12;rv>=1.2->7;else->0}
         val atrBase=c.dropLast(1).takeLast(20).mapIndexedNotNull{i,_->val end=c.size-21+i;if(end>=14)indicators(c.take(end+1)).atr14 else null}.takeIf{it.isNotEmpty()}?.average()
@@ -50,7 +50,7 @@ object MarketActivityEngine {
         val ep=if(ind.ema9!=null&&ind.ema20!=null&&ind.ema50!=null&&((dir==ActivityDirection.BULLISH&&ind.ema9>ind.ema20&&ind.ema20>ind.ema50)||(dir==ActivityDirection.BEARISH&&ind.ema9<ind.ema20&&ind.ema20<ind.ema50)))15 else 0
         val mp=if(ind.macd!=null&&ind.macdSignal!=null&&((dir==ActivityDirection.BULLISH&&ind.macd>ind.macdSignal)||(dir==ActivityDirection.BEARISH&&ind.macd<ind.macdSignal)))10 else 0
         val rp=if(ind.rsi14!=null&&((dir==ActivityDirection.BULLISH&&ind.rsi14 in 50.0..70.0)||(dir==ActivityDirection.BEARISH&&ind.rsi14 in 30.0..50.0)))10 else 0
-        val state=when{breakout&&rv>=1.2->ActivityState.CONFIRMED_HISTORICAL_BREAKOUT;compressed&&(rv>=1.2||contracted||ar<0.8)->ActivityState.WATCH;else->ActivityState.NO_SETUP}
+        val state=when{breakout&&rv>=thresholds.relativeVolumeBreakout->ActivityState.CONFIRMED_HISTORICAL_BREAKOUT;compressed&&(rv>=thresholds.relativeVolumeWatch||contracted||ar<0.8)->ActivityState.WATCH;else->ActivityState.NO_SETUP}
         return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break"))
     }
     data class ReplayStats(val setups:Int,val successful:Int,val failed:Int,val falsePositiveRate:Double?,val averageReturnPercent:Double?,val maxAdversePercent:Double?,val maxFavorablePercent:Double?)

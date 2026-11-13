@@ -23,7 +23,11 @@ import java.util.Locale
 fun MarketActivityLabScreen() {
     val context=LocalContext.current
     val prefs=remember(context){context.getSharedPreferences("market_activity_lab_v1",0)}
-    val symbols=listOf("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","LINKUSDT")
+    var config by remember { mutableStateOf(MarketActivityPreferences.loadConfig(context)) }
+    var symbolsDraft by remember { mutableStateOf(config.symbols.joinToString(", ")) }
+    var configStatus by remember { mutableStateOf("") }
+    var events by remember { mutableStateOf(MarketActivityPreferences.loadEvents(context)) }
+    val symbols=config.symbols
     var interval by remember{mutableStateOf(MarketInterval.M15)}
     var rows by remember{mutableStateOf<List<ActivityAnalysis>>(emptyList())}
     var tickerMap by remember{mutableStateOf<Map<String,MarketTicker>>(emptyMap())}
@@ -40,8 +44,10 @@ fun MarketActivityLabScreen() {
         loading=true
         scope.launch{
             tickerMap=runCatching{MarketActivityDataSource.tickers()}.getOrDefault(emptyMap())
-            val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval))}.getOrNull()}}.awaitAll()
-            rows=result.mapNotNull{it.second};errors=result.filter{it.second==null}.map{it.first}
+            val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval),config.thresholds)}.getOrNull()}}.awaitAll()
+            result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
+            events=MarketActivityPreferences.loadEvents(context)
+            rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=result.filter{it.second==null}.map{it.first}
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
             updated=System.currentTimeMillis()
             loading=false
@@ -61,6 +67,29 @@ fun MarketActivityLabScreen() {
             Text("Public Binance USD-M Futures data · read-only · no orders",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         item{Card{Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("Scanner settings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+            OutlinedTextField(value=symbolsDraft,onValueChange={symbolsDraft=it},modifier=Modifier.fillMaxWidth(),label={Text("Binance USD-M symbols")},supportingText={Text("Comma-separated · up to 40 pairs")},minLines=2)
+            Text("Range compression · %.1f%%".format(config.thresholds.rangeCompressionPercent),style=MaterialTheme.typography.bodySmall)
+            Slider(value=config.thresholds.rangeCompressionPercent.toFloat(),onValueChange={config=config.copy(thresholds=config.thresholds.copy(rangeCompressionPercent=it.toDouble()))},valueRange=0.5f..8f)
+            Text("WATCH relative volume · %.1f×".format(config.thresholds.relativeVolumeWatch),style=MaterialTheme.typography.bodySmall)
+            Slider(value=config.thresholds.relativeVolumeWatch.toFloat(),onValueChange={config=config.copy(thresholds=config.thresholds.copy(relativeVolumeWatch=it.toDouble()))},valueRange=1f..5f)
+            Text("Breakout relative volume · %.1f×".format(config.thresholds.relativeVolumeBreakout),style=MaterialTheme.typography.bodySmall)
+            Slider(value=config.thresholds.relativeVolumeBreakout.toFloat(),onValueChange={config=config.copy(thresholds=config.thresholds.copy(relativeVolumeBreakout=it.toDouble()))},valueRange=1f..5f)
+            Text("Minimum scanner score · ${config.minimumScore}/100",style=MaterialTheme.typography.bodySmall)
+            Slider(value=config.minimumScore.toFloat(),onValueChange={config=config.copy(minimumScore=it.toInt())},valueRange=0f..80f,steps=15)
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){
+                Button(onClick={
+                    runCatching {
+                        val next=config.copy(symbols=MarketActivityPreferences.parseSymbols(symbolsDraft))
+                        MarketActivityPreferences.saveConfig(context,next)
+                        config=next
+                        if(selected !in next.symbols) selected=next.symbols.first()
+                        configStatus="Settings saved."
+                        refresh()
+                    }.onFailure{configStatus=it.message ?: "Unable to save settings."}
+                }){Text("Save & scan")}
+            }
+            if(configStatus.isNotBlank())Text(configStatus,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Market scanner",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold);TextButton(onClick={refresh()},enabled=!loading){Text(if(loading)"Loading…" else "Refresh")}}
             Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){MarketInterval.values().forEach{tf->FilterChip(selected=interval==tf,onClick={interval=tf},label={Text(tf.label)})}}
             if(updated>0)Text("Updated "+SimpleDateFormat("HH:mm:ss",Locale.getDefault()).format(Date(updated)),style=MaterialTheme.typography.labelSmall)
@@ -77,6 +106,27 @@ fun MarketActivityLabScreen() {
             }
             if(rows.isEmpty()&&!loading)Text("No candle data loaded. Check connection and refresh.",style=MaterialTheme.typography.bodySmall)
         }}}
+        item {
+            Card { Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                    Text("Setup & alert history",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+                    TextButton(onClick={MarketActivityPreferences.clearEvents(context);events=emptyList()}) { Text("Clear") }
+                }
+                Text("Transitions are saved on this device. Invalidation is based on a completed candle closing back through the setup range; this is an in-app history, not a push notification.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(events.isEmpty()) Text("No setup transitions recorded yet.",style=MaterialTheme.typography.bodySmall)
+                events.take(12).forEach { event ->
+                    Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                            Text(event.symbol+" · "+event.interval.label,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.bodySmall)
+                            Text(event.state.name.replace('_',' '),color=activityStateColor(event.state),style=MaterialTheme.typography.labelSmall)
+                        }
+                        Text(event.direction.name+" · "+event.message+" · "+String.format(Locale.US,"%.5f",event.price),style=MaterialTheme.typography.bodySmall)
+                        Text(SimpleDateFormat("MMM d, HH:mm",Locale.getDefault()).format(Date(event.createdAt)),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider()
+                }
+            } }
+        }
         if(a!=null){
             item{Card{Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 Text(a.symbol+" · "+interval.label,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
@@ -112,7 +162,7 @@ fun MarketActivityLabScreen() {
                 Text("Causal replay enters at the next candle open, exits after 12 candles and deducts configurable-in-code fee/slippage assumptions. Small samples are not predictive evidence.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }}}
         }
-        item{Text("WATCH is an observed developing anomaly, not a price forecast. Confirmed historical breakout means a completed candle closed outside the previous 20-candle range with relative-volume support. Bullish and bearish observations are both supported. INVALIDATED requires a persisted setup lifecycle and is not yet emitted by this initial implementation.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        item{Text("WATCH is an observed developing anomaly, not a price forecast. Confirmed historical breakout means a completed candle closed outside the previous 20-candle range with configured relative-volume support. Bullish and bearish observations are both supported. Setup transitions and invalidations are stored locally; they do not trigger push notifications.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
 private fun activityStateColor(s:ActivityState)=when(s){ActivityState.WATCH->Color(0xFFE5AC52);ActivityState.CONFIRMED_HISTORICAL_BREAKOUT->Color(0xFF35B77A);ActivityState.INVALIDATED->Color(0xFFE16B70);ActivityState.NO_SETUP->Color.Gray}

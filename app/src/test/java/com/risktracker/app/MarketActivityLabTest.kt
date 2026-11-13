@@ -42,4 +42,19 @@ class MarketActivityLabTest {
         try { MarketActivityEngine.replay(candles(),horizon=0);fail("Expected invalid horizon") }
         catch(_:IllegalArgumentException) { }
     }
+    @Test fun configuredVolumeThresholdChangesBreakoutClassification(){
+        val result=MarketActivityEngine.analyze(
+            "BTCUSDT",MarketInterval.M15,candles(breakout=true),
+            ActivityThresholds(relativeVolumeBreakout=20.0)
+        )!!
+        assertNotEquals(ActivityState.CONFIRMED_HISTORICAL_BREAKOUT,result.state)
+    }
+    @Test fun symbolParserNormalizesAndRejectsDuplicates(){
+        assertEquals(listOf("BTCUSDT","ETHUSDT"),MarketActivityPreferences.parseSymbols(" btcusdt, ethusdt "))
+        try {
+            MarketActivityPreferences.parseSymbols("BTCUSDT,BTCUSDT")
+            fail("Expected duplicate symbols to be rejected")
+        } catch(_:IllegalArgumentException) { }
+    }
+
 }
