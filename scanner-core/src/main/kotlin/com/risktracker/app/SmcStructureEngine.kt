@@ -148,7 +148,7 @@ fun detectSmcLiquidityLevels(
     if (!validSmcCandles(candles) || !atr.isFinite() || atr <= 0.0 ||
         lookback < 5 || !toleranceAtr.isFinite() || toleranceAtr <= 0.0) return emptyList()
     val start = (candles.size - lookback).coerceAtLeast(0)
-    val minimumPenetration = atr * minimumPenetrationAtr
+    val tolerance = atr * toleranceAtr
     val swings = confirmedSmcSwings(candles, leftBars, rightBars)
         .filter { it.index >= start && it.confirmedAtIndex < candles.lastIndex }
     val output = mutableListOf<SmcLiquidityLevel>()
@@ -192,7 +192,7 @@ fun detectLatestSmcLiquiditySweep(
     if (prior.isEmpty()) return null
     val priorHigh = prior.maxOf { it.high }
     val priorLow = prior.minOf { it.low }
-    val tolerance = atr * toleranceAtr
+    val minimumPenetration = atr * minimumPenetrationAtr
     val body = abs(current.close - current.open)
     val lowerWick = min(current.open, current.close) - current.low
     val upperWick = current.high - max(current.open, current.close)
