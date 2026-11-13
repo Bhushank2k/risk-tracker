@@ -73,7 +73,7 @@ import kotlin.math.min
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && entryConfirmed && structureConfirmed && score >= 75
+    notExtended && volume && entryConfirmed && score >= 65
 
  fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
 
