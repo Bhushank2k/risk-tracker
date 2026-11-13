@@ -14,7 +14,8 @@ Use one authoritative screen for each kind of information. Other screens may sho
 | Account Activity | Deposits, withdrawals, transfers and statement records | Net external cash flow by asset | Trade journal and tax calculations |
 | Tax Report | Financial-year trade dataset, tax review and exports | Imported transaction counts and data quality | General portfolio analytics |
 | Ledger Audit | Historical import coverage, duplicate counts and source reconciliation | Imported totals | Daily P&L and journal estimates |
-| Market Activity Lab | Public futures candle research, indicator scoring and historical replay | Market activity observations and source freshness | Existing account sync and trade journal records |\n| Risk tools | User inputs, limits, scenarios and calculated risk | Relevant account equity where available | Duplicated portfolio dashboards |
+| Market Activity Lab | Public futures candle research, indicator scoring and historical replay | Market activity observations and source freshness | Existing account sync and trade journal records |
+| Risk tools | User inputs, limits, scenarios and calculated risk | Relevant account equity where available | Duplicated portfolio dashboards |
 
 ## Navigation structure
 
@@ -26,7 +27,8 @@ Primary bottom navigation remains limited to four frequent destinations:
 
 The Explore sheet groups specialist destinations without repeating primary navigation:
 - Trading: Live positions/orders and post-trade reviews.
-- Performance: P&L Calendar and Scanner Performance Lab.\n- Market Research: Market Activity Lab (public market data, no account credentials).
+- Performance: P&L Calendar and Scanner Performance Lab.
+- Market Research: Market Activity Lab (public market data, no account credentials).
 - Ideas & Risk Tools: Daily Trade Ideas, position calculator, Trade Risk Gate, risk alerts, scenario lab and target planner.
 - Connections & Account: Binance Sync/imports, sync health and account activity/statements.
 - Records & Reports: Crypto Tax Report and Ledger Audit.
