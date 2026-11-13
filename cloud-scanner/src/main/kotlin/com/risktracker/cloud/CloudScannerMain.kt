@@ -62,8 +62,8 @@ private object BybitRest {
                     open = row.getString(1).toDouble(), high = row.getString(2).toDouble(),
                     low = row.getString(3).toDouble(), close = row.getString(4).toDouble(),
                     volume = row.getString(5).toDouble(), closeTime = row.getString(0).toLong() +
-                        when (interval) { "240" -> 4L; "60" -> 1L; "15" -> 0L; else -> 0L } *
-                        60L * 60L * 1000L
+                        when (interval) { "240" -> 240L; "60" -> 60L; "15" -> 15L; "5" -> 5L; else -> error("Unsupported Bybit interval: $interval") } *
+                        60L * 1000L
                 )
             }.getOrNull()
         }.filter { it.closeTime < now && it.close > 0.0 }.sortedBy { it.closeTime }
@@ -181,14 +181,16 @@ private fun postAlert(alert: JSONObject) {
 }
 
 private fun scanCandidate(candidate: Candidate, btcBias: String): ScanResult = try {
-    val h4 = BybitRest.candles(candidate.symbol, "4h", 260)
-    val h1 = BinanceRest.candles(candidate.symbol, "1h", 260)
-    val m15 = BinanceRest.candles(candidate.symbol, "15m", 260)
-    val m5 = BinanceRest.candles(candidate.symbol, "5m", 220)
+    val h4 = BybitRest.candles(candidate.symbol, "240", 260)
+    val h1 = BybitRest.candles(candidate.symbol, "60", 260)
+    val m15 = BybitRest.candles(candidate.symbol, "15", 260)
+    val m5 = BybitRest.candles(candidate.symbol, "5", 220)
     // Fetch the best quote, five-level depth and funding close together for this symbol.
     // A single all-market snapshot at scan start could be minutes old for later symbols.
-    val book = JSONObject(BybitRest.get("/v5/market/tickers?category=linear&symbol=${candidate.symbol}").optJSONArray("list")?.optJSONObject(0) ?: error("Bybit ticker missing"))
-    val premium = JSONObject(BybitRest.get("/v5/market/tickers?category=linear&symbol=${candidate.symbol}").optJSONArray("list")?.optJSONObject(0) ?: error("Bybit ticker missing"))
+    val ticker = BybitRest.get("/v5/market/tickers?category=linear&symbol=\${candidate.symbol}")
+        .optJSONArray("list")?.optJSONObject(0) ?: error("Bybit ticker missing")
+    val book = ticker
+    val premium = ticker
     val depth = JSONObject(BybitRest.get("/v5/market/orderbook?category=linear&symbol=${candidate.symbol}&limit=5"))
     val micro = buildMarketMicrostructure(
         book.optString("bid1Price").toDoubleOrNull(), book.optString("ask1Price").toDoubleOrNull(),
