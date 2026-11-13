@@ -1808,102 +1808,42 @@ private fun ScannerMetric(label: String, value: String) {
 @Composable
 private fun HistoricalOutcomePanel(idea: TradeIdea) {
     val stats = idea.backtest
-    val sideLabel = if (idea.side == "WAIT") "Combined LONG + SHORT replay" else idea.side + " historical replay"
+    var expanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
     RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
     ) {
-        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Historical performance", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall, color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall,
+                    color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(stats.trades.toString() + " samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(if (stats.hasUsableEstimate) "%.1f%% win · %+.2fR avg".format(Locale.US, stats.winRatePercent, stats.averageR) else "Need 30 samples for estimate",
+                Text(if (stats.hasUsableEstimate) "%.1f%% win · %+.2fR avg".format(Locale.US, stats.winRatePercent, stats.averageR)
+                    else "Insufficient sample · 30 needed",
                     style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
             }
-            if (stats.hasUsableEstimate) {
+            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text(if (expanded) "Hide breakdown" else "View breakdown")
+            }
+            if (expanded) {
+                Text("LONG " + stats.longTrades + " · " + (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                    "  |  SHORT " + stats.shortTrades + " · " + (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("TREND " + stats.trendTrades + " · " + (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
+                    "  |  RANGE " + stats.rangeTrades + " · " + (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
+                    style = MaterialTheme.typography.labelSmall)
                 Text("Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
                     " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
+                    style = MaterialTheme.typography.labelSmall)
+                Text("Closed-candle replay, not live fills; fees, funding, spread and slippage can reduce results.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("Closed-candle replay, not live fills; fees, funding, spread and slippage can reduce results.",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-mall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "LONG " + stats.longTrades + " trades · " +
-                        (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                        "  |  SHORT " + stats.shortTrades + " trades · " +
-                        (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "TREND " + stats.trendTrades + " trades · " +
-                        (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                        "  |  RANGE " + stats.rangeTrades + " trades · " +
-                        (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "BREAKOUT " + stats.breakoutTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades)) +
-                        " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "PULLBACK " + stats.pullbackTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades)) +
-                        " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "REVERSAL " + stats.reversalTrades + " trades · " +
-                        (setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades)) +
-                        " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                val lower = stats.winRateLower95 ?: 0.0
-                val upper = stats.winRateUpper95 ?: 100.0
-                Text("Approx. 95% uncertainty range for win rate: %.1f–%.1f%%".format(Locale.US, lower, upper),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text("Win/loss estimate hidden — requires at least 30 completed replay samples. Current: " + stats.trades + ".",
-                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
-
-private data class TradeSessionSlot(
-    val name: String,
-    val timeZoneId: String,
-    val openHour: Int,
-    val closeHour: Int
-)
-
-private data class TradeSessionStatus(
-    val slot: TradeSessionSlot,
-    val isActive: Boolean,
-    val nextChangeAtMillis: Long
-)
-
-private fun tradeSessionStatus(slot: TradeSessionSlot, nowMillis: Long): TradeSessionStatus {
-    val zone = TimeZone.getTimeZone(slot.timeZoneId)
-    val localNow = Calendar.getInstance(zone).apply { timeInMillis = nowMillis }
-    val minute = localNow.get(Calendar.HOUR_OF_DAY) * 60 + localNow.get(Calendar.MINUTE)
-    val active = minute in (slot.openHour * 60) until (slot.closeHour * 60)
-    val nextChange = (localNow.clone() as Calendar).apply {
-        set(Calendar.HOUR_OF_DAY, if (active) slot.closeHour else slot.openHour)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-        if (timeInMillis <= nowMillis) add(Calendar.DAY_OF_YEAR, 1)
-    }
-    return TradeSessionStatus(slot, active, nextChange.timeInMillis)
-}
-
 @Composable
 private fun TradeSessionTimingCard() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
