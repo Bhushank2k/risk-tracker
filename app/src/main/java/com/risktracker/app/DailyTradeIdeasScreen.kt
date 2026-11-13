@@ -1844,6 +1844,34 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
         }
     }
 }
+private data class TradeSessionSlot(
+    val name: String,
+    val timeZoneId: String,
+    val openHour: Int,
+    val closeHour: Int
+)
+
+private data class TradeSessionStatus(
+    val slot: TradeSessionSlot,
+    val isActive: Boolean,
+    val nextChangeAtMillis: Long
+)
+
+private fun tradeSessionStatus(slot: TradeSessionSlot, nowMillis: Long): TradeSessionStatus {
+    val zone = TimeZone.getTimeZone(slot.timeZoneId)
+    val localNow = Calendar.getInstance(zone).apply { timeInMillis = nowMillis }
+    val minute = localNow.get(Calendar.HOUR_OF_DAY) * 60 + localNow.get(Calendar.MINUTE)
+    val active = minute in (slot.openHour * 60) until (slot.closeHour * 60)
+    val nextChange = (localNow.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, if (active) slot.closeHour else slot.openHour)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        if (timeInMillis <= nowMillis) add(Calendar.DAY_OF_YEAR, 1)
+    }
+    return TradeSessionStatus(slot, active, nextChange.timeInMillis)
+}
+
 @Composable
 private fun TradeSessionTimingCard() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
