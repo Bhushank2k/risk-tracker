@@ -13,6 +13,10 @@ Risk Tracker is a native Android companion for **honest, auditable crypto-future
 - Historical crypto transaction review and CSV/PDF reports.
 - Local backup/restore and light/dark appearance settings.
 
+## Market Activity Lab
+
+The Market Activity Lab is a research-only screen backed by Binance USD-M Futures public market-data endpoints. It includes a configurable 5m/15m/1h/4h/1d candle interval, a fixed starter universe, a local watchlist, 24-hour ticker context, EMA/RSI/MACD/Bollinger/ATR/VWAP/relative-volume calculations, a weighted 0–100 activity score, a candle/volume view, and a causal fixed-horizon historical replay. It does not place orders or use Binance credentials. WATCH and confirmed historical breakout are descriptive states, not forecasts. See [Market Activity Lab methodology](docs/market-activity-lab.md) for assumptions and limitations.
+
 ## Build and test
 
 Requirements: JDK 17, Android SDK API 36, Gradle 8.13.
