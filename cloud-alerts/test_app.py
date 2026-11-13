@@ -4,6 +4,8 @@ import app
 class AlertTests(unittest.TestCase):
     def setUp(self):
         app._seen.clear()
+        app._inflight.clear()
+        app._alerts.clear()
         self.payload={"alert_id":"a1","symbol":"BTCUSDT","side":"LONG","setup":"Trend pullback",
           "horizon":"Intraday","status":"READY","created_at":1700000000,
           "entry":100.0,"stop":98.0,"target1":104.0,
@@ -24,6 +26,13 @@ class AlertTests(unittest.TestCase):
     def test_rejects_nan_price(self):
         self.payload["entry"]=float("nan")
         with self.assertRaises(app.AlertError): app.validate_alert(self.payload,1700000100)
+    def test_failed_delivery_claim_can_be_retried(self):
+        self.assertTrue(app.claim_once("retryable", 10))
+        self.assertFalse(app.claim_once("retryable", 11))
+        app.release_claim("retryable")
+        self.assertTrue(app.claim_once("retryable", 12))
+        app.release_claim("retryable")
+
     def test_dedup_and_expiry(self):
         self.assertTrue(app.remember_once("x",10))
         self.assertFalse(app.remember_once("x",11))
