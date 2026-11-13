@@ -45,15 +45,14 @@ fun TradingAnalyticsScreen(
     val now = System.currentTimeMillis()
     val filtered = remember(fills, periodDays, now) {
         val start = periodDays?.let { days ->
-            if (days == 1) {
-                Calendar.getInstance().apply {
-                    timeInMillis = now
-                    set(Calendar.HOUR_OF_DAY, 0)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }.timeInMillis
-            } else now - days.toLong() * 24L * 60L * 60L * 1000L
+            Calendar.getInstance().apply {
+                timeInMillis = now
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, -(days - 1))
+            }.timeInMillis
         }
         fills.filter { start == null || it.time >= start }
     }
