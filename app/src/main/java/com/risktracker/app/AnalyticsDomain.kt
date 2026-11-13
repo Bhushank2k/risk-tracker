@@ -235,3 +235,12 @@ fun summarizeTradeRMultiples(trades: List<TradeEntry>): TradeRMultipleSummary {
         missingRiskCount = validTrades.count { !it.riskUsd.isFinite() || it.riskUsd <= 0.0 }
     )
 }
+/** Sums the saved USDⓈ-M income components only for dates selected by the analytics period. */
+fun summarizeFuturesIncomeByType(
+    rows: List<BinanceDailyResult>,
+    includedDates: Set<String>
+): Map<String, Double> = rows.asSequence()
+    .filter { it.date in includedDates }
+    .flatMap { it.futuresIncomeByType.entries.asSequence() }
+    .groupBy({ it.key }, { it.value })
+    .mapValues { (_, values) -> values.sum() }
