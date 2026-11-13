@@ -206,7 +206,7 @@ import kotlin.math.min
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
                 if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
-                if (!structureConfirmed) add(TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED)
+                
             }
             val warning=when{
                 !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
@@ -217,12 +217,12 @@ import kotlin.math.min
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
-                !structureConfirmed->"WAIT: Confirmed 1H swing structure must agree with the setup and 4H must not oppose it."
+                !structureConfirmed->"WATCH: Swing structure is not fully aligned; treat this as a developing setup and reduce confidence."
                 !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
-                score<75->"WAIT: Setup qualifies, but score is below the 75-point READY threshold."
+                score<65->"WATCH: Setup is developing; score is below the 65-point READY threshold."
                 else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
