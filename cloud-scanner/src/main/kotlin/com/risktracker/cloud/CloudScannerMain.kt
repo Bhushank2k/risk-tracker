@@ -208,7 +208,7 @@ fun main() {
     val btcH4 = BinanceRest.candles("BTCUSDT", "4h", 260)
     val btcH1 = BinanceRest.candles("BTCUSDT", "1h", 260)
     val btcBias = btcRegime(btcH4, btcH1)
-    println("Cloud scan: ${candidates.size} active USDT perpetuals above the $2M 24h quote-volume floor; BTC regime=$btcBias")
+    println("Cloud scan: ${candidates.size} active USDT perpetuals above the \$2M 24h quote-volume floor; BTC regime=$btcBias")
 
     val pool = Executors.newFixedThreadPool(6)
     try {
