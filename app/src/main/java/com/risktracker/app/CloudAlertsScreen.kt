@@ -116,6 +116,7 @@ fun CloudAlertsScreen() {
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Connect your cloud alert service to view signals.") }
     var lastUpdated by remember { mutableStateOf<Long?>(null) }
+    var connectionVersion by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     suspend fun refresh() {
@@ -129,7 +130,7 @@ fun CloudAlertsScreen() {
         finally { loading = false }
     }
 
-    LaunchedEffect(baseUrl, token) {
+    LaunchedEffect(connectionVersion) {
         if (baseUrl.isNotBlank() && token.isNotBlank()) refresh()
         while (isActive) {
             delay(60_000)
@@ -153,7 +154,7 @@ fun CloudAlertsScreen() {
                         Button(onClick = {
                             CloudAlertSettings.saveUrl(context, baseUrl)
                             runCatching { CloudAlertSettings.saveToken(context, token) }
-                                .onSuccess { status = "Connection settings saved securely on this device." }
+                                .onSuccess { status = "Connection settings saved securely on this device."; connectionVersion++ }
                                 .onFailure { status = "Could not securely save the token on this device." }
                         }) { Text("Save connection") }
                         OutlinedButton(onClick = { scope.launch { refresh() } }, enabled = !loading) {
