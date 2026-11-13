@@ -1,0 +1,44 @@
+name: Cloud scanner CI
+
+on:
+  pull_request:
+    paths:
+      - 'scanner-core/**'
+      - 'cloud-scanner/**'
+      - 'app/src/main/java/com/risktracker/app/TradeIdeasV2.kt'
+      - 'app/src/main/java/com/risktracker/app/ConfluenceScannerV4.kt'
+      - 'app/src/main/java/com/risktracker/app/ConfluenceSignalQuality.kt'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/cloud-scanner.yml'
+  push:
+    branches: [feat/cloud-intraday-scanner]
+    paths:
+      - 'scanner-core/**'
+      - 'cloud-scanner/**'
+      - 'app/src/main/java/com/risktracker/app/TradeIdeasV2.kt'
+      - 'app/src/main/java/com/risktracker/app/ConfluenceScannerV4.kt'
+      - 'app/src/main/java/com/risktracker/app/ConfluenceSignalQuality.kt'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/cloud-scanner.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shared-engine-and-cloud-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Test shared strategy engine and cloud market adapter
+        run: gradle :scanner-core:test :cloud-scanner:test :cloud-scanner:installDist --no-daemon
