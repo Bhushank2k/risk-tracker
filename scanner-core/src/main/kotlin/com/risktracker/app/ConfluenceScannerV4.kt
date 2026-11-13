@@ -205,7 +205,7 @@ import kotlin.math.min
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
-                if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (score in 60..64) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 
             }
             val warning=when{
@@ -217,7 +217,6 @@ import kotlin.math.min
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ${setupLabel} ATR% is outside 0.12–3.0%."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
-                !structureConfirmed->"WATCH: Swing structure is not fully aligned; treat this as a developing setup and reduce confidence."
                 !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
