@@ -369,29 +369,6 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
-            val monthly = reconciledDaily.groupBy { it.date.take(7) }
-                .toSortedMap(compareByDescending<String> { it })
-            if (monthly.isNotEmpty()) {
-                RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Monthly reconciled P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        monthly.entries.take(12).forEach { (month, days) ->
-                            val net = days.sumOf { it.selectedPnl }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column {
-                                    Text(month, fontWeight = FontWeight.Medium)
-                                    Text("${days.size} days · ${days.count { it.selectedPnl > 0 }} up · ${days.count { it.selectedPnl < 0 }} down",
-                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text((if(net > 0) "+" else "") + net.usd(), fontWeight = FontWeight.SemiBold,
-                                    color = pnlColor(net))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trading fees", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
