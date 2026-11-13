@@ -28,6 +28,13 @@ class ScannerCoreTest {
         assertEquals(2, confluenceScore(false, false, false, Double.NaN, false, false, true, false))
     }
 
+    @Test fun unavailableFundingAndUnsupportedHorizonsFailClosed() {
+        assertFalse(isConfluenceReady(true, true, true, false, true, true, true, true, true, 100))
+        assertTrue(isTradeIdeaHorizonSupported("Intraday"))
+        assertFalse(isTradeIdeaHorizonSupported("Scalp"))
+        assertFalse(isTradeIdeaHorizonSupported("Swing"))
+    }
+
     @Test fun riskCodesBlockInvalidPlans() {
         assertFalse(isTradeIdeaRiskValid("LONG", 100.0, 98.0, 104.0, 106.0,
             setOf(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE)))
