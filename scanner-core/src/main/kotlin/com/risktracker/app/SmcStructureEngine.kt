@@ -148,7 +148,7 @@ fun detectSmcLiquidityLevels(
     if (!validSmcCandles(candles) || !atr.isFinite() || atr <= 0.0 ||
         lookback < 5 || !toleranceAtr.isFinite() || toleranceAtr <= 0.0) return emptyList()
     val start = (candles.size - lookback).coerceAtLeast(0)
-    val tolerance = atr * toleranceAtr
+    val minimumPenetration = atr * minimumPenetrationAtr
     val swings = confirmedSmcSwings(candles, leftBars, rightBars)
         .filter { it.index >= start && it.confirmedAtIndex < candles.lastIndex }
     val output = mutableListOf<SmcLiquidityLevel>()
@@ -182,10 +182,11 @@ fun detectLatestSmcLiquiditySweep(
     candles: List<V2Candle>,
     atr: Double,
     lookback: Int = 20,
-    toleranceAtr: Double = 0.10
+    minimumPenetrationAtr: Double = 0.0
 ): SmcLiquiditySweep? {
     if (!validSmcCandles(candles) || candles.size < lookback + 2 ||
-        !atr.isFinite() || atr <= 0.0 || lookback < 2) return null
+        !atr.isFinite() || atr <= 0.0 || lookback < 2 ||
+        !minimumPenetrationAtr.isFinite() || minimumPenetrationAtr < 0.0) return null
     val current = candles.last()
     val prior = candles.subList((candles.size - lookback - 1).coerceAtLeast(0), candles.lastIndex)
     if (prior.isEmpty()) return null
@@ -197,10 +198,10 @@ fun detectLatestSmcLiquiditySweep(
     val upperWick = current.high - max(current.open, current.close)
 
     return when {
-        current.low < priorLow - tolerance && current.close > priorLow &&
+        current.low < priorLow - minimumPenetration && current.close > priorLow &&
             lowerWick > 0.0 && lowerWick >= body * 0.5 ->
             SmcLiquiditySweep(SmcLiquidityType.SELL_SIDE, priorLow, current.low, current.close, candles.lastIndex)
-        current.high > priorHigh + tolerance && current.close < priorHigh &&
+        current.high > priorHigh + minimumPenetration && current.close < priorHigh &&
             upperWick > 0.0 && upperWick >= body * 0.5 ->
             SmcLiquiditySweep(SmcLiquidityType.BUY_SIDE, priorHigh, current.high, current.close, candles.lastIndex)
         else -> null
