@@ -52,6 +52,38 @@ class AnalyticsDomainTest {
         assertEquals(listOf(-2.0, -5.0, -1.0, 5.0), result.cumulativePnl)
     }
 
+    @Test fun rMultiplesUseRecordedInitialRiskAndAfterFeePnl() {
+        val trades = listOf(
+            TradeEntry("1", "2024-01-01", "BTCUSDT", "Long", 100.0, 110.0, 1.0,
+                fees = 1.0, riskUsd = 10.0),
+            TradeEntry("2", "2024-01-02", "ETHUSDT", "Short", 100.0, 110.0, 1.0,
+                fees = 0.0, riskUsd = 20.0),
+            TradeEntry("3", "2024-01-03", "SOLUSDT", "Long", 100.0, 105.0, 1.0,
+                riskUsd = 0.0)
+        )
+        val result = summarizeTradeRMultiples(trades)
+        assertEquals(2, result.sampleCount)
+        assertEquals(0.2, result.averageR!!, 0.0001)
+        assertEquals(0.4, result.totalR!!, 0.0001)
+        assertEquals(50.0, result.winRatePercent!!, 0.0001)
+        assertEquals(1, result.missingRiskCount)
+    }
+
+    @Test fun futuresIncomeBreakdownAggregatesOnlySelectedDates() {
+        val rows = listOf(
+            BinanceDailyResult("2024-01-01", 0.0, 97.0,
+                mapOf("REALIZED_PNL" to 100.0, "COMMISSION" to -2.0, "FUNDING_FEE" to -1.0)),
+            BinanceDailyResult("2024-01-02", 0.0, 48.0,
+                mapOf("REALIZED_PNL" to 50.0, "COMMISSION" to -2.0)),
+            BinanceDailyResult("2024-01-03", 0.0, 500.0,
+                mapOf("REALIZED_PNL" to 500.0))
+        )
+        val result = summarizeFuturesIncomeByType(rows, setOf("2024-01-01", "2024-01-02"))
+        assertEquals(150.0, result["REALIZED_PNL"]!!, 0.0001)
+        assertEquals(-4.0, result["COMMISSION"]!!, 0.0001)
+        assertEquals(-1.0, result["FUNDING_FEE"]!!, 0.0001)
+    }
+
     private fun fill(id: String, side: String, pnl: Double, fee: Double, asset: String, order: String) =
         BinanceJournalFill(id, "Binance", "USDⓈ-M Futures", "BTCUSDT", side,
             1.0, 100.0, 100.0, fee, asset, pnl, 1_700_000_000_000L, order)
