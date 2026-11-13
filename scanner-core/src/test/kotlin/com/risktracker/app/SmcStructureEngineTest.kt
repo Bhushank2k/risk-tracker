@@ -30,7 +30,7 @@ class SmcStructureEngineTest {
             val center = 100.0 + (i % 3) * 0.1
             candle(center + 1.0, center - 1.0, center, i)
         }
-        val noReclaim = base + candle(103.0, 97.0, 96.0, 22)
+        val noReclaim = base + candle(103.0, 95.0, 96.0, 22)
         assertNull(detectLatestSmcLiquiditySweep(noReclaim, atr = 1.0, lookback = 20))
         val reclaim = base + candle(103.0, 96.0, 100.5, 23)
         val sweep = detectLatestSmcLiquiditySweep(reclaim, atr = 1.0, lookback = 20)
