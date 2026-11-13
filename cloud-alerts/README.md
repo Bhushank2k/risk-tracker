@@ -1,6 +1,6 @@
 # Risk Tracker — Telegram cloud alert service
 
-This is the notification transport foundation, not the market scanner. It runs as a small stateless Cloud Run container and accepts alerts from a scanner only after that scanner has evaluated the existing Risk Tracker strategy.
+This service is the notification transport for the scheduled cloud Intraday scanner. The scanner uses the shared Kotlin engine in `scanner-core/` and posts only READY Intraday plans after all hard gates pass. See `cloud-scanner/README.md` for the complete scanner build and Cloud Scheduler deployment.
 
 ## Safety contract
 
@@ -11,9 +11,9 @@ This is the notification transport foundation, not the market scanner. It runs a
 - Stores no alert history or credentials in a database.
 - Does not weaken, duplicate, or replace the app's confluence/risk calculations.
 
-## Not yet implemented
+## Scanner integration
 
-Binance market scanning and parity with the Android scanner are not included in this first stage. The current scanner is embedded in Android app code and depends on Android-specific APIs/models. It must be extracted into a shared JVM module or ported with fixture-based parity tests before a cloud scheduler can safely trigger it. Do not treat this relay as a running scanner.
+The scheduled cloud worker is built from `cloud-scanner/` and imports the exact same strategy engine as the Android app through `scanner-core/`. It reads public Binance Futures data and posts only READY Intraday plans with all hard gates explicitly true. It does not place orders. Deployment and scheduling instructions are in `cloud-scanner/README.md`.
 
 ## Local test and run
 
