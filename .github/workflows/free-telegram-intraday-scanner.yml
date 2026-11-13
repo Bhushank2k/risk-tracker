@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "cloud-scanner/**"
+      - "scanner-core/**"
+      - ".github/workflows/free-telegram-intraday-scanner.yml"
 
 permissions:
   contents: read
@@ -35,6 +40,7 @@ jobs:
         run: gradle :scanner-core:test :cloud-scanner:test :cloud-scanner:installDist --no-daemon
 
       - name: Scan Binance markets and send READY alerts to Telegram
+        if: github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
