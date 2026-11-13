@@ -113,14 +113,14 @@ private fun gateResults(plan: V2TradePlan): JSONObject {
         "relative_volume" to (TradeIdeaRiskCode.LOW_RELATIVE_VOLUME !in codes),
         "entry_confirmation" to (TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION !in codes),
         "structure" to (TradeIdeaRiskCode.STRUCTURE_NOT_CONFIRMED !in codes),
-        "supported_timeframe" to (plan.horizon.equals("Intraday", ignoreCase = true) && TradeIdeaRiskCode.UNSUPPORTED_TIMEFRAME !in codes),
+        "supported_timeframe" to (plan.horizon.startsWith("Intraday", ignoreCase = true) && TradeIdeaRiskCode.UNSUPPORTED_TIMEFRAME !in codes),
         "ready_score" to (plan.score >= 75)
     )
     return JSONObject().also { out -> gates.forEach { (key, value) -> out.put(key, value) } }
 }
 
 private fun buildAlert(candidate: Candidate, plan: V2TradePlan, setupCloseTime: Long): JSONObject? {
-    if (!plan.entryTriggered || !plan.horizon.equals("Intraday", ignoreCase = true) || plan.score < 75) return null
+    if (!plan.entryTriggered || !plan.horizon.startsWith("Intraday", ignoreCase = true) || plan.score < 75) return null
     if (!isTradeIdeaRiskValid(plan.side, plan.entry, plan.stop, plan.target1, plan.target2, plan.riskCodes)) return null
     val gates = gateResults(plan)
     if (gates.keys().asSequence().any { !gates.optBoolean(it, false) }) return null
