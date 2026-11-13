@@ -73,7 +73,7 @@ import kotlin.math.min
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && entryConfirmed && score >= 65
+    notExtended && volume && entryConfirmed && score >= 75
 
  fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
 
@@ -205,7 +205,7 @@ import kotlin.math.min
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
-                if (score in 60..64) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 
             }
             val warning=when{
@@ -221,7 +221,7 @@ import kotlin.math.min
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
-                score<65->"WATCH: Setup is developing; score is below the 65-point READY threshold."
+                score<75->"WATCH: Setup is developing; score is below the 75-point READY threshold."
                 else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
