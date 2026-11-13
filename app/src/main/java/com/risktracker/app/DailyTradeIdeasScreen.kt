@@ -1851,6 +1851,19 @@ private fun HistoricalOutcomePanel(idea: TradeIdea) {
                 Text("TREND " + stats.trendTrades + " · " + (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
                     "  |  RANGE " + stats.rangeTrades + " · " + (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
                     style = MaterialTheme.typography.labelSmall)
+                Text("BREAKOUT " + stats.breakoutTrades + " · " + setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades) +
+                    " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("PULLBACK " + stats.pullbackTrades + " · " + setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades) +
+                    " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
+                Text("REVERSAL " + stats.reversalTrades + " · " + setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades) +
+                    " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
+                    style = MaterialTheme.typography.labelSmall)
+                val lower = stats.winRateLower95 ?: 0.0
+                val upper = stats.winRateUpper95 ?: 100.0
+                Text("Approx. 95% win-rate range: %.1f–%.1f%%".format(Locale.US, lower, upper),
+                    style = MaterialTheme.typography.labelSmall)
                 Text("Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
                     " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
                     style = MaterialTheme.typography.labelSmall)
