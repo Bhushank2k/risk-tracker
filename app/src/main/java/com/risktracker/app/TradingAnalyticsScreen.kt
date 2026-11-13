@@ -67,6 +67,9 @@ fun TradingAnalyticsScreen(
     val invalidFillCount = filtered.size - validFills.size
     val realizedFillCount = validFills.count { it.realizedPnl?.isFinite() == true }
     val realizedCoverage = if (validFills.isEmpty()) null else realizedFillCount * 100.0 / validFills.size
+    val futuresFills = validFills.filter { it.market.contains("Futures", true) }
+    val futuresRealizedFills = futuresFills.count { it.realizedPnl?.isFinite() == true }
+    val futuresRealizedCoverage = if (futuresFills.isEmpty()) null else futuresRealizedFills * 100.0 / futuresFills.size
     val staleSync = syncStatus.lastSuccess <= 0L ||
         now - syncStatus.lastSuccess > 24L * 60L * 60L * 1000L
     fun quoteAsset(symbol: String): String {
@@ -281,6 +284,9 @@ fun TradingAnalyticsScreen(
                     Text("At least two realized orders are needed to draw an equity curve.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
+                    val curveColor = if ((orderAnalytics.cumulativePnl.lastOrNull() ?: 0.0) >= 0.0)
+                        MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    val zeroLineColor = MaterialTheme.colorScheme.outlineVariant
                     Canvas(Modifier.fillMaxWidth().height(112.dp)) {
                         val values = orderAnalytics.cumulativePnl
                         val minValue = minOf(0.0, values.minOrNull() ?: 0.0)
@@ -293,12 +299,9 @@ fun TradingAnalyticsScreen(
                             )
                         }
                         val zeroY = size.height - (((0.0 - minValue) / range).toFloat() * size.height)
-                        drawLine(MaterialTheme.colorScheme.outlineVariant, Offset(0f,zeroY), Offset(size.width,zeroY), 1.dp.toPx())
+                        drawLine(zeroLineColor, Offset(0f,zeroY), Offset(size.width,zeroY), 1.dp.toPx())
                         points.zipWithNext().forEach { (from,to) ->
-                            drawLine(
-                                if ((values.lastOrNull() ?: 0.0) >= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                from,to,strokeWidth=3.dp.toPx()
-                            )
+                            drawLine(curveColor, from,to,strokeWidth=3.dp.toPx())
                         }
                     }
                 }
@@ -366,6 +369,29 @@ fun TradingAnalyticsScreen(
             }
         }
         item {
+            val monthly = reconciledDaily.groupBy { it.date.take(7) }
+                .toSortedMap(compareByDescending<String> { it })
+            if (monthly.isNotEmpty()) {
+                RiskCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Monthly reconciled P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        monthly.entries.take(12).forEach { (month, days) ->
+                            val net = days.sumOf { it.selectedPnl }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column {
+                                    Text(month, fontWeight = FontWeight.Medium)
+                                    Text("${days.size} days · ${days.count { it.selectedPnl > 0 }} up · ${days.count { it.selectedPnl < 0 }} down",
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text((if(net > 0) "+" else "") + net.usd(), fontWeight = FontWeight.SemiBold,
+                                    color = pnlColor(net))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
             RiskCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Trading fees", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -408,7 +434,9 @@ fun TradingAnalyticsScreen(
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    if(realizedCoverage != null && realizedCoverage < 50.0) Text("Suggestion: sync or import the full trade history; less than half of the fills currently carry realized P&L.",
+                    Text("Futures realized-P&L coverage: ${futuresRealizedCoverage?.let { "%.1f%%".format(Locale.US,it) } ?: "No Futures fills"} ($futuresRealizedFills / ${futuresFills.size} Futures fills)",
+                        style = MaterialTheme.typography.bodySmall)
+                    if(futuresRealizedCoverage != null && futuresRealizedCoverage < 50.0) Text("Suggestion: check Futures income/realized-P&L imports; less than half of Futures fills currently carry realized P&L.",
                         color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                 }
             }
