@@ -110,20 +110,31 @@ data class ExchangeOrderAnalytics(
     val averageLoss: Double?,
     val knownStableFees: Double,
     val feesInOtherAssets: Map<String, Double>,
-    val netAfterKnownStableFees: Double
+    val netAfterKnownStableFees: Double,
+    val expectancyPerOrder: Double?,
+    val averageWinLossRatio: Double?,
+    val currentStreakKind: String?,
+    val currentStreakCount: Int,
+    val longestWinStreak: Int,
+    val longestLossStreak: Int,
+    val cumulativePnl: List<Double>,
+    val maxOrderDrawdown: Double
 )
 
 /**
- * Groups partial fills by exchange order before classifying outcomes. Only stable-quote fees
- * (USDT/USDC) are subtracted from USD-denominated realized P&L; fees in other assets stay
- * separately itemized because no historical conversion is available.
+ * Groups partial fills by exchange order before classifying outcomes and orders those
+ * grouped results by the earliest execution timestamp. Stablecoin fees are reported
+ * separately because non-stablecoin fees cannot be safely converted without historical FX.
  */
 fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnalytics {
-    val orders = fills.filter { it.realizedPnl?.isFinite() == true }
+    val chronologicalOrders = fills.filter { it.realizedPnl?.isFinite() == true }
         .groupBy { fill ->
             "${fill.exchange}|${fill.market}|${fill.symbol}|" +
                 (fill.orderId.takeIf { it.isNotBlank() } ?: fill.id)
-        }.values.map { rows -> rows.sumOf { it.realizedPnl ?: 0.0 } }.filter { it.isFinite() }
+        }.values.map { rows ->
+            (rows.minOf { it.time }) to rows.sumOf { it.realizedPnl ?: 0.0 }
+        }.filter { it.second.isFinite() }.sortedBy { it.first }
+    val orders = chronologicalOrders.map { it.second }
     val wins = orders.filter { it > 0.0 }
     val losses = orders.filter { it < 0.0 }
     val grossProfit = wins.sum()
@@ -134,6 +145,45 @@ fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnaly
     val stableFees = feeByAsset.filterKeys { it in setOf("USDT", "USDC") }.values.sum()
     val otherFees = feeByAsset.filterKeys { it !in setOf("USDT", "USDC") }
     val decisive = wins.size + losses.size
+    var currentKind: String? = null
+    var currentCount = 0
+    var longestWins = 0
+    var longestLosses = 0
+    var runningWins = 0
+    var runningLosses = 0
+    var equity = 0.0
+    var peak = 0.0
+    var maxDrawdown = 0.0
+    val curve = orders.map { pnl ->
+        equity += pnl
+        peak = maxOf(peak, equity)
+        maxDrawdown = maxOf(maxDrawdown, peak - equity)
+        when {
+            pnl > 0.0 -> {
+                runningWins++
+                runningLosses = 0
+                longestWins = maxOf(longestWins, runningWins)
+                currentKind = "Win"
+                currentCount = runningWins
+            }
+            pnl < 0.0 -> {
+                runningLosses++
+                runningWins = 0
+                longestLosses = maxOf(longestLosses, runningLosses)
+                currentKind = "Loss"
+                currentCount = runningLosses
+            }
+            else -> {
+                runningWins = 0
+                runningLosses = 0
+                currentKind = null
+                currentCount = 0
+            }
+        }
+        equity
+    }
+    val averageWin = wins.takeIf { it.isNotEmpty() }?.average()
+    val averageLoss = losses.takeIf { it.isNotEmpty() }?.average()
     return ExchangeOrderAnalytics(
         realizedOrders = orders,
         grossProfit = grossProfit,
@@ -144,10 +194,19 @@ fun summarizeExchangeOrders(fills: List<BinanceJournalFill>): ExchangeOrderAnaly
             grossProfit > 0.0 -> Double.POSITIVE_INFINITY
             else -> null
         },
-        averageWin = wins.takeIf { it.isNotEmpty() }?.average(),
-        averageLoss = losses.takeIf { it.isNotEmpty() }?.average(),
+        averageWin = averageWin,
+        averageLoss = averageLoss,
         knownStableFees = stableFees,
         feesInOtherAssets = otherFees,
-        netAfterKnownStableFees = grossProfit - grossLoss - stableFees
+        netAfterKnownStableFees = grossProfit - grossLoss - stableFees,
+        expectancyPerOrder = if (decisive == 0) null else (grossProfit - grossLoss) / decisive,
+        averageWinLossRatio = if (averageWin != null && averageLoss != null && averageLoss != 0.0)
+            averageWin / kotlin.math.abs(averageLoss) else null,
+        currentStreakKind = currentKind,
+        currentStreakCount = currentCount,
+        longestWinStreak = longestWins,
+        longestLossStreak = longestLosses,
+        cumulativePnl = curve,
+        maxOrderDrawdown = maxDrawdown
     )
 }
