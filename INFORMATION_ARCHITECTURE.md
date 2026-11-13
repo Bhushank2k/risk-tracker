@@ -19,13 +19,13 @@ Use one authoritative screen for each kind of information. Other screens may sho
 
 ## Navigation structure
 
-Primary bottom navigation remains limited to four frequent destinations:
-- Overview
-- Journal (with Trade history and Performance sections)
-- Ideas
-- Explore
+Primary bottom navigation is limited to the four decision-making destinations:
+- Market Overview
+- Daily Trade Ideas
+- Risk Monitor
+- Trade History
 
-The Explore sheet groups specialist destinations without repeating primary navigation:
+The app bar's Explore action groups specialist destinations without competing with primary navigation:
 - Trading: Live positions/orders and post-trade reviews.
 - Performance: P&L Calendar and Scanner Performance Lab.
 - Market Research: Market Activity Lab (public market data, no account credentials).
@@ -34,7 +34,7 @@ The Explore sheet groups specialist destinations without repeating primary navig
 - Records & Reports: Crypto Tax Report and Ledger Audit.
 - App: Settings and About.
 
-The Overview remains in the bottom navigation rather than being duplicated in Explore. Grouping destinations does not merge their underlying workflows or data sources.
+The four primary destinations are not repeated in Explore. Workspace and Quick Access shortcut panels are removed; specialist destinations remain grouped in Explore. Grouping destinations does not merge their underlying workflows or data sources.
 
 ## Duplication rules
 
