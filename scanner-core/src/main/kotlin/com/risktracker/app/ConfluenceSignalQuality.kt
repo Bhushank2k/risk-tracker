@@ -63,7 +63,7 @@ package com.risktracker.app
  fun confluencePullbackVolumeConfirmed(previousVolume: Double, reclaimVolume: Double, baselineVolume: Double): Boolean =
     previousVolume.isFinite() && reclaimVolume.isFinite() && baselineVolume.isFinite() &&
         previousVolume >= 0.0 && baselineVolume > 0.0 &&
-        previousVolume < baselineVolume * 1.15 &&
+        previousVolume < baselineVolume &&
         reclaimVolume >= baselineVolume * 0.90 &&
         reclaimVolume >= previousVolume * 0.90
 
