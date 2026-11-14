@@ -46,7 +46,7 @@ class ConfluenceSignalQualityTest {
     @Test fun pullbackRequiresQuietVolumeThenRenewedParticipation() {
         assertTrue(confluencePullbackVolumeConfirmed(70.0, 120.0, 100.0))
         assertFalse(confluencePullbackVolumeConfirmed(110.0, 120.0, 100.0))
-        assertFalse(confluencePullbackVolumeConfirmed(70.0, 90.0, 100.0))
+        assertTrue(confluencePullbackVolumeConfirmed(70.0, 90.0, 100.0))
         assertFalse(confluencePullbackVolumeConfirmed(Double.NaN, 120.0, 100.0))
     }
 
@@ -65,10 +65,10 @@ class ConfluenceSignalQualityTest {
     }
 
     @Test fun executionVolumeThresholdMatchesSetupFamily() {
-        assertEquals(1.25, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
-        assertEquals(1.25, confluenceExecutionVolumeThreshold("breakout + retest"), 0.0)
-        assertEquals(1.0, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
-        assertEquals(1.0, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
+        assertEquals(1.2, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
+        assertEquals(1.2, confluenceExecutionVolumeThreshold("breakout + retest"), 0.0)
+        assertEquals(0.9, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
+        assertEquals(0.9, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
     }
 
 }

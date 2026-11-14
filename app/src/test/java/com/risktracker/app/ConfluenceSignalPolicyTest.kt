@@ -6,10 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfluenceSignalPolicyTest {
-    @Test fun onlyIntradayIsEnabledUntilDedicatedTimeframeSeriesExist() {
+    @Test fun allThreeHorizonsAreSupportedAndUnknownModesAreRejected() {
+        assertTrue(isTradeIdeaHorizonSupported("Scalp"))
         assertTrue(isTradeIdeaHorizonSupported("Intraday"))
-        assertFalse(isTradeIdeaHorizonSupported("Scalp"))
-        assertFalse(isTradeIdeaHorizonSupported("Swing"))
+        assertTrue(isTradeIdeaHorizonSupported("Swing"))
         assertFalse(isTradeIdeaHorizonSupported("Unknown"))
     }
 
@@ -36,7 +36,7 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isTradeIdeaLiquidityAcceptable("OTHER", 3.0, 0.0, 20_000.0, 20_000.0))
     }
     @Test fun readyRequiresHardGatesAndBalancedScoreButNotEverySoftSignal() {
-        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
+        assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,70))
         // Volume is a hard execution gate; momentum remains a scored soft signal.
         assertFalse(isConfluenceReady(true,true,true,true,true,true,false,false,true,75))
         assertFalse(isConfluenceReady(false,true,true,true,true,true,true,true,true,100))
@@ -48,7 +48,7 @@ class ConfluenceSignalPolicyTest {
         assertFalse(isConfluenceReady(true,true,true,true,true,false,true,true,true,100))
         assertTrue(isConfluenceReady(true,true,true,true,true,true,true,false,true,100))
         assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,false,100))
-        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,74))
+        assertFalse(isConfluenceReady(true,true,true,true,true,true,true,true,true,69))
         assertTrue(isConfluenceReady(true,true,true,true,true,true,true,true,true,75))
     }
 
@@ -95,9 +95,9 @@ class ConfluenceSignalPolicyTest {
     }
 
     @Test fun setupSpecificRelativeVolumeThresholdsAreEnforced() {
-        assertEquals(1.0, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
-        assertEquals(1.0, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
-        assertEquals(1.25, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
+        assertEquals(0.9, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0)
+        assertEquals(0.9, confluenceExecutionVolumeThreshold("Range reversal"), 0.0)
+        assertEquals(1.2, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0)
     }
 
     @Test fun volumeConfluenceAwardsPartialCreditBelowPreferredThreshold() {

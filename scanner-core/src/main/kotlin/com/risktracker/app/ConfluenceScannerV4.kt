@@ -75,7 +75,7 @@ import kotlin.math.min
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
     notExtended && volume && entryConfirmed && score >= 70
 
- fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
+ fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon in setOf("Scalp", "Intraday", "Swing")
 
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
  object ConfluenceScannerV4 {
@@ -95,11 +95,12 @@ import kotlin.math.min
         if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
             !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
         val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
-        // These are the actual supplied series for every horizon today; do not relabel them as 1D/M1/M15.
-        val bias1Label = "1H"
-        val bias2Label = "4H context"
-        val setupLabel = "15M"
-        val executionLabel = "5M"
+        // Inputs are ordered by role (context, trend, setup, execution) and
+        // evaluateModes supplies genuinely distinct exchange intervals per horizon.
+        val bias1Label = when (horizon) { "Scalp" -> "15M"; "Swing" -> "4H"; else -> "1H" }
+        val bias2Label = when (horizon) { "Scalp" -> "1H context"; "Swing" -> "1D context"; else -> "4H context" }
+        val setupLabel = when (horizon) { "Scalp" -> "5M"; "Swing" -> "1H"; else -> "15M" }
+        val executionLabel = when (horizon) { "Scalp" -> "1M"; "Swing" -> "15M"; else -> "5M" }
         val horizonSupported = isTradeIdeaHorizonSupported(horizon)
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
@@ -164,7 +165,13 @@ import kotlin.math.min
             if (setups.any { it.side == s.side }) {
                 signalHistory += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime)
             }
-            val sequential = evaluateEntrySequence(signalHistory, sequentialDirection, now)
+            val sequential = evaluateEntrySequence(
+                signalHistory, sequentialDirection, now,
+                setupMaxAgeMillis = when (horizon) { "Scalp" -> 20 * 60_000L; "Swing" -> 8 * 60 * 60_000L; else -> 2 * 60 * 60_000L },
+                entryMaxAgeMillis = when (horizon) { "Scalp" -> 3 * 60_000L; "Swing" -> 30 * 60_000L; else -> 15 * 60_000L },
+                setupLabel = setupLabel,
+                entryLabel = executionLabel
+            )
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
@@ -177,8 +184,8 @@ import kotlin.math.min
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
             val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
-            // Risk/cost assumptions follow the actual setup series, not the requested display horizon.
-            val setupBarMinutes=15
+            // Cost and holding assumptions use the actual setup candle interval.
+            val setupBarMinutes = when (horizon) { "Scalp" -> 5; "Swing" -> 60; else -> 15 }
             // Set Target 1 far enough away that estimated fees, slippage and funding still leave 2R net.
             val target1GrossR=if(geometry&&risk>0) tradeIdeaGrossRForMinimumNetReturn(
                 minimumNetR=2.0, entry=entry, riskDistance=risk, heldBars=8, setupBarMinutes=setupBarMinutes
@@ -247,9 +254,9 @@ import kotlin.math.min
                 s.detail,
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
                 "Sequential signal lifecycle: "+sequential.reason,
-                "1H swing structure: "+h1Structure+" · 4H context: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
+                "${bias1Label} swing structure: "+h1Structure+" · ${bias2Label}: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
                 if(liquiditySweep)"15M liquidity sweep and reclaim detected (supporting evidence; not a standalone trigger)" else "No confirmed 15M liquidity sweep/reclaim (not required for trend continuation)",
-                if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
+                if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} EMA20/50 directional bias; ${bias2Label} "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (required ≥${requiredRelativeVolume}× for ${s.name})",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
@@ -257,9 +264,7 @@ import kotlin.math.min
                 "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
                 "Risk plan: structural stop + 0.2 ATR; Target 1 is sized for ≥2R net after estimated costs, with Target 2 at least 1R farther.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
-                if (horizonSupported && s.range) "Intraday · M15 range / M5 execution"
-                else if (horizonSupported) "Intraday · M15 setup / M5 execution"
-                else "$horizon · unsupported (current data: H4/H1/M15/M5)",
+                "$horizon · ${setupLabel} setup / ${executionLabel} execution",
                 if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral",if(up1)"Bullish" else if(dn1)"Bearish" else "Neutral",
                 if(entryOk)if(long)"Bullish" else "Bearish" else "Mixed",reasons,riskCodes)
         }.sortedWith(compareByDescending<V2TradePlan>{it.entryTriggered}.thenByDescending{it.score}).firstOrNull()

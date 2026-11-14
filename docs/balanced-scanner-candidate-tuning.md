@@ -17,7 +17,15 @@ Liquidity/spread/depth, funding acceptability, stop geometry, volatility bounds,
 
 ## Timeframe scope
 
-The current live trade-idea data contract still supplies H4/H1/M15/M5 candles. The existing Scalp and Swing labels do not have dedicated candle-series mappings and isTradeIdeaHorizonSupported intentionally accepts only Intraday. This branch does not claim to implement true all-timeframe scanning. That requires separate candle fetch mappings and per-horizon execution/holding assumptions (for example 1D/4H/1H/15M for swing and 1H/15M/5M/1M for scalp), plus dedicated replay validation. Keep unsupported horizons blocked until that work is complete.
+The live scan fetches separate closed-candle series and routes them by role:
+
+- Scalp: 1H context → 15M trend → 5M setup → 1M execution.
+- Intraday: 4H context → 1H trend → 15M setup → 5M execution.
+- Swing: 1D context → 4H trend → 1H setup → 15M execution.
+
+The shared scanner now accepts all three modes, uses horizon-specific freshness and sequential setup/entry expiry windows, reports the actual setup/execution intervals, and calculates fee/funding cost assumptions using the setup interval. The exchange fetch layer already requests these intervals; this change connects those existing series to the scanner rather than relabeling H4/H1/M15/M5.
+
+Historical replay remains supplementary and should be evaluated independently for each mode. Do not treat enabling the modes as proof of profitability or a guarantee of 2–5 signals each day; frequency depends on market conditions and all liquidity, funding, stop, volatility, freshness, and net reward/risk gates remain active.
 
 ## Validation
 
