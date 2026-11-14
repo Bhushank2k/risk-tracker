@@ -60,7 +60,9 @@ fun evaluateEntrySequence(
     direction: SmcDirection,
     decisionTime: Long,
     setupMaxAgeMillis: Long = 2 * 60 * 60_000L,
-    entryMaxAgeMillis: Long = 15 * 60_000L
+    entryMaxAgeMillis: Long = 15 * 60_000L,
+    setupLabel: String = "M15",
+    entryLabel: String = "M5"
 ): SequentialConfluenceResult {
     if (direction == SmcDirection.NEUTRAL || decisionTime < 0L ||
         setupMaxAgeMillis <= 0L || entryMaxAgeMillis <= 0L
@@ -69,24 +71,24 @@ fun evaluateEntrySequence(
     val setup = events.filter {
         it.stage == SequentialSignalStage.M15_SETUP && it.closeTime <= decisionTime
     }.maxByOrNull { it.closeTime }
-        ?: return SequentialConfluenceResult(false, "Waiting for M15 setup confirmation.", emptyList())
+        ?: return SequentialConfluenceResult(false, "Waiting for ${setupLabel} setup confirmation.", emptyList())
     if (setup.direction != direction)
-        return SequentialConfluenceResult(false, "M15 setup conflicts with trade direction.", listOf(setup))
+        return SequentialConfluenceResult(false, "${setupLabel} setup conflicts with trade direction.", listOf(setup))
     if (setup.closeTime < 0L || decisionTime - setup.closeTime > setupMaxAgeMillis)
-        return SequentialConfluenceResult(false, "M15 setup confirmation expired.", listOf(setup))
+        return SequentialConfluenceResult(false, "${setupLabel} setup confirmation expired.", listOf(setup))
 
     val entry = events.filter {
         it.stage == SequentialSignalStage.M5_ENTRY && it.closeTime <= decisionTime
     }.maxByOrNull { it.closeTime }
-        ?: return SequentialConfluenceResult(false, "Waiting for M5 entry confirmation.", listOf(setup))
+        ?: return SequentialConfluenceResult(false, "Waiting for ${entryLabel} entry confirmation.", listOf(setup))
     if (entry.direction != direction)
-        return SequentialConfluenceResult(false, "M5 entry conflicts with trade direction.", listOf(setup, entry))
+        return SequentialConfluenceResult(false, "${entryLabel} entry conflicts with trade direction.", listOf(setup, entry))
     if (entry.closeTime < 0L || decisionTime - entry.closeTime > entryMaxAgeMillis)
-        return SequentialConfluenceResult(false, "M5 entry confirmation expired.", listOf(setup, entry))
+        return SequentialConfluenceResult(false, "${entryLabel} entry confirmation expired.", listOf(setup, entry))
     if (entry.closeTime < setup.closeTime)
-        return SequentialConfluenceResult(false, "M5 entry occurred before the M15 setup.", listOf(setup, entry))
+        return SequentialConfluenceResult(false, "${entryLabel} entry occurred before the ${setupLabel} setup.", listOf(setup, entry))
 
-    return SequentialConfluenceResult(true, "M15 setup and M5 entry are confirmed in sequence.", listOf(setup, entry))
+    return SequentialConfluenceResult(true, "${setupLabel} setup and ${entryLabel} entry are confirmed in sequence.", listOf(setup, entry))
 }
 
 /** Incremental EMA with the same SMA seed and recursive updates as sequentialEma. */
