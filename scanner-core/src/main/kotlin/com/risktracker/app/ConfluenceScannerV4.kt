@@ -144,6 +144,8 @@ import kotlin.math.min
             }
         }
         if(setups.isEmpty())return null
+        // History contains both directions, so reconstruct it once per scan, not once per setup.
+        val sequentialHistory = buildSequentialSignalHistory(h4, h1, m15, m5, "LONG")
         val spread=micro.spreadBps; val depth=micro.bookImbalance; val funding=micro.fundingRate
         val bidDepth=micro.bidDepthUsd; val askDepth=micro.askDepthUsd
         return setups.mapNotNull{s->
@@ -156,7 +158,7 @@ import kotlin.math.min
             val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
             val sequentialDirection = if (long) SmcDirection.BULLISH else SmcDirection.BEARISH
-            val signalHistory = buildSequentialSignalHistory(h4, h1, m15, m5, s.side).toMutableList()
+            val signalHistory = sequentialHistory.toMutableList()
             // The scanner's setup engine also recognises breakout/retest and range-edge
             // setups; record that independently validated current setup as an M15 event.
             if (setups.any { it.side == s.side }) {
