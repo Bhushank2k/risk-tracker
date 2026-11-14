@@ -56,11 +56,13 @@ fun MarketActivityLabScreen() {
                         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                             ?: error("Unable to open the selected CSV file.")
                     }
-                    val candles = MarketReplayCsv.parseBinanceKlines(csv)
-                    MarketReplayRunner.run(
-                        symbol = selected, interval = interval.api,
-                        sourceLabel = uri.lastPathSegment ?: "Imported Binance USD-M CSV", candles = candles
-                    )
+                    withContext(Dispatchers.Default) {
+                        val candles = MarketReplayCsv.parseBinanceKlines(csv)
+                        MarketReplayRunner.run(
+                            symbol = selected, interval = interval.api,
+                            sourceLabel = uri.lastPathSegment ?: "Imported Binance USD-M CSV", candles = candles
+                        )
+                    }
                 }
                 result.onSuccess {
                     importedReplay = it
