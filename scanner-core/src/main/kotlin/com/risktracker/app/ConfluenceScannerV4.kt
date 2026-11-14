@@ -165,7 +165,13 @@ import kotlin.math.min
             if (setups.any { it.side == s.side }) {
                 signalHistory += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime)
             }
-            val sequential = evaluateEntrySequence(signalHistory, sequentialDirection, now)
+            val sequential = evaluateEntrySequence(
+                signalHistory, sequentialDirection, now,
+                setupMaxAgeMillis = when (horizon) { "Scalp" -> 20 * 60_000L; "Swing" -> 8 * 60 * 60_000L; else -> 2 * 60 * 60_000L },
+                entryMaxAgeMillis = when (horizon) { "Scalp" -> 3 * 60_000L; "Swing" -> 30 * 60_000L; else -> 15 * 60_000L },
+                setupLabel = setupLabel,
+                entryLabel = executionLabel
+            )
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
