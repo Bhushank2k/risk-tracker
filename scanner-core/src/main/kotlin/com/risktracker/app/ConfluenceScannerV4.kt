@@ -209,7 +209,7 @@ import kotlin.math.min
             val ready=isConfluenceReady(
                 liquid, geometry, rr, fundingOk, volatility, extended, volumeConfirmed,
                 momentum, entryOk, score, structureConfirmed = structureConfirmed
-            ) && horizonSupported
+            ) && sequential.ready && horizonSupported
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
@@ -236,7 +236,7 @@ import kotlin.math.min
                 !volatility->"BLOCK: ATR% is outside 0.12–3.0% or volatility expanded over 1.8× versus the prior ATR window."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
                 !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
-                !sequential.ready->"WAIT: Sequential 4H → 1H → 15M → 5M confirmation: ${sequential.reason}"
+                !sequential.ready->"WAIT: M15 setup → M5 entry confirmation: ${sequential.reason}"
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
