@@ -6,10 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfluenceSignalPolicyTest {
-    @Test fun onlyIntradayIsEnabledUntilDedicatedTimeframeSeriesExist() {
+    @Test fun allThreeHorizonsAreSupportedAndUnknownModesAreRejected() {
+        assertTrue(isTradeIdeaHorizonSupported("Scalp"))
         assertTrue(isTradeIdeaHorizonSupported("Intraday"))
-        assertFalse(isTradeIdeaHorizonSupported("Scalp"))
-        assertFalse(isTradeIdeaHorizonSupported("Swing"))
+        assertTrue(isTradeIdeaHorizonSupported("Swing"))
         assertFalse(isTradeIdeaHorizonSupported("Unknown"))
     }
 
