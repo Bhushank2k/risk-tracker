@@ -41,7 +41,7 @@ internal object ConfirmedReversalEngine {
   val out=mutableListOf<ConfirmedReversalSignal>();var priorLow:Pair<Int,Double>?=null;var priorHigh:Pair<Int,Double>?=null;val emitted=mutableSetOf<Int>()
   for(ci in leftBars+rightBars until rows.size) {
    val p=ci-rightBars;val pivot=rows[p];val confirm=rows[ci];val rsi=rsiAt(rows,p)?:continue;val atr=atrAt(rows,ci)?:continue
-   val avg=rows.subList((p-20).coerceAtLeast(0),p).map{it.volume}.average().takeIf{it.isFinite()&&it>0}?:0.0
+   val avg=ScannerCalculationCore.averageVolume(rows.take(p).map { it.volume },20) ?: 0.0
    val rv=if(avg>0)pivot.volume/avg else 0.0;val body=abs(pivot.close-pivot.open);val range=(pivot.high-pivot.low).coerceAtLeast(1e-12)
    val lower=min(pivot.open,pivot.close)-pivot.low;val upper=pivot.high-max(pivot.open,pivot.close)
    if(isConfirmedPivotLow(rows,p,leftBars,rightBars,ci)) {
