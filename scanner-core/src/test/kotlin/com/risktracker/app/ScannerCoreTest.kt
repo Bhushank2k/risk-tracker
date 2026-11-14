@@ -47,6 +47,12 @@ class ScannerCoreTest {
         assertFalse(confluencePullbackVolumeConfirmed(80.0, 80.0, 100.0))
     }
 
+
+    @Test fun balancedReadyScoreFloorIsSeventy() {
+        assertTrue(isConfluenceReady(true, true, true, true, true, true, true, true, true, 70))
+        assertFalse(isConfluenceReady(true, true, true, true, true, true, true, true, true, 69))
+    }
+
     @Test fun riskCodesBlockInvalidPlans() {
         assertFalse(isTradeIdeaRiskValid("LONG", 100.0, 98.0, 104.0, 106.0,
             setOf(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE)))
