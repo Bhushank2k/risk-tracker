@@ -54,9 +54,9 @@ object MarketActivityEngine {
         return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break"))
     }
     data class ReplayStats(val setups:Int,val successful:Int,val failed:Int,val falsePositiveRate:Double?,val averageReturnPercent:Double?,val maxAdversePercent:Double?,val maxFavorablePercent:Double?)
-    fun replay(cs:List<MarketCandle>,horizon:Int=12,feeBps:Double=8.0,slippageBps:Double=5.0):ReplayStats {
-        require(horizon>0&&feeBps>=0&&slippageBps>=0);val rets=mutableListOf<Double>();val adv=mutableListOf<Double>();val fav=mutableListOf<Double>()
-        for(i in 30 until cs.size-horizon-1){val a=analyze("REPLAY",MarketInterval.H1,cs.take(i+1))?:continue;if(a.state!=ActivityState.CONFIRMED_HISTORICAL_BREAKOUT)continue
+    fun replay(cs:List<MarketCandle>,horizon:Int=12,feeBps:Double=8.0,slippageBps:Double=5.0,evaluationStartIndex:Int=30):ReplayStats {
+        require(horizon>0&&feeBps>=0&&slippageBps>=0&&evaluationStartIndex>=30);val rets=mutableListOf<Double>();val adv=mutableListOf<Double>();val fav=mutableListOf<Double>()
+        for(i in evaluationStartIndex until (cs.size-horizon)){val a=analyze("REPLAY",MarketInterval.H1,cs.take(i+1))?:continue;if(a.state!=ActivityState.CONFIRMED_HISTORICAL_BREAKOUT)continue
             val entry=cs[i+1].open;val exit=cs[i+horizon].close;if(entry<=0)continue;val sign=if(a.direction==ActivityDirection.BEARISH)-1.0 else 1.0
             rets.add(sign*(exit/entry-1)*100-2*(feeBps+slippageBps)/100);val path=cs.subList(i+1,i+horizon+1)
             fav.add(if(sign>0)(path.maxOf{it.high}/entry-1)*100 else (entry/path.minOf{it.low}-1)*100)
