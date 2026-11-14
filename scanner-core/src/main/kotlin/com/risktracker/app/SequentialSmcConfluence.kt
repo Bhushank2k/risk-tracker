@@ -92,14 +92,13 @@ fun buildSequentialSignalHistory(
         val averageVolume = bars.dropLast(1).takeLast(20).map { it.volume }.average()
         if (averageVolume <= 0.0) continue
         val participation = confluencePullbackVolumeConfirmed(previous.volume, current.volume, averageVolume)
-        val setup = if (direction == SmcDirection.BULLISH) {
-            current.low <= ema20 + atr * .2 && current.low >= ema20 - atr * .7 &&
-                current.close > ema20 && current.close > previous.close && participation
-        } else {
-            current.high >= ema20 - atr * .2 && current.high <= ema20 + atr * .7 &&
-                current.close < ema20 && current.close < previous.close && participation
-        }
-        if (setup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, direction, current.closeTime)
+        val bullishSetup = current.low <= ema20 + atr * .2 && current.low >= ema20 - atr * .7 &&
+            current.close > ema20 && current.close > previous.close && participation
+        val bearishSetup = current.high >= ema20 - atr * .2 && current.high <= ema20 + atr * .7 &&
+            current.close < ema20 && current.close < previous.close && participation
+        // Preserve both directions: a newer opposing M15 setup must invalidate an older setup.
+        if (bullishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, current.closeTime)
+        if (bearishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, current.closeTime)
     }
 
     // Entry event requires the completed 5M candle to be aligned with EMA9/21.
