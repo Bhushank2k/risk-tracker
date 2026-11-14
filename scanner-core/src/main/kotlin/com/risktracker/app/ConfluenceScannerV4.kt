@@ -156,20 +156,13 @@ import kotlin.math.min
             val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
             val sequentialDirection = if (long) SmcDirection.BULLISH else SmcDirection.BEARISH
-            val sequential = evaluateSequentialConfluence(
-                listOf(
-                    SequentialSignalEvent(SequentialSignalStage.H4_BIAS, if (up4) SmcDirection.BULLISH else if (dn4) SmcDirection.BEARISH else SmcDirection.NEUTRAL, h4.last().closeTime),
-                    SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, when (h1Structure) {
-                        TradeIdeaStructure.BULLISH -> SmcDirection.BULLISH
-                        TradeIdeaStructure.BEARISH -> SmcDirection.BEARISH
-                        else -> SmcDirection.NEUTRAL
-                    }, h1.last().closeTime),
-                    SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime),
-                    SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, if (entryOk) sequentialDirection else SmcDirection.NEUTRAL, exec.closeTime)
-                ),
-                sequentialDirection,
-                now
-            )
+            val signalHistory = buildSequentialSignalHistory(h4, h1, m15, m5, s.side).toMutableList()
+            // The scanner's setup engine also recognises breakout/retest and range-edge
+            // setups; record that independently validated current setup as an M15 event.
+            if (setups.any { it.side == s.side }) {
+                signalHistory += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime)
+            }
+            val sequential = evaluateSequentialConfluence(signalHistory, sequentialDirection, now)
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
