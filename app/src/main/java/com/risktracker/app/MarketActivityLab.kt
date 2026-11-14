@@ -51,7 +51,9 @@ object MarketActivityEngine {
         val mp=if(ind.macd!=null&&ind.macdSignal!=null&&((dir==ActivityDirection.BULLISH&&ind.macd>ind.macdSignal)||(dir==ActivityDirection.BEARISH&&ind.macd<ind.macdSignal)))10 else 0
         val rp=if(ind.rsi14!=null&&((dir==ActivityDirection.BULLISH&&ind.rsi14 in 50.0..70.0)||(dir==ActivityDirection.BEARISH&&ind.rsi14 in 30.0..50.0)))10 else 0
         val state=when{breakout&&rv>=thresholds.relativeVolumeBreakout->ActivityState.CONFIRMED_HISTORICAL_BREAKOUT;compressed&&(rv>=thresholds.relativeVolumeWatch||contracted||ar<0.8)->ActivityState.WATCH;else->ActivityState.NO_SETUP}
-        return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break"))
+        val evidence=listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break")
+        val primary=ScannerCalculationCore.primarySignalReason(state.name,dir.name,evidence)
+        return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf(primary)+evidence)
     }
     data class ReplayStats(val setups:Int,val successful:Int,val failed:Int,val falsePositiveRate:Double?,val averageReturnPercent:Double?,val maxAdversePercent:Double?,val maxFavorablePercent:Double?)
     fun replay(cs:List<MarketCandle>,horizon:Int=12,feeBps:Double=8.0,slippageBps:Double=5.0,evaluationStartIndex:Int=30):ReplayStats {
