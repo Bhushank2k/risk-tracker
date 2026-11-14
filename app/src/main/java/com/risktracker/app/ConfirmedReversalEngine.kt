@@ -49,7 +49,8 @@ internal object ConfirmedReversalEngine {
     if(p !in emitted&&(div||os)&&confirm.close>pivot.high&&confirm.close>confirm.open) {
      val stop=pivot.low-atr*.15;val entry=confirm.close;val risk=entry-stop
      if(risk.isFinite()&&risk>0) {val score=(if(div)30 else 0)+(if(wick)15 else 0)+(if(os)15 else 0)+(if(rv>=1.2)15 else 0)+25
-      if(score>=minimumScore) {val why=buildList {add("Confirmed swing low after $rightBars closed candles");add(if(div)"Bullish RSI divergence" else "Pivot RSI oversold");if(wick)add("Lower-wick rejection at pivot");if(rv>=1.2)add("Pivot relative volume confirmed");add("Bullish candle closed above pivot high")}
+      if(score>=minimumScore) {val evidence=buildList {add("Confirmed swing low after $rightBars closed candles");add(if(div)"Bullish RSI divergence" else "Pivot RSI oversold");if(wick)add("Lower-wick rejection at pivot");if(rv>=1.2)add("Pivot relative volume confirmed");add("Bullish candle closed above pivot high")}
+       val why=listOf(ScannerCalculationCore.primarySignalReason("Confirmed Reversal","BUY",evidence))+evidence
        out.add(ConfirmedReversalSignal(symbol.uppercase(),"BUY",pivot.closeTime,confirm.closeTime,entry,stop,entry+risk*TARGET_R,score,why,ci));emitted.add(p)
       }
      }
@@ -60,7 +61,8 @@ internal object ConfirmedReversalEngine {
     if(p !in emitted&&(div||ob)&&confirm.close<pivot.low&&confirm.close<confirm.open) {
      val stop=pivot.high+atr*.15;val entry=confirm.close;val risk=stop-entry
      if(risk.isFinite()&&risk>0) {val score=(if(div)30 else 0)+(if(wick)15 else 0)+(if(ob)15 else 0)+(if(rv>=1.2)15 else 0)+25
-      if(score>=minimumScore) {val why=buildList {add("Confirmed swing high after $rightBars closed candles");add(if(div)"Bearish RSI divergence" else "Pivot RSI overbought");if(wick)add("Upper-wick rejection at pivot");if(rv>=1.2)add("Pivot relative volume confirmed");add("Bearish candle closed below pivot low")}
+      if(score>=minimumScore) {val evidence=buildList {add("Confirmed swing high after $rightBars closed candles");add(if(div)"Bearish RSI divergence" else "Pivot RSI overbought");if(wick)add("Upper-wick rejection at pivot");if(rv>=1.2)add("Pivot relative volume confirmed");add("Bearish candle closed below pivot low")}
+       val why=listOf(ScannerCalculationCore.primarySignalReason("Confirmed Reversal","SHORT",evidence))+evidence
        out.add(ConfirmedReversalSignal(symbol.uppercase(),"SHORT",pivot.closeTime,confirm.closeTime,entry,stop,entry-risk*TARGET_R,score,why,ci));emitted.add(p)
       }
      }
