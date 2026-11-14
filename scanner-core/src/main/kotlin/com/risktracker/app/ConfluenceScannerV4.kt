@@ -168,7 +168,7 @@ import kotlin.math.min
                     SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, if (entryOk) sequentialDirection else SmcDirection.NEUTRAL, exec.closeTime)
                 ),
                 sequentialDirection,
-                maxOf(now, exec.closeTime)
+                now
             )
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
