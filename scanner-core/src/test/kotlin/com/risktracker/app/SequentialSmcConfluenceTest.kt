@@ -94,4 +94,20 @@ class SequentialSmcConfluenceTest {
         assertFalse(result.ready)
         assertTrue(result.reason.contains("M15 SETUP conflicts"))
     }
+
+    @Test fun rejectsUnsortedOrDuplicateCandleTimestamps() {
+        val valid = (0 until 60).map { i ->
+            V2Candle(
+                high = 101.0 + i,
+                low = 99.0 + i,
+                close = 100.0 + i,
+                volume = 1_000.0,
+                closeTime = (i + 1L) * 60_000L
+            )
+        }
+        val unsorted = valid.toMutableList().also { it[20] = it[20].copy(closeTime = it[19].closeTime - 1L) }
+        val duplicate = valid.toMutableList().also { it[20] = it[20].copy(closeTime = it[19].closeTime) }
+        assertTrue(buildSequentialSignalHistory(unsorted, valid, valid, valid, "LONG").isEmpty())
+        assertTrue(buildSequentialSignalHistory(valid, duplicate, valid, valid, "LONG").isEmpty())
+    }
 }
