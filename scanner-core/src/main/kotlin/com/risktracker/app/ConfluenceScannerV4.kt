@@ -73,7 +73,7 @@ import kotlin.math.min
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && entryConfirmed && score >= 75
+    notExtended && volume && entryConfirmed && score >= 70
 
  fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon == "Intraday"
 
@@ -126,10 +126,10 @@ import kotlin.math.min
             setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 rejection after quiet pullback volume and renewed participation"))
         for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
             val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
-            if(av<=0||m15[i].volume/av<1.5)continue
+            if(av<=0||m15[i].volume/av<1.25)continue
             val hi=hist.maxOf{it.high}; val lo=hist.minOf{it.low}
             if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
-                setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.5× volume, then retest and hold"))
+                setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.25× volume, then retest and hold"))
             if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
                 setups.add(Setup("Breakout + retest","SHORT",lo,false,"${setupLabel} 20-bar breakdown on ≥1.5× volume, then retest and hold"))
         }
@@ -164,7 +164,7 @@ import kotlin.math.min
             if (setups.any { it.side == s.side }) {
                 signalHistory += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime)
             }
-            val sequential = evaluateSequentialConfluence(signalHistory, sequentialDirection, now, allowNeutralContext = s.range)
+            val sequential = evaluateEntrySequence(signalHistory, sequentialDirection, now)
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
@@ -209,7 +209,7 @@ import kotlin.math.min
             val ready=isConfluenceReady(
                 liquid, geometry, rr, fundingOk, volatility, extended, volumeConfirmed,
                 momentum, entryOk, score, structureConfirmed = structureConfirmed
-            ) && sequential.ready && horizonSupported
+            ) && horizonSupported
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
@@ -240,8 +240,8 @@ import kotlin.math.min
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
-                score<75->"WATCH: Setup is developing; score is below the 75-point READY threshold."
-                else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥2R."
+                score<70->"WATCH: Setup is developing; score is below the 70-point READY threshold."
+                else->"BALANCED: Execution confirmation and hard risk gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 s.detail,
