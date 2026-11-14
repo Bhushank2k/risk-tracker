@@ -1,0 +1,35 @@
+package com.risktracker.app
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class SequentialSmcConfluenceTest {
+    private fun chain(direction: SmcDirection = SmcDirection.BULLISH) = listOf(
+        SequentialSignalEvent(SequentialSignalStage.H4_BIAS, direction, 1_000L),
+        SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, direction, 2_000L),
+        SequentialSignalEvent(SequentialSignalStage.M15_SETUP, direction, 3_000L),
+        SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, direction, 4_000L)
+    )
+    @Test fun acceptsSignalsConfirmedOnDifferentCandles() {
+        val result = evaluateSequentialConfluence(chain(), SmcDirection.BULLISH, 5_000L)
+        assertTrue(result.ready); assertEquals(4, result.events.size)
+    }
+    @Test fun rejectsOutOfOrderSignals() {
+        val events = chain().toMutableList().also { it[2] = it[2].copy(closeTime = 1_500L) }
+        val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
+        assertFalse(result.ready); assertTrue(result.reason.contains("before the prior stage"))
+    }
+    @Test fun rejectsExpiredSignals() {
+        assertFalse(evaluateSequentialConfluence(chain(), SmcDirection.BULLISH, 60 * 60_000L).ready)
+    }
+    @Test fun ignoresFutureSignalsAndReportsMissingStage() {
+        val events = chain().dropLast(1) + chain().last().copy(closeTime = 9_000L)
+        val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
+        assertFalse(result.ready); assertTrue(result.reason.contains("M5 ENTRY"))
+    }
+    @Test fun rejectsOpposingAndNeutralSignals() {
+        val opposing = chain() + SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, SmcDirection.BEARISH, 4_500L)
+        assertFalse(evaluateSequentialConfluence(opposing, SmcDirection.BULLISH, 5_000L).ready)
+        assertFalse(evaluateSequentialConfluence(chain(), SmcDirection.NEUTRAL, 5_000L).ready)
+    }
+}
