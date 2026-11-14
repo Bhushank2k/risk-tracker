@@ -33,7 +33,7 @@ object SMCScanStateStore {
             .put("updatedAt", p.getLong("updatedAt", 0L))
     }
 
-    fun saveResults(context: Context, setups: List<SMCTradeSetup>) {
+    internal fun saveResults(context: Context, setups: List<SMCTradeSetup>) {
         val rows = JSONArray()
         setups.forEach { s ->
             rows.put(JSONObject()
@@ -50,7 +50,7 @@ object SMCScanStateStore {
             .putLong("resultsAt", System.currentTimeMillis()).apply()
     }
 
-    fun loadResults(context: Context): List<SMCTradeSetup> {
+    internal fun loadResults(context: Context): List<SMCTradeSetup> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("setups", "[]") ?: "[]"
         val rows = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
         return (0 until rows.length()).mapNotNull { i ->
