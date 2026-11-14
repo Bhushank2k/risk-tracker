@@ -15,7 +15,8 @@ fun evaluateSequentialConfluence(
         SequentialSignalStage.H1_STRUCTURE to 6 * 60 * 60_000L,
         SequentialSignalStage.M15_SETUP to 2 * 60 * 60_000L,
         SequentialSignalStage.M5_ENTRY to 15 * 60_000L
-    )
+    ),
+    allowNeutralContext: Boolean = false
 ): SequentialConfluenceResult {
     if (direction == SmcDirection.NEUTRAL || decisionTime < 0L)
         return SequentialConfluenceResult(false, "Direction or decision timestamp is invalid.", emptyList())
@@ -23,7 +24,10 @@ fun evaluateSequentialConfluence(
     for (stage in SequentialSignalStage.values()) {
         val latest = events.filter { it.stage == stage && it.closeTime <= decisionTime }.maxByOrNull { it.closeTime }
             ?: return SequentialConfluenceResult(false, "Waiting for ${stage.name.replace('_', ' ')} confirmation.", selected)
-        if (latest.direction != direction)
+        val neutralContextAllowed = allowNeutralContext &&
+            stage in setOf(SequentialSignalStage.H4_BIAS, SequentialSignalStage.H1_STRUCTURE) &&
+            latest.direction == SmcDirection.NEUTRAL
+        if (latest.direction != direction && !neutralContextAllowed)
             return SequentialConfluenceResult(false, "${stage.name.replace('_', ' ')} conflicts with trade direction.", selected)
         val maxAge = maxAgeMillis[stage] ?: return SequentialConfluenceResult(false, "Missing expiry policy for ${stage.name}.", selected)
         if (maxAge <= 0L || latest.closeTime < 0L || decisionTime - latest.closeTime > maxAge)
@@ -61,7 +65,7 @@ fun buildSequentialSignalHistory(
             bars.last().close < slow && fast < slow -> SmcDirection.BEARISH
             else -> SmcDirection.NEUTRAL
         }
-        if (bias != SmcDirection.NEUTRAL) events += SequentialSignalEvent(SequentialSignalStage.H4_BIAS, bias, bars.last().closeTime)
+        events += SequentialSignalEvent(SequentialSignalStage.H4_BIAS, bias, bars.last().closeTime)
     }
 
     for (end in 9..h1.size) {
@@ -72,7 +76,8 @@ fun buildSequentialSignalHistory(
             TradeIdeaStructure.BEARISH -> SmcDirection.BEARISH
             else -> SmcDirection.NEUTRAL
         }
-        if (bias != SmcDirection.NEUTRAL) events += SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, bias, bars.last().closeTime)
+        // MIXED/UNKNOWN is retained as neutral context so range reversals do not inherit stale trend bias.
+        events += SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, bias, bars.last().closeTime)
     }
 
     // A setup event is recorded only on the bar that actually meets the scanner's
