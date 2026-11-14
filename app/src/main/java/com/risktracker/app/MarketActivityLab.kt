@@ -27,8 +27,7 @@ object MarketActivityEngine {
         val e9=ema(c,9).lastOrNull{it!=null};val e20=ema(c,20).lastOrNull{it!=null};val e50=ema(c,50).lastOrNull{it!=null};val e200=ema(c,200).lastOrNull{it!=null}
         val f=ema(c,12);val s=ema(c,26);val ml=c.indices.map{if(f[it]!=null&&s[it]!=null)f[it]!!-s[it]!! else null};val ms=ema(ml.filterNotNull(),9).lastOrNull{it!=null}
         val mid=sma(c,20);val dev=if(c.size>=20)sd(c.takeLast(20))else null;val up=if(mid!=null&&dev!=null)mid+2*dev else null;val low=if(mid!=null&&dev!=null)mid-2*dev else null
-        val tr=cs.mapIndexed{i,x->if(i==0)x.high-x.low else max(x.high-x.low,max(abs(x.high-cs[i-1].close),abs(x.low-cs[i-1].close)))}
-        val atr=if(tr.size>=14)tr.takeLast(14).average()else null
+        val atr=ScannerCalculationCore.atr(cs.map { it.high },cs.map { it.low },c,14)
         val rets=c.zipWithNext().takeLast(20).map{ln(it.second/it.first)}
         val hv=if(rets.size>=2)sd(rets)*100 else null
         val vb=ScannerCalculationCore.averageVolume(cs.map { it.volume },20,excludeLast=true)
