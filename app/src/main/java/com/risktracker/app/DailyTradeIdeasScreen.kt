@@ -805,8 +805,10 @@ fun DailyTradeIdeasScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
+    var showOtherScannerResults by remember { mutableStateOf(false) }
     var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
     LaunchedEffect(ideas) { trackedPlanKeys = readTrackedPlanKeys(ideas) }
+    LaunchedEffect(filter, horizonFilter, ideas) { showOtherScannerResults = false }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
@@ -902,6 +904,12 @@ fun DailyTradeIdeasScreen() {
     }
     val trackedVisible = visible.filter { isPlanTracked(it) }
     val opportunityVisible = visible.filterNot { isPlanTracked(it) }
+    // The default view is selective; every other scanner outcome remains available below.
+    val highQualityShortlist = if (filter == "All") opportunityVisible
+        .filter { isHighQualityDailyTradeIdea(it, scanSnapshotAgeMs) }
+        .take(5) else emptyList()
+    val otherScannerResults = if (filter == "All") opportunityVisible.filterNot { it in highQualityShortlist }
+        else emptyList()
     val readyCount = modeIdeas.count { tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = modeIdeas.count { idea ->
         tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
@@ -1018,7 +1026,7 @@ fun DailyTradeIdeasScreen() {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Best opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(if (filter == "All") "Top 5 high-quality setups" else "Scanner results", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -1033,7 +1041,8 @@ fun DailyTradeIdeasScreen() {
                     }
                 }
                 Text(
-                    "${visible.size} shown · ranked by entry state, then scanner score",
+                    if (filter == "All") "${highQualityShortlist.size}/5 selected · score ≥80 + key confirmation and risk checks"
+                    else "${visible.size} shown · ranked by entry state, then scanner score",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1050,11 +1059,51 @@ fun DailyTradeIdeasScreen() {
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
-        if (opportunityVisible.isNotEmpty()) {
-            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
+        if (filter == "All") {
+            if (highQualityShortlist.isNotEmpty()) {
+                items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
+                    TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                        trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                    }
+                }
+            } else if (opportunityVisible.isNotEmpty()) {
+                item {
+                    RiskCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("No high-quality setups right now", fontWeight = FontWeight.SemiBold)
+                            Text("No untracked idea currently meets the score ≥80 threshold and all key trend, liquidity, confirmation and risk checks. Review other scanner results below or wait for the next scan.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
-        } else if (trackedVisible.isEmpty()) {
+            if (otherScannerResults.isNotEmpty()) {
+                item {
+                    OutlinedButton(
+                        onClick = { showOtherScannerResults = !showOtherScannerResults },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (showOtherScannerResults) "Hide other scanner results (${otherScannerResults.size})"
+                            else "Show other scanner results (${otherScannerResults.size})")
+                    }
+                }
+                if (showOtherScannerResults) {
+                    items(otherScannerResults, key = { "other_" + it.symbol + "_" + it.horizon }) { idea ->
+                        TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                            trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                        }
+                    }
+                }
+            }
+        } else if (opportunityVisible.isNotEmpty()) {
+            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                    trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                }
+            }
+        }
+
+        if (trackedVisible.isEmpty() && opportunityVisible.isEmpty()) {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1457,6 +1506,25 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
 }
 
+
+/**
+ * High-quality Daily Trade Ideas gate. Keeps Scalp, Intraday and Swing eligible,
+ * while requiring a strong score, valid risk geometry, a fresh actionable stage,
+ * and the key trend, liquidity and entry-confirmation checks.
+ */
+internal fun isHighQualityDailyTradeIdea(idea: TradeIdea, snapshotAgeMs: Long = 0L): Boolean {
+    if (idea.score < 80 || idea.side !in setOf("LONG", "SHORT")) return false
+    if (!tradeIdeaRiskValid(idea)) return false
+    val stage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
+    if (stage !in setOf(TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION)) return false
+
+    val requiredLabels = listOf("trend structure", "5-level depth", "confirmation candle", "stop-loss", "target 1")
+    val requiredChecks = requiredLabels.map { fragment ->
+        idea.strategyChecks.firstOrNull { (label, _) -> label.contains(fragment, ignoreCase = true) }?.second
+    }
+    // Missing checks (including legacy cached ideas) are not silently treated as passes.
+    return requiredChecks.size == requiredLabels.size && requiredChecks.all { it == true }
+}
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
 
