@@ -184,7 +184,7 @@ fun detectLatestSmcLiquiditySweep(
     lookback: Int = 20,
     minimumPenetrationAtr: Double = 0.0
 ): SmcLiquiditySweep? {
-    if (!validSmcCandles(candles) || candles.size < lookback + 2 ||
+    if (!validSmcCandles(candles) || candles.size < lookback + 1 ||
         !atr.isFinite() || atr <= 0.0 || lookback < 2 ||
         !minimumPenetrationAtr.isFinite() || minimumPenetrationAtr < 0.0) return null
     val current = candles.last()
