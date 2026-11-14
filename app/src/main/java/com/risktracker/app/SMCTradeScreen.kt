@@ -20,7 +20,11 @@ fun SMCTradeScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var horizon by remember { mutableStateOf("All") }
-    var setups by remember { mutableStateOf<List<SMCTradeSetup>>(emptyList()) }
+    var setups by remember { mutableStateOf(SMCScanStateStore.loadResults(context)) }
+    var scannedCoins by remember { mutableIntStateOf(SMCScanStateStore.status(context).optInt("scanned")) }
+    var totalCoins by remember { mutableIntStateOf(SMCScanStateStore.status(context).optInt("total")) }
+    var backgroundRunning by remember { mutableStateOf(SMCScanStateStore.status(context).optBoolean("running")) }
+    var backgroundMessage by remember { mutableStateOf(SMCScanStateStore.status(context).optString("message")) }
     var loading by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("Refresh to scan liquid Binance USDT-M perpetual markets for SMC setups.") }
@@ -34,8 +38,13 @@ fun SMCTradeScreen() {
         status = "Loading Binance futures markets…"
         scope.launch {
             try {
-                val result = BinanceMarketScanner.scanSmc { message -> status = message }
+                val result = BinanceMarketScanner.scanSmc(
+                    progress = { message -> status = message },
+                    onProgress = { scanned, total -> scannedCoins = scanned; totalCoins = total }
+                )
                 setups = result
+                SMCScanStateStore.saveResults(context, result)
+                SMCScanStateStore.update(context, totalCoins, totalCoins, false, "Foreground scan complete · ${result.size} qualified setups")
                 scannedAt = System.currentTimeMillis()
                 status = if (result.isEmpty()) "Scan complete · no SMC setups passed every required confirmation." else "Scan complete · ${result.size} qualified SMC setups."
             } catch (e: Exception) {
@@ -47,7 +56,21 @@ fun SMCTradeScreen() {
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        refresh()
+        while (true) {
+            val snapshot = SMCScanStateStore.status(context)
+            scannedCoins = snapshot.optInt("scanned")
+            totalCoins = snapshot.optInt("total")
+            backgroundRunning = snapshot.optBoolean("running")
+            backgroundMessage = snapshot.optString("message")
+            if (!loading && SMCScanStateStore.resultsUpdatedAt(context) > (scannedAt ?: 0L)) {
+                setups = SMCScanStateStore.loadResults(context)
+                scannedAt = SMCScanStateStore.resultsUpdatedAt(context)
+            }
+            kotlinx.coroutines.delay(1000)
+        }
+    }
 
     val visible = remember(setups, horizon) {
         (if (horizon == "All") setups else setups.filter { it.horizon == horizon })
@@ -77,6 +100,18 @@ fun SMCTradeScreen() {
             Text(if (loading) "Scanning SMC setups…" else "Scan SMC trades")
         }
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (loading || backgroundRunning || totalCoins > 0) {
+            val fraction = if (totalCoins > 0) (scannedCoins.toFloat() / totalCoins.toFloat()).coerceIn(0f, 1f) else 0f
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (loading) "Scanning markets" else if (backgroundRunning) "Background scan" else "Last scan progress",
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text("$scannedCoins / $totalCoins coins", style = MaterialTheme.typography.labelMedium)
+                }
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                if (!loading) Text(backgroundMessage, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         if (error != null) Text(error!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         scannedAt?.let { Text("Last completed scan: " + java.text.SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(java.util.Date(it)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (visible.isEmpty() && !loading) {
