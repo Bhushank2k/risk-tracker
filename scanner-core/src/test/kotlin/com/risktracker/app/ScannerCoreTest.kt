@@ -35,6 +35,24 @@ class ScannerCoreTest {
         assertFalse(isTradeIdeaHorizonSupported("Swing"))
     }
 
+
+    @Test fun balancedExecutionVolumeThresholdsAreLessRestrictiveButNotZero() {
+        assertEquals(1.20, confluenceExecutionVolumeThreshold("Breakout + retest"), 0.0001)
+        assertEquals(0.90, confluenceExecutionVolumeThreshold("Trend pullback"), 0.0001)
+    }
+
+    @Test fun balancedPullbackVolumeAllowsNearBaselineParticipation() {
+        assertTrue(confluencePullbackVolumeConfirmed(95.0, 92.0, 100.0))
+        assertFalse(confluencePullbackVolumeConfirmed(120.0, 110.0, 100.0))
+        assertFalse(confluencePullbackVolumeConfirmed(80.0, 80.0, 100.0))
+    }
+
+
+    @Test fun balancedReadyScoreFloorIsSeventy() {
+        assertTrue(isConfluenceReady(true, true, true, true, true, true, true, true, true, 70))
+        assertFalse(isConfluenceReady(true, true, true, true, true, true, true, true, true, 69))
+    }
+
     @Test fun riskCodesBlockInvalidPlans() {
         assertFalse(isTradeIdeaRiskValid("LONG", 100.0, 98.0, 104.0, 106.0,
             setOf(TradeIdeaRiskCode.FUNDING_DATA_UNAVAILABLE)))

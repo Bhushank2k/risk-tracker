@@ -95,6 +95,32 @@ class SequentialSmcConfluenceTest {
         assertTrue(result.reason.contains("M15 SETUP conflicts"))
     }
 
+
+    @Test fun balancedEntrySequenceNeedsOnlyM15SetupThenM5Entry() {
+        val events = listOf(
+            SequentialSignalEvent(SequentialSignalStage.H4_BIAS, SmcDirection.BEARISH, 500L),
+            SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, 3_000L),
+            SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, 4_000L)
+        )
+        val result = evaluateEntrySequence(events, SmcDirection.BULLISH, 5_000L)
+        assertTrue(result.ready)
+        assertEquals(2, result.events.size)
+    }
+
+    @Test fun balancedEntrySequenceRejectsStaleOrOutOfOrderExecution() {
+        val stale = listOf(
+            SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, 1_000L),
+            SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, 4_000L)
+        )
+        assertFalse(evaluateEntrySequence(stale, SmcDirection.BULLISH, 60 * 60_000L).ready)
+
+        val reversed = listOf(
+            SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, 4_000L),
+            SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, 3_000L)
+        )
+        assertFalse(evaluateEntrySequence(reversed, SmcDirection.BULLISH, 5_000L).ready)
+    }
+
     @Test fun rejectsUnsortedOrDuplicateCandleTimestamps() {
         val valid = (0 until 60).map { i ->
             V2Candle(

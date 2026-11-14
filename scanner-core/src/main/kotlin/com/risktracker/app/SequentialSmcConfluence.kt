@@ -51,6 +51,44 @@ private fun hasValidSequentialCandleHistory(candles: List<V2Candle>): Boolean =
         current.closeTime > previous.closeTime
     }
 
+/**
+ * Balanced entry confirmation: require the setup and execution stages, while leaving
+ * higher-timeframe bias/structure to the scanner's independent context scoring.
+ */
+fun evaluateEntrySequence(
+    events: List<SequentialSignalEvent>,
+    direction: SmcDirection,
+    decisionTime: Long,
+    setupMaxAgeMillis: Long = 2 * 60 * 60_000L,
+    entryMaxAgeMillis: Long = 15 * 60_000L
+): SequentialConfluenceResult {
+    if (direction == SmcDirection.NEUTRAL || decisionTime < 0L ||
+        setupMaxAgeMillis <= 0L || entryMaxAgeMillis <= 0L
+    ) return SequentialConfluenceResult(false, "Direction, timestamp, or expiry policy is invalid.", emptyList())
+
+    val setup = events.filter {
+        it.stage == SequentialSignalStage.M15_SETUP && it.closeTime <= decisionTime
+    }.maxByOrNull { it.closeTime }
+        ?: return SequentialConfluenceResult(false, "Waiting for M15 setup confirmation.", emptyList())
+    if (setup.direction != direction)
+        return SequentialConfluenceResult(false, "M15 setup conflicts with trade direction.", listOf(setup))
+    if (setup.closeTime < 0L || decisionTime - setup.closeTime > setupMaxAgeMillis)
+        return SequentialConfluenceResult(false, "M15 setup confirmation expired.", listOf(setup))
+
+    val entry = events.filter {
+        it.stage == SequentialSignalStage.M5_ENTRY && it.closeTime <= decisionTime
+    }.maxByOrNull { it.closeTime }
+        ?: return SequentialConfluenceResult(false, "Waiting for M5 entry confirmation.", listOf(setup))
+    if (entry.direction != direction)
+        return SequentialConfluenceResult(false, "M5 entry conflicts with trade direction.", listOf(setup, entry))
+    if (entry.closeTime < 0L || decisionTime - entry.closeTime > entryMaxAgeMillis)
+        return SequentialConfluenceResult(false, "M5 entry confirmation expired.", listOf(setup, entry))
+    if (entry.closeTime < setup.closeTime)
+        return SequentialConfluenceResult(false, "M5 entry occurred before the M15 setup.", listOf(setup, entry))
+
+    return SequentialConfluenceResult(true, "M15 setup and M5 entry are confirmed in sequence.", listOf(setup, entry))
+}
+
 /** Incremental EMA with the same SMA seed and recursive updates as sequentialEma. */
 private class SequentialEma(private val period: Int) {
     private var count = 0
