@@ -50,4 +50,13 @@ class SequentialSmcConfluenceTest {
         assertTrue(result.reason.contains("H4 BIAS conflicts"))
     }
 
+
+    @Test fun newerOpposingM15SetupInvalidatesEarlierDirectionalSetup() {
+        val events = chain() + SequentialSignalEvent(
+            SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, 4_500L
+        )
+        val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
+        assertFalse(result.ready)
+        assertTrue(result.reason.contains("M15 SETUP conflicts"))
+    }
 }
