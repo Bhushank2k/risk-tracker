@@ -47,6 +47,8 @@ fun SMCTradeScreen() {
         }
     }
 
+    LaunchedEffect(Unit) { refresh() }
+
     val visible = remember(setups, horizon) {
         (if (horizon == "All") setups else setups.filter { it.horizon == horizon })
             .sortedByDescending { it.score }.take(5)
