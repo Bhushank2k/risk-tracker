@@ -66,19 +66,10 @@ fun confirmedSmcSwings(
     leftBars: Int = 2,
     rightBars: Int = 2
 ): List<SmcSwingPoint> {
-    if (!validSmcCandles(candles) || leftBars < 1 || rightBars < 1 ||
-        candles.size < leftBars + rightBars + 1) return emptyList()
-
-    val result = mutableListOf<SmcSwingPoint>()
-    val lastCandidate = candles.lastIndex - rightBars
-    for (i in leftBars..lastCandidate) {
-        val neighbours = (i - leftBars..i + rightBars).filter { it != i }
-        val high = neighbours.all { candles[i].high > candles[it].high }
-        val low = neighbours.all { candles[i].low < candles[it].low }
-        if (high) result += SmcSwingPoint(i, candles[i].high, i + rightBars, true)
-        if (low) result += SmcSwingPoint(i, candles[i].low, i + rightBars, false)
-    }
-    return result.sortedBy { it.index }
+    if (!validSmcCandles(candles)) return emptyList()
+    return ScannerCalculationCore.confirmedPivots(
+        candles.map { it.high }, candles.map { it.low }, leftBars, rightBars
+    ).map { SmcSwingPoint(it.index, it.price, it.confirmedAtIndex, it.isHigh) }
 }
 
 /**
