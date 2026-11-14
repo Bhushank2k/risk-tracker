@@ -15,3 +15,5 @@ The positive/non-positive return metric is the fraction of setups with positive/
 
 ## Data provenance and safety
 Use completed candles and preserve the original archive. The importer is offline and makes no API calls. It needs no exchange credentials and cannot place orders. Historical data supplied by a user or downloaded from an exchange is untrusted input and is validated before replay.
+
+The Android Market Activity Lab exposes this importer through the “Import Binance kline CSV” action. Select the intended symbol and interval before importing; ZIP archives must be extracted to CSV first. The UI runs the report on-device and displays both training and holdout counts, holdout net return, excursion range and dataset fingerprint.
