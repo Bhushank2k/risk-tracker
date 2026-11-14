@@ -102,6 +102,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     26 -> Icons.Filled.ShowChart
     27 -> Icons.Filled.Notifications
     30 -> Icons.Filled.ShowChart
+    31 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -192,6 +193,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         BinanceMarketScanner.initialize(context)
         TradeIdeaNotifications.schedule(context)
         SMCBackgroundScanScheduler.schedule(context)
+        AdvancedSMCScanScheduler.schedule(context)
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)
             BinanceDailyWorker.schedule(context)
@@ -239,6 +241,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         ),
         "IDEAS & RISK TOOLS" to listOf(
             "SMC Trade" to 30,
+            "SMC Signals" to 31,
             "Position & leverage calculator" to 2,
         ),
         "CONNECTIONS & ACCOUNT" to listOf(
@@ -275,6 +278,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> "P&L Calendar"
                 29 -> "Explore"
                 30 -> "SMC Trade"
+                31 -> "SMC Signals"
             else -> "Explore"
             }
 
@@ -462,6 +466,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
                 30 -> SMCTradeScreen()
+                31 -> AdvancedSMCSignalsScreen(onOpenTradeIdeas = { tab = 21 })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
