@@ -155,6 +155,21 @@ import kotlin.math.min
             val structureConfirmed = structureAligned && fourHourNotOpposed
             val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
+            val sequentialDirection = if (long) SmcDirection.BULLISH else SmcDirection.BEARISH
+            val sequential = evaluateSequentialConfluence(
+                listOf(
+                    SequentialSignalEvent(SequentialSignalStage.H4_BIAS, if (up4) SmcDirection.BULLISH else if (dn4) SmcDirection.BEARISH else SmcDirection.NEUTRAL, h4.last().closeTime),
+                    SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, when (h1Structure) {
+                        TradeIdeaStructure.BULLISH -> SmcDirection.BULLISH
+                        TradeIdeaStructure.BEARISH -> SmcDirection.BEARISH
+                        else -> SmcDirection.NEUTRAL
+                    }, h1.last().closeTime),
+                    SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime),
+                    SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, if (entryOk) sequentialDirection else SmcDirection.NEUTRAL, exec.closeTime)
+                ),
+                sequentialDirection,
+                now
+            )
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
@@ -195,10 +210,11 @@ import kotlin.math.min
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
             if(!volumeConfirmed)blocks.add("relative volume below ${requiredRelativeVolume}x hard gate"); if(!momentum)blocks.add("momentum (scoring penalty)"); if(score<60)blocks.add("score")
+            if(!sequential.ready)blocks.add("sequential confluence: ${sequential.reason}")
             val ready=isConfluenceReady(
                 liquid, geometry, rr, fundingOk, volatility, extended, volumeConfirmed,
                 momentum, entryOk, score, structureConfirmed = structureConfirmed
-            ) && horizonSupported
+            ) && sequential.ready && horizonSupported
             val riskCodes = buildSet {
                 if (!liquid) add(TradeIdeaRiskCode.LOW_LIQUIDITY)
                 if (!geometry) add(TradeIdeaRiskCode.INVALID_STOP)
@@ -225,6 +241,7 @@ import kotlin.math.min
                 !volatility->"BLOCK: ATR% is outside 0.12–3.0% or volatility expanded over 1.8× versus the prior ATR window."
                 !extended->"BLOCK: Price is extended from setup level; do not chase."
                 !volumeConfirmed->"BLOCK: Relative volume is below the ${requiredRelativeVolume}× hard threshold for this setup."
+                !sequential.ready->"WAIT: Sequential 4H → 1H → 15M → 5M confirmation: ${sequential.reason}"
                 !momentum->"WATCH: RSI/MACD momentum is not aligned; other evidence may still qualify."
                 score<60->"BLOCK: Confluence score is below 60/100."
                 !entryOk->"WAIT: Completed ${executionLabel} EMA9/21 entry confirmation is missing."
@@ -234,6 +251,7 @@ import kotlin.math.min
             val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 s.detail,
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
+                "Sequential signal lifecycle: "+sequential.reason,
                 "1H swing structure: "+h1Structure+" · 4H context: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
                 if(liquiditySweep)"15M liquidity sweep and reclaim detected (supporting evidence; not a standalone trigger)" else "No confirmed 15M liquidity sweep/reclaim (not required for trend continuation)",
                 if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "1H EMA20/50 directional bias; 4H context "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
