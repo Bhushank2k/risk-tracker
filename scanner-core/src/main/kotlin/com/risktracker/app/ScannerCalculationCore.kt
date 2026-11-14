@@ -63,7 +63,7 @@ object ScannerCalculationCore {
     /** Simple mean true range over the last period bars; first bar uses high-low. */
     fun atr(highs: List<Double>, lows: List<Double>, closes: List<Double>, period: Int = 14): Double? {
         if (period < 1 || highs.size != lows.size || highs.size != closes.size ||
-            highs.size <= period || (highs + lows + closes).any { !it.isFinite() }) return null
+            highs.size < period || (highs + lows + closes).any { !it.isFinite() }) return null
         val trueRanges = highs.indices.map { i ->
             if (i == 0) highs[i] - lows[i]
             else max(highs[i] - lows[i], max(abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
