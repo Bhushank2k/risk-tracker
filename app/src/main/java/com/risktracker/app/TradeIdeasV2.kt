@@ -70,7 +70,7 @@ internal object TradeIdeasV2 {
     const val RISK_PERCENT = 0.5
     const val MAX_LEVERAGE = 3.0
     const val MAX_SPREAD_BPS = 10.0
-    const val MIN_SCORE = 75
+    const val MIN_SCORE = 70
     private const val MIN_QUOTE_VOLUME = MIN_TRADE_QUOTE_VOLUME_USD
 
     fun evaluate(
@@ -128,7 +128,7 @@ internal object TradeIdeasV2 {
             val previous = m15[i - 1]
             val current = m15[i]
             val breakoutLevel = if (long) history.maxOf { it.high } else history.minOf { it.low }
-            val breakout = (long || short) && relativeVolume >= 1.5 &&
+            val breakout = (long || short) && relativeVolume >= 1.25 &&
                 (if (long) current.close > breakoutLevel else current.close < breakoutLevel)
             val retest = if (i + 1 < m15.size) m15[i + 1] else current
             val breakoutTouched = if (long) retest.low <= breakoutLevel + atr * 0.25
@@ -158,7 +158,7 @@ internal object TradeIdeasV2 {
                     stopReference = listOf(current, retest)
                     setupFamily = "BREAKOUT"
                 }
-                pullback && relativeVolume >= 1.2 -> {
+                pullback && relativeVolume >= 0.9 -> {
                     sideLong = long
                     entryCandle = current
                     entryIndex = i
