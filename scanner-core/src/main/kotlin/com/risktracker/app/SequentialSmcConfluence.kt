@@ -86,8 +86,7 @@ fun buildSequentialSignalHistory(
         val previous = bars[bars.lastIndex - 1]
         val averageVolume = bars.dropLast(1).takeLast(20).map { it.volume }.average()
         if (averageVolume <= 0.0) continue
-        val priorQuiet = previous.volume <= averageVolume
-        val participation = current.volume >= averageVolume * 1.2 && priorQuiet
+        val participation = confluencePullbackVolumeConfirmed(previous.volume, current.volume, averageVolume)
         val setup = if (direction == SmcDirection.BULLISH) {
             current.low <= ema20 + atr * .2 && current.low >= ema20 - atr * .7 &&
                 current.close > ema20 && current.close > previous.close && participation
@@ -104,9 +103,10 @@ fun buildSequentialSignalHistory(
         val closes = bars.map { it.close }
         val fast = sequentialEma(closes, 9) ?: continue
         val slow = sequentialEma(closes, 21) ?: continue
-        val valid = if (direction == SmcDirection.BULLISH) bars.last().close > fast && fast > slow
-            else bars.last().close < fast && fast < slow
-        if (valid) events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, direction, bars.last().closeTime)
+        val bullishEntry = bars.last().close > fast && fast > slow
+        val bearishEntry = bars.last().close < fast && fast < slow
+        if (bullishEntry) events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, bars.last().closeTime)
+        if (bearishEntry) events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BEARISH, bars.last().closeTime)
     }
     return events.sortedBy { it.closeTime }
 }
