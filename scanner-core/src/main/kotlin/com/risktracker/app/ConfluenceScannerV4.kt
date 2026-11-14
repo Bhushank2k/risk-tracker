@@ -228,8 +228,13 @@ import kotlin.math.min
                 score<75->"WATCH: Setup is developing; score is below the 75-point READY threshold."
                 else->"BALANCED INTRADAY: Hard gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
-            val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
-                s.detail,
+            val reasons=listOf(
+                ScannerCalculationCore.primarySignalReason(s.name,s.side,listOf(
+                    s.detail,
+                    if(liquiditySweep) "liquidity sweep and reclaim" else "",
+                    if(entryOk) "${executionLabel} EMA9/21 entry confirmed" else "waiting for ${executionLabel} entry confirmation"
+                )),
+                "Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
                 "Sequential signal lifecycle: "+sequential.reason,
                 "1H swing structure: "+h1Structure+" · 4H context: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
