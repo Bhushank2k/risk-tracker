@@ -15,14 +15,18 @@ internal fun validReversalCandles(rows:List<ReversalCandle>):Boolean {
  }
 }
 internal fun isConfirmedPivotLow(rows:List<ReversalCandle>,pivotIndex:Int,leftBars:Int=3,rightBars:Int=3,asOfIndex:Int=rows.lastIndex):Boolean {
- if(leftBars<1||rightBars<1||pivotIndex<leftBars||pivotIndex+rightBars>asOfIndex||asOfIndex>=rows.size)return false
- val v=rows[pivotIndex].low
- return (pivotIndex-leftBars until pivotIndex).all{rows[it].low>v}&&(pivotIndex+1..pivotIndex+rightBars).all{rows[it].low>v}
+ if (pivotIndex < 0 || pivotIndex >= rows.size || asOfIndex >= rows.size ||
+     pivotIndex + rightBars > asOfIndex) return false
+ return ScannerCalculationCore.confirmedPivots(
+  rows.map { it.high }, rows.map { it.low }, leftBars, rightBars
+ ).any { !it.isHigh && it.index == pivotIndex }
 }
 internal fun isConfirmedPivotHigh(rows:List<ReversalCandle>,pivotIndex:Int,leftBars:Int=3,rightBars:Int=3,asOfIndex:Int=rows.lastIndex):Boolean {
- if(leftBars<1||rightBars<1||pivotIndex<leftBars||pivotIndex+rightBars>asOfIndex||asOfIndex>=rows.size)return false
- val v=rows[pivotIndex].high
- return (pivotIndex-leftBars until pivotIndex).all{rows[it].high<v}&&(pivotIndex+1..pivotIndex+rightBars).all{rows[it].high<v}
+ if (pivotIndex < 0 || pivotIndex >= rows.size || asOfIndex >= rows.size ||
+     pivotIndex + rightBars > asOfIndex) return false
+ return ScannerCalculationCore.confirmedPivots(
+  rows.map { it.high }, rows.map { it.low }, leftBars, rightBars
+ ).any { it.isHigh && it.index == pivotIndex }
 }
 internal fun resolveReversalBar(isLong:Boolean,entry:Double,stop:Double,target:Double,c:ReversalCandle):ReversalBarOutcome {
  if(!listOf(entry,stop,target,c.high,c.low).all{it.isFinite()}||entry<=0||stop<=0||target<=0||c.high<c.low)return ReversalBarOutcome(-1.0)
@@ -84,14 +88,12 @@ internal object ConfirmedReversalEngine {
   return ReversalBacktestStats(results.size,wins,wins.toDouble()/results.size*100,if(gl>0)gw/gl else null,results.average(),dd)
  }
  private fun rsiAt(rows:List<ReversalCandle>,i:Int,period:Int=14):Double? {
-  if(i<period)return null
-  var g=0.0;var l=0.0
-  for(n in i-period+1..i){val d=rows[n].close-rows[n-1].close;if(d>0)g+=d else l-=d}
-  if(l==0.0)return if(g==0.0)50.0 else 100.0
-  return 100-100/(1+g/l)
+  if (i < period || i >= rows.size) return null
+  return ScannerCalculationCore.rsiSimple(rows.take(i + 1).map { it.close }, period)
  }
  private fun atrAt(rows:List<ReversalCandle>,i:Int):Double? {
-  if(i<14)return null
-  return (i-13..i).map{n->val pc=rows[n-1].close;max(rows[n].high-rows[n].low,max(abs(rows[n].high-pc),abs(rows[n].low-pc)))}.average().takeIf{it.isFinite()&&it>0}
+  if (i < 14 || i >= rows.size) return null
+  val sample = rows.take(i + 1)
+  return ScannerCalculationCore.atr(sample.map { it.high }, sample.map { it.low }, sample.map { it.close }, 14)
  }
 }
