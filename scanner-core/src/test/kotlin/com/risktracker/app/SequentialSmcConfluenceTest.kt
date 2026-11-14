@@ -22,6 +22,31 @@ class SequentialSmcConfluenceTest {
     @Test fun rejectsExpiredSignals() {
         assertFalse(evaluateSequentialConfluence(chain(), SmcDirection.BULLISH, 60 * 60_000L).ready)
     }
+    @Test fun acceptsSignalsAtExactExpiryBoundary() {
+        val limits = mapOf(
+            SequentialSignalStage.H4_BIAS to 4_000L,
+            SequentialSignalStage.H1_STRUCTURE to 3_000L,
+            SequentialSignalStage.M15_SETUP to 2_000L,
+            SequentialSignalStage.M5_ENTRY to 1_000L
+        )
+        val result = evaluateSequentialConfluence(
+            chain(), SmcDirection.BULLISH, 5_000L, maxAgeMillis = limits
+        )
+        assertTrue(result.ready)
+    }
+    @Test fun rejectsSignalOneMillisecondBeyondExpiryBoundary() {
+        val limits = mapOf(
+            SequentialSignalStage.H4_BIAS to 4_000L,
+            SequentialSignalStage.H1_STRUCTURE to 3_000L,
+            SequentialSignalStage.M15_SETUP to 2_000L,
+            SequentialSignalStage.M5_ENTRY to 999L
+        )
+        val result = evaluateSequentialConfluence(
+            chain(), SmcDirection.BULLISH, 5_000L, maxAgeMillis = limits
+        )
+        assertFalse(result.ready)
+        assertTrue(result.reason.contains("M5 ENTRY confirmation expired"))
+    }
     @Test fun ignoresFutureSignalsAndReportsMissingStage() {
         val events = chain().dropLast(1) + chain().last().copy(closeTime = 9_000L)
         val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
@@ -42,15 +67,25 @@ class SequentialSmcConfluenceTest {
         assertTrue(evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L, allowNeutralContext = true).ready)
         assertFalse(evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L).ready)
     }
-
+    @Test fun neutralContextAllowanceDoesNotApplyToExecutionStages() {
+        val events = listOf(
+            SequentialSignalEvent(SequentialSignalStage.H4_BIAS, SmcDirection.NEUTRAL, 1_000L),
+            SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, SmcDirection.NEUTRAL, 2_000L),
+            SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.NEUTRAL, 3_000L),
+            SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, 4_000L)
+        )
+        val result = evaluateSequentialConfluence(
+            events, SmcDirection.BULLISH, 5_000L, allowNeutralContext = true
+        )
+        assertFalse(result.ready)
+        assertTrue(result.reason.contains("M15 SETUP conflicts"))
+    }
     @Test fun newerNeutralContextReplacesStaleTrendBias() {
         val events = chain() + SequentialSignalEvent(SequentialSignalStage.H4_BIAS, SmcDirection.NEUTRAL, 4_500L)
         val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
         assertFalse(result.ready)
         assertTrue(result.reason.contains("H4 BIAS conflicts"))
     }
-
-
     @Test fun newerOpposingM15SetupInvalidatesEarlierDirectionalSetup() {
         val events = chain() + SequentialSignalEvent(
             SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, 4_500L
