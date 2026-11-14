@@ -44,6 +44,13 @@ import java.util.Locale
 import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
+internal data class SMCTradeSetup(
+    val id: String, val symbol: String, val side: String, val horizon: String, val score: Int,
+    val status: String, val entryLow: Double, val entryHigh: Double, val stop: Double,
+    val target: Double, val rewardRisk: Double, val structure: String, val sweep: String,
+    val displacement: String, val zoneDescription: String, val location: String
+)
+
 private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
@@ -614,6 +621,138 @@ internal object BinanceMarketScanner {
         report("Scan complete · ${results.size} plans · ${gateDiagnostics.blockedPlans} blocked · ${marketsWithoutPlans} no setup · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols.")
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
+
+    suspend fun scanSmc(progress: (String) -> Unit): List<SMCTradeSetup> =
+        scanMutex.withLock { withContext(Dispatchers.IO) {
+            suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
+            report("Loading Binance USDT-M perpetual universe…")
+            val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
+            val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
+                it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
+            }.map { it.optString("symbol") }.toSet()
+            val tickers = JSONArray(get("/fapi/v1/ticker/24hr"))
+            val universe = (0 until tickers.length()).mapNotNull { i ->
+                val row = tickers.optJSONObject(i) ?: return@mapNotNull null
+                val symbol = row.optString("symbol")
+                val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+                val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
+                if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null else Triple(symbol, quote, last)
+            }.sortedByDescending { it.second }.take(20)
+            if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
+            report("SMC scan · loading multi-timeframe candles for ${universe.size} liquid contracts…")
+            val allSetups = mutableListOf<SMCTradeSetup>()
+            var completed = 0
+            for (batch in universe.chunked(4)) {
+                coroutineContext.ensureActive()
+                val rows = coroutineScope {
+                    batch.map { (symbol, quote, last) ->
+                        async {
+                            val candleSets = supervisorScope {
+                                val d1 = async { cachedCandles(symbol, "1d", 120) }
+                                val h4 = async { cachedCandles(symbol, "4h", 160) }
+                                val h1 = async { cachedCandles(symbol, "1h", 180) }
+                                val m15 = async { cachedCandles(symbol, "15m", 180) }
+                                val m5 = async { cachedCandles(symbol, "5m", 180) }
+                                val m1 = async { cachedCandles(symbol, "1m", 120) }
+                                listOf(d1.await(), h4.await(), h1.await(), m15.await(), m5.await(), m1.await())
+                            }
+                            val d1 = candleSets[0]; val h4 = candleSets[1]; val h1 = candleSets[2]
+                            val m15 = candleSets[3]; val m5 = candleSets[4]; val m1 = candleSets[5]
+                            listOfNotNull(
+                                evaluateSmcSetup(symbol, last, "Scalp", h1, m5, m1),
+                                evaluateSmcSetup(symbol, last, "Intraday", h4, h1, m15),
+                                evaluateSmcSetup(symbol, last, "Swing", d1, h4, h1)
+                            )
+                        }
+                    }.awaitAll()
+                }
+                rows.forEach { allSetups.addAll(it) }
+                completed += batch.size
+                report("SMC scan · ${completed}/${universe.size} markets checked · ${allSetups.size} validated candidates…")
+            }
+            allSetups.sortedByDescending { it.score }.take(5)
+        } }
+
+    private fun evaluateSmcSetup(
+        symbol: String, livePrice: Double, horizon: String,
+        contextRows: List<ScanCandle>, setupRowsRaw: List<ScanCandle>, executionRows: List<ScanCandle>
+    ): SMCTradeSetup? {
+        val context = contextRows.dropLast(1)
+        val rows = setupRowsRaw.dropLast(1)
+        val execution = executionRows.dropLast(1)
+        if (context.size < 20 || rows.size < 35 || execution.size < 20 || livePrice <= 0.0) return null
+        val bullish = hasHigherHighsAndLows(context)
+        val bearish = hasLowerHighsAndLows(context)
+        if (!bullish && !bearish) return null
+        val isLong = bullish
+        val side = if (isLong) "LONG" else "SHORT"
+        val atrValue = rows.zipWithNext { p, c -> maxOf(c.high-c.low, abs(c.high-p.close), abs(c.low-p.close)) }.takeLast(14).average()
+        if (!atrValue.isFinite() || atrValue <= 0.0) return null
+        val sweepStart = maxOf(10, rows.size - 12)
+        var sweepIndex = -1
+        var displacementIndex = -1
+        for (i in sweepStart until rows.lastIndex) {
+            val prior = rows.subList(maxOf(0, i - 20), i)
+            if (prior.size < 8) continue
+            val candle = rows[i]
+            val swept = if (isLong) candle.low < prior.minOf { it.low } && candle.close > prior.minOf { it.low }
+                else candle.high > prior.maxOf { it.high } && candle.close < prior.maxOf { it.high }
+            if (!swept) continue
+            for (j in i + 1..minOf(rows.lastIndex, i + 4)) {
+                val d = rows[j]
+                val body = abs(d.close - d.open)
+                val range = d.high - d.low
+                val directional = if (isLong) d.close > d.open else d.close < d.open
+                val priorStructure = rows.subList(maxOf(0, j - 10), j)
+                val bos = priorStructure.isNotEmpty() && (if (isLong) d.close > priorStructure.maxOf { it.high } else d.close < priorStructure.minOf { it.low })
+                if (directional && range > 0 && body / range >= 0.60 && body >= atrValue * 0.75 && bos) {
+                    sweepIndex = i; displacementIndex = j; break
+                }
+            }
+            if (displacementIndex >= 0) break
+        }
+        if (sweepIndex < 0 || displacementIndex < 0) return null
+        val sweepCandle = rows[sweepIndex]
+        val displacementCandle = rows[displacementIndex]
+        val orderBlockIndex = (displacementIndex - 1 downTo maxOf(0, displacementIndex - 6)).firstOrNull { idx ->
+            if (isLong) rows[idx].close < rows[idx].open else rows[idx].close > rows[idx].open
+        } ?: return null
+        val ob = rows[orderBlockIndex]
+        var fvgLow: Double? = null; var fvgHigh: Double? = null
+        for (idx in maxOf(2, displacementIndex - 3)..displacementIndex) {
+            if (isLong && rows[idx].low > rows[idx - 2].high) { fvgLow = rows[idx - 2].high; fvgHigh = rows[idx].low }
+            if (!isLong && rows[idx].high < rows[idx - 2].low) { fvgLow = rows[idx].high; fvgHigh = rows[idx - 2].low }
+        }
+        val zoneLow = fvgLow ?: ob.low
+        val zoneHigh = fvgHigh ?: ob.high
+        if (zoneLow <= 0.0 || zoneHigh <= zoneLow) return null
+        val entry = (zoneLow + zoneHigh) / 2.0
+        val stop = if (isLong) minOf(sweepCandle.low, zoneLow) - atrValue * 0.15 else maxOf(sweepCandle.high, zoneHigh) + atrValue * 0.15
+        val risk = abs(entry - stop)
+        if (risk <= 0.0 || !risk.isFinite()) return null
+        val dealing = rows.takeLast(50)
+        val rangeLow = dealing.minOf { it.low }; val rangeHigh = dealing.maxOf { it.high }
+        val midpoint = (rangeLow + rangeHigh) / 2.0
+        val inCorrectHalf = if (isLong) entry <= midpoint else entry >= midpoint
+        if (!inCorrectHalf) return null
+        val target = if (isLong) dealing.filter { it.high > entry }.maxOfOrNull { it.high } ?: rangeHigh
+            else dealing.filter { it.low < entry }.minOfOrNull { it.low } ?: rangeLow
+        val reward = if (isLong) target - entry else entry - target
+        val rr = reward / risk
+        if (!rr.isFinite() || rr < 2.0) return null
+        val validSide = if (isLong) livePrice >= zoneLow && livePrice > stop else livePrice <= zoneHigh && livePrice < stop
+        if (!validSide || abs(livePrice - entry) / atrValue > 2.0) return null
+        val status = if (livePrice in zoneLow..zoneHigh) "IN ENTRY ZONE" else "WAIT FOR RETRACEMENT"
+        val locationText = if (isLong) "Discount: entry below dealing-range midpoint ${midpoint}" else "Premium: entry above dealing-range midpoint ${midpoint}"
+        val zoneText = (if (fvgLow != null) "FVG ${fvgLow}–${fvgHigh}; " else "No clean FVG; ") +
+            "order block ${ob.low}–${ob.high} from opposing candle before displacement"
+        val structureText = "${horizon} context: ${if (isLong) "higher highs + higher lows" else "lower highs + lower lows"}"
+        val sweepText = if (isLong) "Sell-side liquidity swept and reclaimed at candle close" else "Buy-side liquidity swept and reclaimed at candle close"
+        val displacementText = "${if (isLong) "Bullish" else "Bearish"} displacement body ${"%.2f".format(Locale.US, abs(displacementCandle.close-displacementCandle.open))}; close broke prior local structure (BOS)"
+        val score = 20 + 20 + 20 + 15 + 10 + minOf(15, (rr / 3.0 * 15.0).toInt())
+        return SMCTradeSetup("${symbol}_${horizon}", symbol, side, horizon, score.coerceAtMost(100), status,
+            zoneLow, zoneHigh, stop, target, rr, structureText, sweepText, displacementText, zoneText, locationText)
+    }
 
     private fun evaluateModes(
         t: ScanTicker, d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
