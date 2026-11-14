@@ -129,4 +129,25 @@ class SequentialSmcConfluenceTest {
         assertTrue(buildSequentialSignalHistory(valid, negativeVolume, valid, valid, "LONG").isEmpty())
     }
 
+
+    @Test fun rejectsOpenOrCloseOutsideCandleRange() {
+        val valid = (0 until 60).map { i ->
+            V2Candle(
+                high = 101.0 + i,
+                low = 99.0 + i,
+                close = 100.0 + i,
+                volume = 1_000.0,
+                closeTime = (i + 1L) * 60_000L
+            )
+        }
+        val invalidOpen = valid.toMutableList().also {
+            it[20] = it[20].copy(open = it[20].high + 1.0)
+        }
+        val invalidClose = valid.toMutableList().also {
+            it[20] = it[20].copy(close = it[20].low - 1.0)
+        }
+        assertTrue(buildSequentialSignalHistory(invalidOpen, valid, valid, valid, "LONG").isEmpty())
+        assertTrue(buildSequentialSignalHistory(valid, invalidClose, valid, valid, "LONG").isEmpty())
+    }
+
 }
