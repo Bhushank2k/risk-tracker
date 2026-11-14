@@ -1,5 +1,7 @@
 package com.risktracker.app
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +14,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -39,6 +43,36 @@ fun MarketActivityLabScreen() {
     var replay by remember{mutableStateOf<MarketActivityEngine.ReplayStats?>(null)}
     var chartCandles by remember{mutableStateOf<List<MarketCandle>>(emptyList())}
     val scope=rememberCoroutineScope()
+    var importedReplay by remember { mutableStateOf<MarketReplayReport?>(null) }
+    var replayImportStatus by remember { mutableStateOf("") }
+    var importingReplay by remember { mutableStateOf(false) }
+    val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !importingReplay) {
+            importingReplay = true
+            replayImportStatus = "Reading exchange CSV…"
+            scope.launch {
+                val result = runCatching {
+                    val csv = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                            ?: error("Unable to open the selected CSV file.")
+                    }
+                    val candles = MarketReplayCsv.parseBinanceKlines(csv)
+                    MarketReplayRunner.run(
+                        symbol = selected, interval = interval.api,
+                        sourceLabel = uri.lastPathSegment ?: "Imported Binance USD-M CSV", candles = candles
+                    )
+                }
+                result.onSuccess {
+                    importedReplay = it
+                    replayImportStatus = "Replay complete. Review the out-of-sample sample count before interpreting results."
+                }.onFailure {
+                    importedReplay = null
+                    replayImportStatus = it.message ?: "Unable to replay this CSV."
+                }
+                importingReplay = false
+            }
+        }
+    }
     fun refresh(){
         if(loading)return
         loading=true
@@ -161,6 +195,28 @@ fun MarketActivityLabScreen() {
                 }
                 Text("Causal replay enters at the next candle open, exits after 12 candles and deducts configurable-in-code fee/slippage assumptions. Small samples are not predictive evidence.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }}}
+        }
+        item {
+            Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Offline exchange-data replay", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Import a Binance USD-M kline CSV for the selected pair and interval. The replay runs locally, with a chronological 70/30 split, 12-bar horizon, 8 bps fee and 5 bps slippage per side.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = { csvPicker.launch(arrayOf("*/*")) }, enabled = !importingReplay) {
+                    Text(if (importingReplay) "Importing…" else "Import Binance kline CSV")
+                }
+                if (replayImportStatus.isNotBlank()) Text(replayImportStatus, style = MaterialTheme.typography.labelSmall)
+                importedReplay?.let { report ->
+                    HorizontalDivider()
+                    Text("${report.symbol} · ${report.interval} · ${report.candleCount} candles", fontWeight = FontWeight.SemiBold)
+                    Text("Train / holdout split: ${report.splitIndex} / ${report.candleCount - report.splitIndex} bars", style = MaterialTheme.typography.bodySmall)
+                    Text("Training setups: ${report.training.setups} · Positive: ${report.training.successful} · Non-positive: ${report.training.failed}", style = MaterialTheme.typography.bodySmall)
+                    Text("Out-of-sample setups: ${report.outOfSample.setups} · Positive: ${report.outOfSample.successful} · Non-positive: ${report.outOfSample.failed}", style = MaterialTheme.typography.bodySmall)
+                    Text("Holdout positive rate: ${report.outOfSample.falsePositiveRate?.let { "%.1f%%".format(100.0 - it) } ?: "Insufficient sample"}", style = MaterialTheme.typography.bodySmall)
+                    Text("Holdout average net return: ${report.outOfSample.averageReturnPercent?.let { "%.3f%%".format(it) } ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                    Text("Holdout max adverse / favorable: ${report.outOfSample.maxAdversePercent?.let { "%.2f%%".format(it) } ?: "—"} / ${report.outOfSample.maxFavorablePercent?.let { "%.2f%%".format(it) } ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                    Text("Dataset SHA-256: ${report.datasetSha256}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Source: ${report.sourceLabel} · UTC ${report.firstOpenTime}–${report.lastCloseTime}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } }
         }
         item{Text("WATCH is an observed developing anomaly, not a price forecast. Confirmed historical breakout means a completed candle closed outside the previous 20-candle range with configured relative-volume support. Bullish and bearish observations are both supported. Setup transitions and invalidations are stored locally; they do not trigger push notifications.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
