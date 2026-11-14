@@ -51,8 +51,27 @@ private fun hasValidSequentialCandleHistory(candles: List<V2Candle>): Boolean =
         current.closeTime > previous.closeTime
     }
 
+/** Incremental EMA with the same SMA seed and recursive updates as sequentialEma. */
+private class SequentialEma(private val period: Int) {
+    private var count = 0
+    private var seedSum = 0.0
+    private var current: Double? = null
 
-/** Reconstructs the most recent confirmed event of each stage from closed candle history. */
+    fun add(value: Double): Double? {
+        count++
+        val previous = current
+        if (previous == null) {
+            seedSum += value
+            if (count == period) current = seedSum / period
+        } else {
+            val alpha = 2.0 / (period + 1)
+            current = value * alpha + previous * (1.0 - alpha)
+        }
+        return current?.takeIf { it.isFinite() }
+    }
+}
+
+/** Reconstructs confirmed events in linear time while preserving closed-prefix semantics. */
 fun buildSequentialSignalHistory(
     h4: List<V2Candle>,
     h1: List<V2Candle>,
@@ -60,10 +79,7 @@ fun buildSequentialSignalHistory(
     m5: List<V2Candle>,
     side: String
 ): List<SequentialSignalEvent> {
-    // Prefix reconstruction assumes chronological closed candles. Reject malformed input
-    // rather than silently producing a sequence whose ordering/expiry checks are misleading.
     if (!listOf(h4, h1, m15, m5).all(::hasValidSequentialCandleHistory)) return emptyList()
-
     val direction = when (side) {
         "LONG" -> SmcDirection.BULLISH
         "SHORT" -> SmcDirection.BEARISH
@@ -71,77 +87,98 @@ fun buildSequentialSignalHistory(
     }
     val events = mutableListOf<SequentialSignalEvent>()
 
-    // Re-evaluate only closed prefixes so every event timestamp is causal.
-    for (end in 50..h4.size) {
-        val bars = h4.take(end)
-        val fast = sequentialEma(bars.map { it.close }, 20) ?: continue
-        val slow = sequentialEma(bars.map { it.close }, 50) ?: continue
-        val bias = when {
-            bars.last().close > slow && fast > slow -> SmcDirection.BULLISH
-            bars.last().close < slow && fast < slow -> SmcDirection.BEARISH
-            else -> SmcDirection.NEUTRAL
+    val h4Fast = SequentialEma(20)
+    val h4Slow = SequentialEma(50)
+    h4.forEachIndexed { index, candle ->
+        val fast = h4Fast.add(candle.close)
+        val slow = h4Slow.add(candle.close)
+        if (index >= 49 && fast != null && slow != null) {
+            val bias = when {
+                candle.close > slow && fast > slow -> SmcDirection.BULLISH
+                candle.close < slow && fast < slow -> SmcDirection.BEARISH
+                else -> SmcDirection.NEUTRAL
+            }
+            events += SequentialSignalEvent(SequentialSignalStage.H4_BIAS, bias, candle.closeTime)
         }
-        events += SequentialSignalEvent(SequentialSignalStage.H4_BIAS, bias, bars.last().closeTime)
     }
 
-    for (end in 9..h1.size) {
-        val bars = h1.take(end)
-        val structure = classifyTradeIdeaStructure(bars)
-        val bias = when (structure) {
-            TradeIdeaStructure.BULLISH -> SmcDirection.BULLISH
-            TradeIdeaStructure.BEARISH -> SmcDirection.BEARISH
-            else -> SmcDirection.NEUTRAL
+    val pivotHighs = mutableListOf<Double>()
+    val pivotLows = mutableListOf<Double>()
+    h1.forEachIndexed { index, _ ->
+        val center = index - 2
+        if (center >= 2) {
+            val candidate = h1[center]
+            val neighbours = (center - 2..center + 2).filter { it != center }
+            if (neighbours.all { candidate.high > h1[it].high }) {
+                pivotHighs += candidate.high
+                if (pivotHighs.size > 2) pivotHighs.removeAt(0)
+            }
+            if (neighbours.all { candidate.low < h1[it].low }) {
+                pivotLows += candidate.low
+                if (pivotLows.size > 2) pivotLows.removeAt(0)
+            }
         }
-        // MIXED/UNKNOWN is retained as neutral context so range reversals do not inherit stale trend bias.
-        events += SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, bias, bars.last().closeTime)
+        if (index >= 8) {
+            val bias = if (pivotHighs.size < 2 || pivotLows.size < 2) {
+                SmcDirection.NEUTRAL
+            } else {
+                val bullish = pivotHighs[1] > pivotHighs[0] && pivotLows[1] > pivotLows[0]
+                val bearish = pivotHighs[1] < pivotHighs[0] && pivotLows[1] < pivotLows[0]
+                when {
+                    bullish -> SmcDirection.BULLISH
+                    bearish -> SmcDirection.BEARISH
+                    else -> SmcDirection.NEUTRAL
+                }
+            }
+            events += SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, bias, h1[index].closeTime)
+        }
     }
 
-    // A setup event is recorded only on the bar that actually meets the scanner's
-    // EMA20 pullback/reclaim + participation criteria, not retroactively on later bars.
-    for (end in 45..m15.size) {
-        val bars = m15.take(end)
-        val closes = bars.map { it.close }
-        val ema20 = sequentialEma(closes, 20) ?: continue
-        val atr = sequentialAtr(bars) ?: continue
-        val current = bars.last()
-        val previous = bars[bars.lastIndex - 1]
-        val averageVolume = bars.dropLast(1).takeLast(20).map { it.volume }.average()
-        if (averageVolume <= 0.0) continue
-        val participation = confluencePullbackVolumeConfirmed(previous.volume, current.volume, averageVolume)
-        val bullishSetup = current.low <= ema20 + atr * .2 && current.low >= ema20 - atr * .7 &&
-            current.close > ema20 && current.close > previous.close && participation
-        val bearishSetup = current.high >= ema20 - atr * .2 && current.high <= ema20 + atr * .7 &&
-            current.close < ema20 && current.close < previous.close && participation
-        // Preserve both directions: a newer opposing M15 setup must invalidate an older setup.
-        if (bullishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, current.closeTime)
-        if (bearishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, current.closeTime)
+    val m15Ema = SequentialEma(20)
+    val trueRanges = mutableListOf<Double>()
+    val priorVolumes = mutableListOf<Double>()
+    m15.forEachIndexed { index, current ->
+        val ema20 = m15Ema.add(current.close)
+        if (index > 0) {
+            val previous = m15[index - 1]
+            trueRanges += maxOf(
+                current.high - current.low,
+                kotlin.math.abs(current.high - previous.close),
+                kotlin.math.abs(current.low - previous.close)
+            )
+            if (trueRanges.size > 14) trueRanges.removeAt(0)
+        }
+        if (index >= 44 && ema20 != null && trueRanges.size == 14 && priorVolumes.size == 20) {
+            val atr = trueRanges.average()
+            val averageVolume = priorVolumes.average()
+            if (atr.isFinite() && atr > 0.0 && averageVolume > 0.0) {
+                val previous = m15[index - 1]
+                val participation = confluencePullbackVolumeConfirmed(previous.volume, current.volume, averageVolume)
+                val bullishSetup = current.low <= ema20 + atr * .2 && current.low >= ema20 - atr * .7 &&
+                    current.close > ema20 && current.close > previous.close && participation
+                val bearishSetup = current.high >= ema20 - atr * .2 && current.high <= ema20 + atr * .7 &&
+                    current.close < ema20 && current.close < previous.close && participation
+                if (bullishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, current.closeTime)
+                if (bearishSetup) events += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, current.closeTime)
+            }
+        }
+        priorVolumes += current.volume
+        if (priorVolumes.size > 20) priorVolumes.removeAt(0)
     }
 
-    // Entry event requires the completed 5M candle to be aligned with EMA9/21.
-    for (end in 30..m5.size) {
-        val bars = m5.take(end)
-        val closes = bars.map { it.close }
-        val fast = sequentialEma(closes, 9) ?: continue
-        val slow = sequentialEma(closes, 21) ?: continue
-        val bullishEntry = bars.last().close > fast && fast > slow
-        val bearishEntry = bars.last().close < fast && fast < slow
-        if (bullishEntry) events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, bars.last().closeTime)
-        if (bearishEntry) events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BEARISH, bars.last().closeTime)
+    val m5Fast = SequentialEma(9)
+    val m5Slow = SequentialEma(21)
+    m5.forEachIndexed { index, candle ->
+        val fast = m5Fast.add(candle.close)
+        val slow = m5Slow.add(candle.close)
+        if (index >= 29 && fast != null && slow != null) {
+            if (candle.close > fast && fast > slow) {
+                events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, candle.closeTime)
+            }
+            if (candle.close < fast && fast < slow) {
+                events += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BEARISH, candle.closeTime)
+            }
+        }
     }
     return events.sortedBy { it.closeTime }
-}
-
-private fun sequentialEma(values: List<Double>, period: Int): Double? {
-    if (values.size < period) return null
-    val alpha = 2.0 / (period + 1)
-    var result = values.take(period).average()
-    values.drop(period).forEach { result = it * alpha + result * (1.0 - alpha) }
-    return result.takeIf { it.isFinite() }
-}
-
-private fun sequentialAtr(candles: List<V2Candle>): Double? {
-    if (candles.size < 16) return null
-    return candles.zipWithNext { previous, current ->
-        maxOf(current.high - current.low, kotlin.math.abs(current.high - previous.close), kotlin.math.abs(current.low - previous.close))
-    }.takeLast(14).average().takeIf { it.isFinite() && it > 0.0 }
 }
