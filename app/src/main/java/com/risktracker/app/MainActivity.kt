@@ -191,6 +191,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     LaunchedEffect(Unit) {
         BinanceMarketScanner.initialize(context)
         TradeIdeaNotifications.schedule(context)
+        SMCBackgroundScanScheduler.schedule(context)
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)
             BinanceDailyWorker.schedule(context)

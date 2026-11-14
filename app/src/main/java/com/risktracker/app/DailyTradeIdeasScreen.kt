@@ -622,7 +622,7 @@ internal object BinanceMarketScanner {
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
-    suspend fun scanSmc(progress: (String) -> Unit): List<SMCTradeSetup> =
+    suspend fun scanSmc(progress: (String) -> Unit, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<SMCTradeSetup> =
         scanMutex.withLock { withContext(Dispatchers.IO) {
             suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
             report("Loading Binance USDT-M perpetual universe…")
@@ -640,6 +640,7 @@ internal object BinanceMarketScanner {
             }.sortedByDescending { it.second }.take(20)
             if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
             report("SMC scan · loading multi-timeframe candles for ${universe.size} liquid contracts…")
+            withContext(Dispatchers.Main.immediate) { onProgress(0, universe.size) }
             val allSetups = mutableListOf<SMCTradeSetup>()
             var completed = 0
             for (batch in universe.chunked(4)) {
@@ -669,6 +670,7 @@ internal object BinanceMarketScanner {
                 rows.forEach { allSetups.addAll(it) }
                 completed += batch.size
                 report("SMC scan · ${completed}/${universe.size} markets checked · ${allSetups.size} validated candidates…")
+                withContext(Dispatchers.Main.immediate) { onProgress(completed, universe.size) }
             }
             val ranked = allSetups.sortedByDescending { it.score }
             val onePerHorizon = listOf("Scalp", "Intraday", "Swing").mapNotNull { h -> ranked.firstOrNull { it.horizon == h } }
