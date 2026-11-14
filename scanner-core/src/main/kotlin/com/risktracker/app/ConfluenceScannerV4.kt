@@ -99,7 +99,7 @@ import kotlin.math.min
         val up=up1; val down=dn1
         val h1Structure = classifyTradeIdeaStructure(h1)
         val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
-        val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
+        val avg=ScannerCalculationCore.averageVolume(m15.map { it.volume },20,excludeLast=true) ?: 0.0
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
         val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
