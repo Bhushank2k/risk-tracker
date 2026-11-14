@@ -40,6 +40,10 @@ fun evaluateSequentialConfluence(
 }
 
 
+private fun hasStrictlyIncreasingCloseTimes(candles: List<V2Candle>): Boolean =
+    candles.zipWithNext().all { (previous, current) -> current.closeTime > previous.closeTime }
+
+
 /** Reconstructs the most recent confirmed event of each stage from closed candle history. */
 fun buildSequentialSignalHistory(
     h4: List<V2Candle>,
@@ -48,6 +52,10 @@ fun buildSequentialSignalHistory(
     m5: List<V2Candle>,
     side: String
 ): List<SequentialSignalEvent> {
+    // Prefix reconstruction assumes chronological closed candles. Reject malformed input
+    // rather than silently producing a sequence whose ordering/expiry checks are misleading.
+    if (!listOf(h4, h1, m15, m5).all(::hasStrictlyIncreasingCloseTimes)) return emptyList()
+
     val direction = when (side) {
         "LONG" -> SmcDirection.BULLISH
         "SHORT" -> SmcDirection.BEARISH
