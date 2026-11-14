@@ -162,7 +162,7 @@ import kotlin.math.min
             if (setups.any { it.side == s.side }) {
                 signalHistory += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, sequentialDirection, cur.closeTime)
             }
-            val sequential = evaluateSequentialConfluence(signalHistory, sequentialDirection, now)
+            val sequential = evaluateSequentialConfluence(signalHistory, sequentialDirection, now, allowNeutralContext = s.range)
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
