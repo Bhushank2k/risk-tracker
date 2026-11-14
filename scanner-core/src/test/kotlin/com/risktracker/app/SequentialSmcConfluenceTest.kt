@@ -32,4 +32,22 @@ class SequentialSmcConfluenceTest {
         assertFalse(evaluateSequentialConfluence(opposing, SmcDirection.BULLISH, 5_000L).ready)
         assertFalse(evaluateSequentialConfluence(chain(), SmcDirection.NEUTRAL, 5_000L).ready)
     }
+    @Test fun rangeSequenceAllowsNeutralHigherTimeframeContext() {
+        val events = listOf(
+            SequentialSignalEvent(SequentialSignalStage.H4_BIAS, SmcDirection.NEUTRAL, 1_000L),
+            SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, SmcDirection.NEUTRAL, 2_000L),
+            SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, 3_000L),
+            SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, 4_000L)
+        )
+        assertTrue(evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L, allowNeutralContext = true).ready)
+        assertFalse(evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L).ready)
+    }
+
+    @Test fun newerNeutralContextReplacesStaleTrendBias() {
+        val events = chain() + SequentialSignalEvent(SequentialSignalStage.H4_BIAS, SmcDirection.NEUTRAL, 4_500L)
+        val result = evaluateSequentialConfluence(events, SmcDirection.BULLISH, 5_000L)
+        assertFalse(result.ready)
+        assertTrue(result.reason.contains("H4 BIAS conflicts"))
+    }
+
 }
