@@ -1050,11 +1050,51 @@ fun DailyTradeIdeasScreen() {
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
-        if (opportunityVisible.isNotEmpty()) {
-            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
+        if (filter == "All") {
+            if (highQualityShortlist.isNotEmpty()) {
+                items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
+                    TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                        trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                    }
+                }
+            } else if (opportunityVisible.isNotEmpty()) {
+                item {
+                    RiskCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("No high-quality setups right now", fontWeight = FontWeight.SemiBold)
+                            Text("No untracked idea currently meets the score ≥80 threshold and all key trend, liquidity, confirmation and risk checks. Review other scanner results below or wait for the next scan.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
-        } else if (trackedVisible.isEmpty()) {
+            if (otherScannerResults.isNotEmpty()) {
+                item {
+                    OutlinedButton(
+                        onClick = { showOtherScannerResults = !showOtherScannerResults },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (showOtherScannerResults) "Hide other scanner results (${otherScannerResults.size})"
+                            else "Show other scanner results (${otherScannerResults.size})")
+                    }
+                }
+                if (showOtherScannerResults) {
+                    items(otherScannerResults, key = { "other_" + it.symbol + "_" + it.horizon }) { idea ->
+                        TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                            trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                        }
+                    }
+                }
+            }
+        } else if (opportunityVisible.isNotEmpty()) {
+            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                    trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
+                }
+            }
+        }
+
+        if (trackedVisible.isEmpty() && opportunityVisible.isEmpty()) {
             item {
                 RiskCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
