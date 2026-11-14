@@ -131,7 +131,7 @@ import kotlin.math.min
             if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
                 setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.25× volume, then retest and hold"))
             if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
-                setups.add(Setup("Breakout + retest","SHORT",lo,false,"${setupLabel} 20-bar breakdown on ≥1.5× volume, then retest and hold"))
+                setups.add(Setup("Breakout + retest","SHORT",lo,false,"${setupLabel} 20-bar breakdown on ≥1.25× volume, then retest and hold"))
         }
         if(rangeMode){
             val band=m15.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
@@ -223,7 +223,7 @@ import kotlin.math.min
                 if (!momentum) add(TradeIdeaRiskCode.MOMENTUM_NOT_CONFIRMED)
                 if (score < 60) add(TradeIdeaRiskCode.LOW_CONFLUENCE_SCORE)
                 if (!entryOk) add(TradeIdeaRiskCode.WAITING_FOR_ENTRY_CONFIRMATION)
-                if (score in 60..74) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
+                if (score in 60..69) add(TradeIdeaRiskCode.BELOW_READY_SCORE_THRESHOLD)
                 
             }
             val warning=when{
