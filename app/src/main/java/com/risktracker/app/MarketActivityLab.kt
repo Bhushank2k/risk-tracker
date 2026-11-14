@@ -18,10 +18,10 @@ data class ActivityBreakdown(val relativeVolume:Int,val volatilityExpansion:Int,
 data class ActivityAnalysis(val symbol:String,val interval:MarketInterval,val last:MarketCandle,val indicators:IndicatorSnapshot,val score:ActivityBreakdown,val state:ActivityState,val direction:ActivityDirection,val rangeHigh:Double?,val rangeLow:Double?,val explanation:List<String>)
 
 object MarketActivityEngine {
-    private fun ema(v:List<Double>,p:Int):List<Double?> { val r=MutableList<Double?>(v.size){null}; if(v.size<p)return r; var x=v.take(p).average(); r[p-1]=x; val a=2.0/(p+1); for(i in p until v.size){x=v[i]*a+x*(1-a);r[i]=x};return r }
+    private fun ema(v:List<Double>,p:Int):List<Double?> = ScannerCalculationCore.emaSeries(v,p)
     private fun sma(v:List<Double>,p:Int):Double?=if(v.size<p)null else v.takeLast(p).average()
     private fun sd(v:List<Double>):Double {val m=v.average();return sqrt(v.sumOf{(it-m).pow(2)}/v.size)}
-    private fun rsi(v:List<Double>):Double? {if(v.size<15)return null;var g=0.0;var l=0.0;for(i in 1..14){val d=v[i]-v[i-1];g+=max(d,0.0);l+=max(-d,0.0)};var ag=g/14;var al=l/14;for(i in 15 until v.size){val d=v[i]-v[i-1];ag=(ag*13+max(d,0.0))/14;al=(al*13+max(-d,0.0))/14};return if(al==0.0)100.0 else 100-100/(1+ag/al)}
+    private fun rsi(v:List<Double>):Double? = ScannerCalculationCore.rsiWilder(v,14)
     fun indicators(cs:List<MarketCandle>):IndicatorSnapshot {
         val c=cs.map{it.close}; if(c.isEmpty())return IndicatorSnapshot(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
         val e9=ema(c,9).lastOrNull{it!=null};val e20=ema(c,20).lastOrNull{it!=null};val e50=ema(c,50).lastOrNull{it!=null};val e200=ema(c,200).lastOrNull{it!=null}
@@ -31,7 +31,7 @@ object MarketActivityEngine {
         val atr=if(tr.size>=14)tr.takeLast(14).average()else null
         val rets=c.zipWithNext().takeLast(20).map{ln(it.second/it.first)}
         val hv=if(rets.size>=2)sd(rets)*100 else null
-        val vb=if(cs.size>=21)cs.dropLast(1).takeLast(20).map{it.volume}.average()else null
+        val vb=ScannerCalculationCore.averageVolume(cs.map { it.volume },20,excludeLast=true)
         val vwapBars=cs.takeLast(20);val vd=vwapBars.sumOf{it.volume};val vw=if(vd>0)vwapBars.sumOf{((it.high+it.low+it.close)/3)*it.volume}/vd else null
         return IndicatorSnapshot(e9,e20,e50,e200,rsi(c),ml.lastOrNull{it!=null},ms,up,mid,low,if(up!=null&&low!=null&&mid!=null&&mid!=0.0)(up-low)/mid*100 else null,atr,if(atr!=null)atr/c.last()*100 else null,vw,hv,if(vb!=null&&vb>0)cs.last().volume/vb else null,vb)
     }
