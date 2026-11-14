@@ -62,8 +62,10 @@ package com.risktracker.app
 /** Require quiet pullback volume followed by renewed participation on the reclaim candle. */
  fun confluencePullbackVolumeConfirmed(previousVolume: Double, reclaimVolume: Double, baselineVolume: Double): Boolean =
     previousVolume.isFinite() && reclaimVolume.isFinite() && baselineVolume.isFinite() &&
-        previousVolume >= 0.0 && baselineVolume > 0.0 && previousVolume < baselineVolume &&
-        reclaimVolume >= baselineVolume && reclaimVolume >= previousVolume
+        previousVolume >= 0.0 && baselineVolume > 0.0 &&
+        previousVolume < baselineVolume * 1.15 &&
+        reclaimVolume >= baselineVolume * 0.90 &&
+        reclaimVolume >= previousVolume * 0.90
 
 /** Reject sudden volatility expansion relative to the preceding ATR window. */
  fun confluenceVolatilityExpansionAcceptable(currentAtr: Double, baselineAtr: Double, maxExpansion: Double = 1.8): Boolean =
@@ -80,4 +82,4 @@ package com.risktracker.app
 
 /** Minimum relative volume required on the execution candle for this setup family. */
  fun confluenceExecutionVolumeThreshold(setup: String): Double =
-    if (setup.contains("breakout", ignoreCase = true)) 1.25 else 1.0
+    if (setup.contains("breakout", ignoreCase = true)) 1.20 else 0.90
