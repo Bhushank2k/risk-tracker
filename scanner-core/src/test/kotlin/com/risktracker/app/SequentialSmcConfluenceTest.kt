@@ -150,4 +150,89 @@ class SequentialSmcConfluenceTest {
         assertTrue(buildSequentialSignalHistory(valid, invalidClose, valid, valid, "LONG").isEmpty())
     }
 
+
+    @Test fun incrementalHistoryMatchesClosedPrefixReference() {
+        fun candles(size: Int, interval: Long) = (0 until size).map { i ->
+            val close = 100.0 + kotlin.math.sin(i * .17) * 4.0 +
+                kotlin.math.cos(i * .07) * 2.0 + i * .015
+            V2Candle(
+                high = close + .5 + kotlin.math.abs(kotlin.math.sin(i * .3)),
+                low = close - .5 - kotlin.math.abs(kotlin.math.cos(i * .23)),
+                close = close,
+                volume = 1_000.0 + (i % 9) * 200.0,
+                closeTime = (i + 1L) * interval
+            )
+        }
+        fun ema(values: List<Double>, period: Int): Double? {
+            if (values.size < period) return null
+            val alpha = 2.0 / (period + 1)
+            var result = values.take(period).average()
+            values.drop(period).forEach { result = it * alpha + result * (1.0 - alpha) }
+            return result.takeIf { it.isFinite() }
+        }
+        fun atr(bars: List<V2Candle>): Double? {
+            if (bars.size < 16) return null
+            return bars.zipWithNext { previous, current ->
+                maxOf(current.high - current.low,
+                    kotlin.math.abs(current.high - previous.close),
+                    kotlin.math.abs(current.low - previous.close))
+            }.takeLast(14).average().takeIf { it.isFinite() && it > 0.0 }
+        }
+        val h4 = candles(90, 4 * 60 * 60_000L)
+        val h1 = candles(110, 60 * 60_000L)
+        val m15 = candles(120, 15 * 60_000L)
+        val m5 = candles(150, 5 * 60_000L)
+        val expected = mutableListOf<SequentialSignalEvent>()
+        for (end in 50..h4.size) {
+            val bars = h4.take(end)
+            val fast = ema(bars.map { it.close }, 20) ?: continue
+            val slow = ema(bars.map { it.close }, 50) ?: continue
+            val bias = when {
+                bars.last().close > slow && fast > slow -> SmcDirection.BULLISH
+                bars.last().close < slow && fast < slow -> SmcDirection.BEARISH
+                else -> SmcDirection.NEUTRAL
+            }
+            expected += SequentialSignalEvent(SequentialSignalStage.H4_BIAS, bias, bars.last().closeTime)
+        }
+        for (end in 9..h1.size) {
+            val bars = h1.take(end)
+            val bias = when (classifyTradeIdeaStructure(bars)) {
+                TradeIdeaStructure.BULLISH -> SmcDirection.BULLISH
+                TradeIdeaStructure.BEARISH -> SmcDirection.BEARISH
+                else -> SmcDirection.NEUTRAL
+            }
+            expected += SequentialSignalEvent(SequentialSignalStage.H1_STRUCTURE, bias, bars.last().closeTime)
+        }
+        for (end in 45..m15.size) {
+            val bars = m15.take(end)
+            val ema20 = ema(bars.map { it.close }, 20) ?: continue
+            val current = bars.last()
+            val previous = bars[bars.lastIndex - 1]
+            val currentAtr = atr(bars) ?: continue
+            val averageVolume = bars.dropLast(1).takeLast(20).map { it.volume }.average()
+            if (averageVolume <= 0.0) continue
+            val participation = confluencePullbackVolumeConfirmed(previous.volume, current.volume, averageVolume)
+            val bullish = current.low <= ema20 + currentAtr * .2 && current.low >= ema20 - currentAtr * .7 &&
+                current.close > ema20 && current.close > previous.close && participation
+            val bearish = current.high >= ema20 - currentAtr * .2 && current.high <= ema20 + currentAtr * .7 &&
+                current.close < ema20 && current.close < previous.close && participation
+            if (bullish) expected += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BULLISH, current.closeTime)
+            if (bearish) expected += SequentialSignalEvent(SequentialSignalStage.M15_SETUP, SmcDirection.BEARISH, current.closeTime)
+        }
+        for (end in 30..m5.size) {
+            val bars = m5.take(end)
+            val closes = bars.map { it.close }
+            val fast = ema(closes, 9) ?: continue
+            val slow = ema(closes, 21) ?: continue
+            if (bars.last().close > fast && fast > slow)
+                expected += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BULLISH, bars.last().closeTime)
+            if (bars.last().close < fast && fast < slow)
+                expected += SequentialSignalEvent(SequentialSignalStage.M5_ENTRY, SmcDirection.BEARISH, bars.last().closeTime)
+        }
+        assertEquals(
+            expected.sortedBy { it.closeTime },
+            buildSequentialSignalHistory(h4, h1, m15, m5, "LONG")
+        )
+    }
+
 }
