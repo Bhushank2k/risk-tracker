@@ -670,7 +670,9 @@ internal object BinanceMarketScanner {
                 completed += batch.size
                 report("SMC scan · ${completed}/${universe.size} markets checked · ${allSetups.size} validated candidates…")
             }
-            allSetups.sortedByDescending { it.score }.take(5)
+            val ranked = allSetups.sortedByDescending { it.score }
+            val onePerHorizon = listOf("Scalp", "Intraday", "Swing").mapNotNull { h -> ranked.firstOrNull { it.horizon == h } }
+            (onePerHorizon + ranked).distinctBy { it.id }.take(5)
         } }
 
     private fun evaluateSmcSetup(
@@ -735,8 +737,8 @@ internal object BinanceMarketScanner {
         val midpoint = (rangeLow + rangeHigh) / 2.0
         val inCorrectHalf = if (isLong) entry <= midpoint else entry >= midpoint
         if (!inCorrectHalf) return null
-        val target = if (isLong) dealing.filter { it.high > entry }.maxOfOrNull { it.high } ?: rangeHigh
-            else dealing.filter { it.low < entry }.minOfOrNull { it.low } ?: rangeLow
+        val target = if (isLong) dealing.filter { it.high > entry }.minOfOrNull { it.high } ?: rangeHigh
+            else dealing.filter { it.low < entry }.maxOfOrNull { it.low } ?: rangeLow
         val reward = if (isLong) target - entry else entry - target
         val rr = reward / risk
         if (!rr.isFinite() || rr < 2.0) return null
