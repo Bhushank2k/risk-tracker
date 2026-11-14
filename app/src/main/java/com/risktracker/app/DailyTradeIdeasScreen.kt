@@ -484,8 +484,8 @@ internal object BinanceMarketScanner {
                 val rangePct = ((high - low) / last * 100.0).coerceAtLeast(0.0)
                 ScanTicker(symbol, quote, change, last, rangePct)
             }
-        }.sortedByDescending { it.volatilityPct + abs(it.changePct) * 0.5 }
-        report("24h filter: ${prefiltered.size}/${allowed.size} active pairs meet the $2M quote-volume floor; spread and two-sided depth remain hard gates.")
+        }.sortedByDescending { it.quoteVolume }.take(100)
+        report("24h filter: top ${prefiltered.size} markets by quote volume from ${allowed.size} active pairs (minimum $2M); spread and two-sided depth remain hard gates.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Keep every volume-eligible contract in the scan. Use only bulk 24h ticker
@@ -637,9 +637,9 @@ internal object BinanceMarketScanner {
                 val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
                 val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
                 if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null else Triple(symbol, quote, last)
-            }.sortedByDescending { it.second }.take(20)
+            }.sortedByDescending { it.second }.take(100)
             if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
-            report("SMC scan · loading multi-timeframe candles for ${universe.size} liquid contracts…")
+            report("SMC scan · loading multi-timeframe candles for top ${universe.size} liquid contracts by 24h quote volume…")
             withContext(Dispatchers.Main.immediate) { onProgress(0, universe.size) }
             val allSetups = mutableListOf<SMCTradeSetup>()
             var completed = 0
@@ -694,7 +694,7 @@ internal object BinanceMarketScanner {
             val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
             val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
             if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null else Triple(symbol, quote, last)
-        }.sortedByDescending { it.second }.take(20)
+        }.sortedByDescending { it.second }.take(100)
         if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
         val btcH1 = cachedCandles("BTCUSDT", "1h", 100).map { AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime) }
         val btcM15 = cachedCandles("BTCUSDT", "15m", 100).map { AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime) }
@@ -723,7 +723,7 @@ internal object BinanceMarketScanner {
             }
             batchResults.forEach { signals.addAll(it) }
             completed += batch.size
-            report("Advanced SMC · $completed/${universe.size} markets checked · ${signals.size} pattern candidates…")
+            report("Advanced SMC · $completed/${universe.size} top-volume markets checked · ${signals.size} pattern candidates…")
             withContext(Dispatchers.Main.immediate) { onProgress(completed, universe.size) }
         }
         signals.distinctBy { it.id }.sortedWith(compareByDescending<AdvancedSMCSignal> { it.score }.thenByDescending { it.rewardRisk }).take(30)
