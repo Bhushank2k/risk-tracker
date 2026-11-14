@@ -686,7 +686,14 @@ internal object BinanceMarketScanner {
         val bullish = hasHigherHighsAndLows(context)
         val bearish = hasLowerHighsAndLows(context)
         if (!bullish && !bearish) return null
+        val executionConfirm = execution.last()
+        val executionRange = executionConfirm.high - executionConfirm.low
+        val executionBody = abs(executionConfirm.close - executionConfirm.open)
         val isLong = bullish
+        val executionCandleConfirmed = executionRange > 0.0 &&
+            executionBody / executionRange >= 0.50 &&
+            (if (isLong) executionConfirm.close > executionConfirm.open else executionConfirm.close < executionConfirm.open)
+        if (!executionCandleConfirmed) return null
         val side = if (isLong) "LONG" else "SHORT"
         val atrValue = rows.zipWithNext { p, c -> maxOf(c.high-c.low, abs(c.high-p.close), abs(c.low-p.close)) }.takeLast(14).average()
         if (!atrValue.isFinite() || atrValue <= 0.0) return null
@@ -750,7 +757,7 @@ internal object BinanceMarketScanner {
             "order block ${ob.low}–${ob.high} from opposing candle before displacement"
         val structureText = "${horizon} context: ${if (isLong) "higher highs + higher lows" else "lower highs + lower lows"}"
         val sweepText = if (isLong) "Sell-side liquidity swept and reclaimed at candle close" else "Buy-side liquidity swept and reclaimed at candle close"
-        val displacementText = "${if (isLong) "Bullish" else "Bearish"} displacement body ${"%.2f".format(Locale.US, abs(displacementCandle.close-displacementCandle.open))}; close broke prior local structure (BOS)"
+        val displacementText = "${if (isLong) "Bullish" else "Bearish"} displacement body ${"%.2f".format(Locale.US, abs(displacementCandle.close-displacementCandle.open))}; close broke prior local structure (BOS). Latest execution candle confirms direction."
         val score = 20 + 20 + 20 + 15 + 10 + minOf(15, (rr / 3.0 * 15.0).toInt())
         return SMCTradeSetup("${symbol}_${horizon}", symbol, side, horizon, score.coerceAtMost(100), status,
             zoneLow, zoneHigh, stop, target, rr, structureText, sweepText, displacementText, zoneText, locationText)
