@@ -18,20 +18,19 @@ data class ActivityBreakdown(val relativeVolume:Int,val volatilityExpansion:Int,
 data class ActivityAnalysis(val symbol:String,val interval:MarketInterval,val last:MarketCandle,val indicators:IndicatorSnapshot,val score:ActivityBreakdown,val state:ActivityState,val direction:ActivityDirection,val rangeHigh:Double?,val rangeLow:Double?,val explanation:List<String>)
 
 object MarketActivityEngine {
-    private fun ema(v:List<Double>,p:Int):List<Double?> { val r=MutableList<Double?>(v.size){null}; if(v.size<p)return r; var x=v.take(p).average(); r[p-1]=x; val a=2.0/(p+1); for(i in p until v.size){x=v[i]*a+x*(1-a);r[i]=x};return r }
+    private fun ema(v:List<Double>,p:Int):List<Double?> = ScannerCalculationCore.emaSeries(v,p)
     private fun sma(v:List<Double>,p:Int):Double?=if(v.size<p)null else v.takeLast(p).average()
     private fun sd(v:List<Double>):Double {val m=v.average();return sqrt(v.sumOf{(it-m).pow(2)}/v.size)}
-    private fun rsi(v:List<Double>):Double? {if(v.size<15)return null;var g=0.0;var l=0.0;for(i in 1..14){val d=v[i]-v[i-1];g+=max(d,0.0);l+=max(-d,0.0)};var ag=g/14;var al=l/14;for(i in 15 until v.size){val d=v[i]-v[i-1];ag=(ag*13+max(d,0.0))/14;al=(al*13+max(-d,0.0))/14};return if(al==0.0)100.0 else 100-100/(1+ag/al)}
+    private fun rsi(v:List<Double>):Double? = ScannerCalculationCore.rsiWilder(v,14)
     fun indicators(cs:List<MarketCandle>):IndicatorSnapshot {
         val c=cs.map{it.close}; if(c.isEmpty())return IndicatorSnapshot(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
         val e9=ema(c,9).lastOrNull{it!=null};val e20=ema(c,20).lastOrNull{it!=null};val e50=ema(c,50).lastOrNull{it!=null};val e200=ema(c,200).lastOrNull{it!=null}
         val f=ema(c,12);val s=ema(c,26);val ml=c.indices.map{if(f[it]!=null&&s[it]!=null)f[it]!!-s[it]!! else null};val ms=ema(ml.filterNotNull(),9).lastOrNull{it!=null}
         val mid=sma(c,20);val dev=if(c.size>=20)sd(c.takeLast(20))else null;val up=if(mid!=null&&dev!=null)mid+2*dev else null;val low=if(mid!=null&&dev!=null)mid-2*dev else null
-        val tr=cs.mapIndexed{i,x->if(i==0)x.high-x.low else max(x.high-x.low,max(abs(x.high-cs[i-1].close),abs(x.low-cs[i-1].close)))}
-        val atr=if(tr.size>=14)tr.takeLast(14).average()else null
+        val atr=ScannerCalculationCore.atr(cs.map { it.high },cs.map { it.low },c,14)
         val rets=c.zipWithNext().takeLast(20).map{ln(it.second/it.first)}
         val hv=if(rets.size>=2)sd(rets)*100 else null
-        val vb=if(cs.size>=21)cs.dropLast(1).takeLast(20).map{it.volume}.average()else null
+        val vb=ScannerCalculationCore.averageVolume(cs.map { it.volume },20,excludeLast=true)
         val vwapBars=cs.takeLast(20);val vd=vwapBars.sumOf{it.volume};val vw=if(vd>0)vwapBars.sumOf{((it.high+it.low+it.close)/3)*it.volume}/vd else null
         return IndicatorSnapshot(e9,e20,e50,e200,rsi(c),ml.lastOrNull{it!=null},ms,up,mid,low,if(up!=null&&low!=null&&mid!=null&&mid!=0.0)(up-low)/mid*100 else null,atr,if(atr!=null)atr/c.last()*100 else null,vw,hv,if(vb!=null&&vb>0)cs.last().volume/vb else null,vb)
     }
@@ -51,7 +50,9 @@ object MarketActivityEngine {
         val mp=if(ind.macd!=null&&ind.macdSignal!=null&&((dir==ActivityDirection.BULLISH&&ind.macd>ind.macdSignal)||(dir==ActivityDirection.BEARISH&&ind.macd<ind.macdSignal)))10 else 0
         val rp=if(ind.rsi14!=null&&((dir==ActivityDirection.BULLISH&&ind.rsi14 in 50.0..70.0)||(dir==ActivityDirection.BEARISH&&ind.rsi14 in 30.0..50.0)))10 else 0
         val state=when{breakout&&rv>=thresholds.relativeVolumeBreakout->ActivityState.CONFIRMED_HISTORICAL_BREAKOUT;compressed&&(rv>=thresholds.relativeVolumeWatch||contracted||ar<0.8)->ActivityState.WATCH;else->ActivityState.NO_SETUP}
-        return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break"))
+        val evidence=listOf("Relative volume %.2f× baseline".format(rv),"Prior 20-candle range %.2f%%".format(range),if(breakout)"Closed candle moved beyond the prior range" else "No confirmed range break")
+        val primary=ScannerCalculationCore.primarySignalReason(state.name,dir.name,evidence)
+        return ActivityAnalysis(symbol,interval,x,ind,ActivityBreakdown(rvPts,atrPts,cp,bp,ep,mp,rp),state,dir,hi,lo,listOf(primary)+evidence)
     }
     data class ReplayStats(val setups:Int,val successful:Int,val failed:Int,val falsePositiveRate:Double?,val averageReturnPercent:Double?,val maxAdversePercent:Double?,val maxFavorablePercent:Double?)
     fun replay(cs:List<MarketCandle>,horizon:Int=12,feeBps:Double=8.0,slippageBps:Double=5.0,evaluationStartIndex:Int=30):ReplayStats {

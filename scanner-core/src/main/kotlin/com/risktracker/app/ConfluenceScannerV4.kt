@@ -18,20 +18,13 @@ import kotlin.math.min
     if (candles.size < 9 || candles.any {
         !it.high.isFinite() || !it.low.isFinite() || it.high < it.low
     }) return TradeIdeaStructure.UNKNOWN
-
-    val pivotHighs = mutableListOf<Double>()
-    val pivotLows = mutableListOf<Double>()
-    for (i in 2 until candles.size - 2) {
-        val neighbours = (i - 2..i + 2).filter { it != i }
-        if (neighbours.all { candles[i].high > candles[it].high }) pivotHighs.add(candles[i].high)
-        if (neighbours.all { candles[i].low < candles[it].low }) pivotLows.add(candles[i].low)
-    }
-    if (pivotHighs.size < 2 || pivotLows.size < 2) return TradeIdeaStructure.UNKNOWN
-    val (previousHigh, latestHigh) = pivotHighs.takeLast(2)
-    val (previousLow, latestLow) = pivotLows.takeLast(2)
+    val swings = confirmedSmcSwings(candles, leftBars = 2, rightBars = 2)
+    val highs = swings.filter { it.isHigh }.takeLast(2)
+    val lows = swings.filterNot { it.isHigh }.takeLast(2)
+    if (highs.size < 2 || lows.size < 2) return TradeIdeaStructure.UNKNOWN
     return when {
-        latestHigh > previousHigh && latestLow > previousLow -> TradeIdeaStructure.BULLISH
-        latestHigh < previousHigh && latestLow < previousLow -> TradeIdeaStructure.BEARISH
+        highs.last().price > highs.first().price && lows.last().price > lows.first().price -> TradeIdeaStructure.BULLISH
+        highs.last().price < highs.first().price && lows.last().price < lows.first().price -> TradeIdeaStructure.BEARISH
         else -> TradeIdeaStructure.MIXED
     }
 }
@@ -40,20 +33,12 @@ import kotlin.math.min
  fun hasTradeIdeaLiquiditySweep(
     candles: List<V2Candle>, side: String, lookback: Int = 20
 ): Boolean {
-    if (side !in setOf("LONG", "SHORT") || lookback < 2 || candles.size <= lookback) return false
-    val current = candles.last()
-    val prior = candles.subList(candles.size - lookback - 1, candles.lastIndex)
-    if (prior.isEmpty() || current.high < current.low) return false
-    val priorHigh = prior.maxOf { it.high }
-    val priorLow = prior.minOf { it.low }
-    val body = abs(current.close - current.open)
-    val lowerWick = min(current.open, current.close) - current.low
-    val upperWick = current.high - max(current.open, current.close)
-    return when (side) {
-        "LONG" -> current.low < priorLow && current.close > priorLow && lowerWick > 0.0 && lowerWick >= body * 0.5
-        "SHORT" -> current.high > priorHigh && current.close < priorHigh && upperWick > 0.0 && upperWick >= body * 0.5
-        else -> false
-    }
+    if (side !in setOf("LONG", "SHORT") || lookback < 2) return false
+    val atr = ScannerCalculationCore.atr(candles.map { it.high }, candles.map { it.low }, candles.map { it.close })
+        ?: return false
+    val sweep = detectLatestSmcLiquiditySweep(candles, atr, lookback) ?: return false
+    return if (side == "LONG") sweep.type == SmcLiquidityType.SELL_SIDE
+    else sweep.type == SmcLiquidityType.BUY_SIDE
 }
 
  fun isTradeIdeaLiquidityAcceptable(
@@ -115,7 +100,7 @@ import kotlin.math.min
         val up=up1; val down=dn1
         val h1Structure = classifyTradeIdeaStructure(h1)
         val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
-        val avg=m15.dropLast(1).takeLast(20).map{it.volume}.average()
+        val avg=ScannerCalculationCore.averageVolume(m15.map { it.volume },20,excludeLast=true) ?: 0.0
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
         val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
@@ -250,8 +235,13 @@ import kotlin.math.min
                 score<70->"WATCH: Setup is developing; score is below the 70-point READY threshold."
                 else->"BALANCED: Execution confirmation and hard risk gates passed; estimated net Target 1 reward/risk is ≥2R."
             }
-            val reasons=listOf("Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
-                s.detail,
+            val reasons=listOf(
+                ScannerCalculationCore.primarySignalReason(s.name,s.side,listOf(
+                    s.detail,
+                    if(liquiditySweep) "liquidity sweep and reclaim" else "",
+                    if(entryOk) "${executionLabel} EMA9/21 entry confirmed" else "waiting for ${executionLabel} entry confirmation"
+                )),
+                "Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
                 "Sequential signal lifecycle: "+sequential.reason,
                 "${bias1Label} swing structure: "+h1Structure+" · ${bias2Label}: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
@@ -271,7 +261,9 @@ import kotlin.math.min
     }
     private fun fresh(t:Long,n:Long,m:Long)=isTradeIdeaCandleClosed(t,n)&&n-t<=m
     private fun valid(r:List<V2Candle>):Boolean{var last=Long.MIN_VALUE;return r.all{val ok=it.high.isFinite()&&it.low.isFinite()&&it.open.isFinite()&&it.close.isFinite()&&it.volume.isFinite()&&it.high>=it.low&&it.close in it.low..it.high&&it.open in it.low..it.high&&it.close>0&&it.volume>=0&&it.closeTime>last;last=it.closeTime;ok}}
-    private fun ema(v:List<Double>,p:Int):Double?{if(v.size<p)return null;val a=2.0/(p+1);var x=v.take(p).average();v.drop(p).forEach{x=it*a+x*(1-a)};return x.takeIf{it.isFinite()}}
-    private fun atr(r:List<V2Candle>):Double?{if(r.size<16)return null;return r.zipWithNext{p,c->max(c.high-c.low,max(abs(c.high-p.close),abs(c.low-p.close)))}.takeLast(14).average().takeIf{it.isFinite()&&it>0}}
-    private fun rsi(v:List<Double>):Double?{if(v.size<15)return null;val d=v.zipWithNext{a,b->b-a}.takeLast(14);val g=d.filter{it>0}.sum()/14.0;val l=-d.filter{it<0}.sum()/14.0;if(l==0.0)return if(g==0.0)50.0 else 100.0;return 100-100/(1+g/l)}
+    private fun ema(v:List<Double>,p:Int):Double? = ScannerCalculationCore.ema(v,p)
+    private fun atr(r:List<V2Candle>):Double? = ScannerCalculationCore.atr(
+        r.map { it.high }, r.map { it.low }, r.map { it.close }
+    )
+    private fun rsi(v:List<Double>):Double? = ScannerCalculationCore.rsiSimple(v,14)
 }
