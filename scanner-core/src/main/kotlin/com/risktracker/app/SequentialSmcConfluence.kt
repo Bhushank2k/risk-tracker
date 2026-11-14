@@ -80,11 +80,7 @@ fun buildSequentialSignalHistory(
     side: String
 ): List<SequentialSignalEvent> {
     if (!listOf(h4, h1, m15, m5).all(::hasValidSequentialCandleHistory)) return emptyList()
-    val direction = when (side) {
-        "LONG" -> SmcDirection.BULLISH
-        "SHORT" -> SmcDirection.BEARISH
-        else -> return emptyList()
-    }
+    if (side != "LONG" && side != "SHORT") return emptyList()
     val events = mutableListOf<SequentialSignalEvent>()
 
     val h4Fast = SequentialEma(20)
