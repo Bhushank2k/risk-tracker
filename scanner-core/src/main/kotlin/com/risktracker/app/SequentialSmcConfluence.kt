@@ -45,7 +45,8 @@ private fun hasValidSequentialCandleHistory(candles: List<V2Candle>): Boolean =
         candle.closeTime >= 0L &&
             candle.open.isFinite() && candle.high.isFinite() && candle.low.isFinite() &&
             candle.close.isFinite() && candle.volume.isFinite() && candle.volume >= 0.0 &&
-            candle.high >= candle.low
+            candle.high >= candle.low && candle.open in candle.low..candle.high &&
+            candle.close in candle.low..candle.high
     } && candles.zipWithNext().all { (previous, current) ->
         current.closeTime > previous.closeTime
     }
