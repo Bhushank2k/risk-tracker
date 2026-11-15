@@ -1125,6 +1125,9 @@ fun DailyTradeIdeasScreen() {
         (if (partialScanVisible) "Partial · " else "") + SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
 
+    var shortlistDetailsExpanded by remember { mutableStateOf(false) }
+    var statusFilterMenuExpanded by remember { mutableStateOf(false) }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1226,28 +1229,50 @@ fun DailyTradeIdeasScreen() {
             }
         }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (filter == "All") "Top 5 high-quality setups" else "Scanner results", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(if (filter == "All") "Top setups" else "Scanner results", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
+                            FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option },
+                                label = { Text(option) }, modifier = Modifier.height(34.dp))
+                        }
+                    }
+                    Box {
+                        TextButton(onClick = { statusFilterMenuExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text(filter + " ▾", maxLines = 1)
+                        }
+                        DropdownMenu(expanded = statusFilterMenuExpanded, onDismissRequest = { statusFilterMenuExpanded = false }) {
+                            listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
+                                DropdownMenuItem(text = { Text(option) }, onClick = {
+                                    filter = option
+                                    statusFilterMenuExpanded = false
+                                })
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (filter == "All") "${highQualityShortlist.size}/5 selected"
+                        else "${visible.size} shown · ranked by entry state, then scanner score",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (filter == "All") {
+                        TextButton(onClick = { shortlistDetailsExpanded = !shortlistDetailsExpanded },
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                            Text(if (shortlistDetailsExpanded) "Less" else "Criteria")
+                        }
+                    }
+                }
+                if (filter == "All" && shortlistDetailsExpanded) {
+                    Text("Score ≥80 plus key confirmation and risk checks.",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
-                        FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option }, label = { Text(option) })
-                    }
-                }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
-                        FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option) })
-                    }
-                }
-                Text(
-                    if (filter == "All") "${highQualityShortlist.size}/5 selected · score ≥80 + key confirmation and risk checks"
-                    else "${visible.size} shown · ranked by entry state, then scanner score",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
         if (trackedVisible.isNotEmpty()) {
@@ -1270,11 +1295,25 @@ fun DailyTradeIdeasScreen() {
                 }
             } else if (opportunityVisible.isNotEmpty()) {
                 item {
-                    RiskCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("No high-quality setups right now", fontWeight = FontWeight.SemiBold)
-                            Text("No untracked idea currently meets the score ≥80 threshold and all key trend, liquidity, confirmation and risk checks. Review other scanner results below or wait for the next scan.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("No high-quality setups right now", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                TextButton(onClick = { shortlistDetailsExpanded = !shortlistDetailsExpanded },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                    Text(if (shortlistDetailsExpanded) "Less" else "Why?")
+                                }
+                            }
+                            Text("Check other scanner results below or wait for the next scan.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (shortlistDetailsExpanded) {
+                                Text("No untracked idea currently meets score ≥80 and all key trend, liquidity, confirmation and risk checks.",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
