@@ -333,6 +333,18 @@ internal object BinanceMarketScanner {
                         restLimitPrefs?.edit()?.putLong("blocked_until", restBlockedUntilMs)?.apply()
                         throw BinanceRateLimitException("Binance HTTP " + code + ": " + message + ". REST calls paused; WebSocket remains the live-data path.")
                     }
+                    if ((code == 408 || code == 425 || code >= 500) && attempt < 2) {
+                        val retryAfterSeconds = c.getHeaderField("Retry-After")?.toLongOrNull()
+                        val backoffMs = retryAfterSeconds?.coerceIn(1L, 8L)?.times(1000L)
+                            ?: (750L * (1L shl attempt))
+                        try {
+                            Thread.sleep(backoffMs)
+                        } catch (interrupted: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            throw java.io.IOException("Binance HTTP retry interrupted", interrupted)
+                        }
+                        continue
+                    }
                     throw IllegalStateException("Binance HTTP " + code + ": " + message)
                 }
                 return body
@@ -516,7 +528,34 @@ internal object BinanceMarketScanner {
         var marketDataFailures = 0
         var lastMarketFailure: String? = null
         var completedPairs = 0
-        data class DeepScanOutcome(val symbol: String, val ideas: List<TradeIdea>, val failure: String? = null)
+        data class DeepScanOutcome(
+            val symbol: String,
+            val ideas: List<TradeIdea>,
+            val failure: String? = null,
+            val failureCategory: String? = null
+        )
+        val failureCounts = linkedMapOf<String, Int>()
+        val failureSamples = mutableListOf<String>()
+
+        fun classifyFailure(message: String): String {
+            val value = message.lowercase(Locale.US)
+            return when {
+                "429" in value || "418" in value || "rate limit" in value || "too many requests" in value -> "rate limited"
+                "timeout" in value || "timed out" in value -> "timeout"
+                "unknownhost" in value || "unable to resolve" in value || "no address associated" in value -> "DNS/network"
+                "connect" in value || "socket" in value || "connection" in value || "network is unreachable" in value -> "connection"
+                "http 5" in value || "502" in value || "503" in value || "504" in value || "server error" in value -> "Binance server"
+                "json" in value || "malformed" in value || "unexpected end" in value || "parse" in value -> "invalid response"
+                "empty" in value || "insufficient" in value || "not enough candle" in value -> "missing candle data"
+                else -> "other"
+            }
+        }
+
+        fun failureSummary(): String {
+            if (failureCounts.isEmpty()) return "none"
+            return failureCounts.entries.sortedByDescending { it.value }
+                .take(4).joinToString(" · ") { "${it.key}: ${it.value}" }
+        }
 
         for (depthBatchTickers in candidates.chunked(depthBatchSize)) {
             coroutineContext.ensureActive()
@@ -600,8 +639,8 @@ internal object BinanceMarketScanner {
                             } catch (e: BinanceRateLimitException) {
                                 throw e
                             } catch (e: Exception) {
-                                DeepScanOutcome(ticker.symbol, emptyList(),
-                                    "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}")
+                                val detail = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
+                                DeepScanOutcome(ticker.symbol, emptyList(), detail, classifyFailure(detail))
                             }
                         }
                     }.awaitAll()
@@ -611,6 +650,9 @@ internal object BinanceMarketScanner {
                     if (outcome.failure != null) {
                         marketDataFailures++
                         lastMarketFailure = outcome.failure
+                        val category = outcome.failureCategory ?: "other"
+                        failureCounts[category] = (failureCounts[category] ?: 0) + 1
+                        if (failureSamples.size < 5) failureSamples.add(outcome.failure)
                     } else if (outcome.ideas.isEmpty()) {
                         marketsWithoutPlans++
                     } else {
@@ -625,7 +667,12 @@ internal object BinanceMarketScanner {
                     val snapshot = results.toList()
                     withContext(Dispatchers.Main.immediate) { onPartialResults(snapshot) }
                 }
-                report("Scanned ${completedPairs}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · ${marketsWithoutPlans} no setup · ${marketDataFailures} data errors · gates: ${gateDiagnostics.topGateSummary()}…")
+                report(
+                    "Scanned ${completedPairs}/${candidates.size} pairs · ${results.size} setups · ${blockedPlans} blocked · " +
+                        "${marketsWithoutPlans} no setup · ${marketDataFailures} data errors" +
+                        (if (marketDataFailures > 0) " (${failureSummary()})" else "") +
+                        " · gates: ${gateDiagnostics.topGateSummary()}…"
+                )
             }
         }
         if (results.isEmpty()) {
@@ -643,7 +690,13 @@ internal object BinanceMarketScanner {
                     "candidate universe: all active USDT perpetuals passing the $2M quote-volume prefilter.$detail"
             )
         }
-        report("Scan complete · ${results.size} plans · ${gateDiagnostics.blockedPlans} blocked · ${marketsWithoutPlans} no setup · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols.")
+        report(
+            "Scan complete · ${results.size} plans · ${gateDiagnostics.blockedPlans} blocked · ${marketsWithoutPlans} no setup · " +
+                "${marketDataFailures} data errors" +
+                (if (marketDataFailures > 0) " (${failureSummary()})" else "") +
+                (if (failureSamples.isNotEmpty()) " · examples: ${failureSamples.take(2).joinToString(" | ")}" else "") +
+                " · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols."
+        )
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
     } }
 
