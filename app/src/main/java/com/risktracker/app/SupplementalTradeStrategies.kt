@@ -34,7 +34,7 @@ internal object SupplementalTradeStrategies {
                 (name + " pattern detected") to true,
                 "15M volume >= 1.2x" to (volumeRatio >= 1.2),
                 "Live spread <= 10 bps" to micro.spreadBps?.let { it <= 10.0 },
-                "Two-sided book depth available" to if (micro.bidDepthUsd != null && micro.askDepthUsd != null) micro.bidDepthUsd > 0 && micro.askDepthUsd > 0 else null,
+                "Two-sided book depth available" to if (micro.bidDepthUsd != null && micro.askDepthUsd != null) micro.bidDepthUsd > 0.0 && micro.askDepthUsd > 0.0 else null,
                 "Entry confirmation candle" to false
             )
             out += TradeIdea(
