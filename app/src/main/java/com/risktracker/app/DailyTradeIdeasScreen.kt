@@ -51,8 +51,8 @@ internal data class SMCTradeSetup(
     val displacement: String, val zoneDescription: String, val location: String
 )
 
-private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
-private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
+internal data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
+internal data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
     val last: Double, val entry: Double, val stop: Double, val target1: Double, val target2: Double,
@@ -560,15 +560,40 @@ internal object BinanceMarketScanner {
                                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                                     changePct = liveTicker?.third ?: ticker.changePct
                                 )
-                                val initialIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
-                                val oiChange = if (initialIdeas.isNotEmpty()) openInterestChangePct(ticker.symbol) else null
-                                val ideas = if (oiChange == null) initialIdeas else initialIdeas.map { idea ->
+                                val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                                // Fetch OI only for existing setups or markets with unusually crowded funding;
+                                // this keeps the optional futures-squeeze check from adding an OI request per coin.
+                                val fundingLooksCrowded = micro.fundingRate?.let { abs(it) >= 0.0005 } == true
+                                val oiChange = if (micro.oiChangePct == null && (coreIdeas.isNotEmpty() || fundingLooksCrowded))
+                                    openInterestChangePct(ticker.symbol) else micro.oiChangePct
+                                val strategyMicro = micro.copy(oiChangePct = oiChange)
+                                val supplementalIdeas = SupplementalTradeStrategies.evaluate(
+                                    live, h4, h1, m15, btcH1, strategyMicro
+                                )
+                                val detectedIdeas = coreIdeas + supplementalIdeas
+                                val enrichedIdeas = if (oiChange == null) detectedIdeas else detectedIdeas.map { idea ->
                                     idea.copy(
                                         oiChangePct = oiChange,
-                                        reasons = idea.reasons + ("Open interest changed " +
-                                            "%+.2f".format(Locale.US, oiChange) + "% over the latest 15M samples")
+                                        reasons = if (idea.oiChangePct == null) idea.reasons + ("Open interest changed " +
+                                            "%+.2f".format(Locale.US, oiChange) + "% over the latest 15M samples") else idea.reasons
                                     )
                                 }
+                                // Keep one plan per symbol/side/horizon while retaining all agreeing strategy labels.
+                                val ideas = enrichedIdeas.groupBy { "${it.symbol}|${it.side}|${it.horizon}" }
+                                    .values.map { sameDirection ->
+                                        val corePlan = sameDirection.firstOrNull { it.setup !in setOf(
+                                            "Trend Pullback", "Range Reversal", "Volatility Breakout",
+                                            "Futures Squeeze", "Relative Strength / SMT", "Session Liquidity Raid"
+                                        ) }
+                                        val best = sameDirection.firstOrNull { it.entryTriggered } ?: corePlan ?: sameDirection.maxBy { it.score }
+                                        val strategyNames = sameDirection.map { it.setup }.distinct()
+                                        best.copy(
+                                            setup = strategyNames.joinToString(" + "),
+                                            score = sameDirection.maxOf { it.score },
+                                            reasons = (best.reasons + if (strategyNames.size > 1)
+                                                listOf("Strategy confluence: " + strategyNames.joinToString(", ")) else emptyList()).distinct()
+                                        )
+                                    }
                                 DeepScanOutcome(ticker.symbol, ideas)
                             } catch (e: CancellationException) {
                                 throw e
@@ -1186,7 +1211,7 @@ fun DailyTradeIdeasScreen() {
                         Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. The scanner discovers all active USDT perpetuals, filters by 24h quote volume, then fully validates every eligible pair in bounded parallel batches. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
+                        Text("Source · Binance Futures public market data. One market scan feeds core SMC plus Trend Pullback, Range Reversal, Volatility Breakout, Futures Squeeze, Relative Strength/SMT and Session Liquidity strategies. Results share the same ranking, trade cards and live execution checklist; pattern matches remain watchlist ideas until every mandatory entry gate passes.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))

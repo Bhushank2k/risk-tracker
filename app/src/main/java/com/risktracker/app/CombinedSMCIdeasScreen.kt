@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,76 +22,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Single destination for conventional SMC setups and advanced SMC pattern ideas.
- * The two existing engines and their persisted/background scan state remain independent,
- * while users access both from one combined Trade Ideas screen.
+ * One scanner workspace. The unified feed is the default and contains the six new
+ * strategy engines plus the existing Trade Ideas engine. Specialist SMC views remain
+ * available as tabs so existing scanner functionality is not discarded.
  */
 @Composable
 fun CombinedSMCIdeasScreen(onOpenTradeIdeas: () -> Unit = {}) {
-    var selectedSource by remember { mutableStateOf("All ideas") }
-
+    var selectedView by remember { mutableStateOf("Unified Scanner") }
     Column(
         modifier = Modifier.fillMaxSize().padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    "SMC Trade Ideas",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "One place for core SMC setups and advanced SMC signals. Choose a source to review its ranked ideas.",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("Unified Trade Scanner", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("One market scan and ranked trade-idea feed, with specialist SMC views retained below.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("All ideas", "SMC Trade", "Advanced Signals").forEach { source ->
+            listOf("Unified Scanner", "SMC Patterns", "Advanced SMC").forEach { view ->
                 FilterChip(
-                    selected = selectedSource == source,
-                    onClick = { selectedSource = source },
-                    label = { Text(source) }
+                    selected = selectedView == view,
+                    onClick = { selectedView = view },
+                    label = { Text(view) }
                 )
             }
         }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (selectedSource) {
-                "SMC Trade" -> SMCTradeScreen()
-                "Advanced Signals" -> AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
-                else -> Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "Core SMC setups",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Box(modifier = Modifier.weight(1f)) { SMCTradeScreen() }
-                    Text(
-                        "Advanced SMC signals",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Box(modifier = Modifier.weight(1f)) {
-                        AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
-                    }
-                }
+        Box(Modifier.fillMaxSize()) {
+            when (selectedView) {
+                "SMC Patterns" -> SMCTradeScreen()
+                "Advanced SMC" -> AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
+                else -> DailyTradeIdeasScreen()
             }
         }
     }
