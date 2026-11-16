@@ -1055,12 +1055,6 @@ internal object BinanceMarketScanner {
 fun DailyTradeIdeasScreen() {
     var selectedScannerTab by remember { mutableStateOf("Trade Ideas") }
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("Daily Trade Ideas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Trade setups and all SMC signals in one scanner workspace.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("Trade Ideas", "SMC Signals").forEach { scannerTab ->
