@@ -6,12 +6,16 @@ import kotlin.math.min
 
 /** Supplemental pattern detectors. Results are watchlist candidates, never execution approvals. */
 internal object SupplementalTradeStrategies {
-    fun evaluate(t: ScanTicker, context: List<ScanCandle>, setup: List<ScanCandle>,
-                 benchmark: List<ScanCandle>, micro: MarketMicrostructure): List<TradeIdea> {
-        val c = context.dropLast(1)
+    fun evaluate(t: ScanTicker, context4h: List<ScanCandle>, context1h: List<ScanCandle>,
+                 setup: List<ScanCandle>, benchmark: List<ScanCandle>,
+                 micro: MarketMicrostructure): List<TradeIdea> {
+        val c4 = context4h.dropLast(1)
+        val c = context1h.dropLast(1)
         val s = setup.dropLast(1)
-        if (c.size < 50 || s.size < 30 || t.last <= 0.0) return emptyList()
+        if (c4.size < 50 || c.size < 50 || s.size < 30 || t.last <= 0.0) return emptyList()
         val atr = atr(s) ?: return emptyList()
+        val ema4h20 = ema(c4.map { it.close }, 20) ?: return emptyList()
+        val ema4h50 = ema(c4.map { it.close }, 50) ?: return emptyList()
         val ema20 = ema(c.map { it.close }, 20) ?: return emptyList()
         val ema50 = ema(c.map { it.close }, 50) ?: return emptyList()
         val setupEma = ema(s.map { it.close }, 20) ?: return emptyList()
@@ -43,7 +47,7 @@ internal object SupplementalTradeStrategies {
                 target1=if (long) entry + risk * 2.2 else entry - risk * 2.2,
                 target2=if (long) entry + risk * 3.0 else entry - risk * 3.0,
                 entryTriggered=false, rsi=rsi, volumeRatio=volumeRatio,
-                bias4h=if (ema20 > ema50) "Bullish" else "Bearish",
+                bias4h=if (ema4h20 > ema4h50) "Bullish" else "Bearish",
                 bias1h=if (ema20 > ema50) "Bullish" else "Bearish",
                 setup=name, reasons=listOf(reason, "Supplemental watchlist candidate; execution gates still need live validation."),
                 warning="WATCHLIST ONLY · entry confirmation and live risk gates required",
