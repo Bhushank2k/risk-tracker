@@ -1058,22 +1058,39 @@ fun DailyTradeIdeasScreen() {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("Daily Trade Ideas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Trade setups, core SMC patterns and advanced SMC signals in one scanner workspace.",
+            Text("Trade setups and all SMC signals in one scanner workspace.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Trade Ideas", "SMC Patterns", "Advanced SMC").forEach { scannerTab ->
+            listOf("Trade Ideas", "SMC Signals").forEach { scannerTab ->
                 FilterChip(selected = selectedScannerTab == scannerTab,
                     onClick = { selectedScannerTab = scannerTab }, label = { Text(scannerTab) })
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (selectedScannerTab) {
-                "SMC Patterns" -> SMCTradeScreen()
-                "Advanced SMC" -> AdvancedSMCSignalsScreen(onOpenTradeIdeas = { selectedScannerTab = "Trade Ideas" })
+                "SMC Signals" -> SMCSignalsWorkspace(onOpenTradeIdeas = { selectedScannerTab = "Trade Ideas" })
                 else -> DailyTradeIdeasFeedScreen()
             }
+        }
+    }
+}
+
+@Composable
+private fun SMCSignalsWorkspace(onOpenTradeIdeas: () -> Unit) {
+    var selectedMode by remember { mutableStateOf("Core Patterns") }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Core Patterns", "Advanced Signals").forEach { mode ->
+                FilterChip(selected = selectedMode == mode,
+                    onClick = { selectedMode = mode }, label = { Text(mode) })
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (selectedMode == "Core Patterns") SMCTradeScreen()
+            else AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
         }
     }
 }
