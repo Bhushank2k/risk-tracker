@@ -1203,7 +1203,7 @@ fun DailyTradeIdeasScreen() {
                         Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. The scanner discovers all active USDT perpetuals, filters by 24h quote volume, then fully validates every eligible pair in bounded parallel batches. BTC 4H/1H trend alignment, setup volume, breakout validity and liquidity gates apply.",
+                        Text("Source · Binance Futures public market data. One market scan feeds core SMC plus Trend Pullback, Range Reversal, Volatility Breakout, Futures Squeeze, Relative Strength/SMT and Session Liquidity strategies. Results share the same ranking, trade cards and live execution checklist; pattern matches remain watchlist ideas until every mandatory entry gate passes.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
