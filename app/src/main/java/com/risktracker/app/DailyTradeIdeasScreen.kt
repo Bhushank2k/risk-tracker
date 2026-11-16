@@ -1073,18 +1073,13 @@ fun DailyTradeIdeasScreen() {
 
 @Composable
 private fun SMCSignalsWorkspace(onOpenTradeIdeas: () -> Unit) {
-    var selectedMode by remember { mutableStateOf("Core Patterns") }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Core Patterns", "Advanced Signals").forEach { mode ->
-                FilterChip(selected = selectedMode == mode,
-                    onClick = { selectedMode = mode }, label = { Text(mode) })
-            }
-        }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (selectedMode == "Core Patterns") SMCTradeScreen()
-            else AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
+            SMCTradeScreen()
+        }
+        HorizontalDivider()
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
         }
     }
 }
