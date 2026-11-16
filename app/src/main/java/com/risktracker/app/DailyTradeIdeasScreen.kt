@@ -568,7 +568,7 @@ internal object BinanceMarketScanner {
                                     openInterestChangePct(ticker.symbol) else micro.oiChangePct
                                 val strategyMicro = micro.copy(oiChangePct = oiChange)
                                 val supplementalIdeas = SupplementalTradeStrategies.evaluate(
-                                    live, h1, m15, btcH1, strategyMicro
+                                    live, h4, h1, m15, btcH1, strategyMicro
                                 )
                                 val detectedIdeas = coreIdeas + supplementalIdeas
                                 val enrichedIdeas = if (oiChange == null) detectedIdeas else detectedIdeas.map { idea ->
@@ -581,7 +581,11 @@ internal object BinanceMarketScanner {
                                 // Keep one plan per symbol/side/horizon while retaining all agreeing strategy labels.
                                 val ideas = enrichedIdeas.groupBy { "${it.symbol}|${it.side}|${it.horizon}" }
                                     .values.map { sameDirection ->
-                                        val best = sameDirection.maxBy { it.score }
+                                        val corePlan = sameDirection.firstOrNull { it.setup !in setOf(
+                                            "Trend Pullback", "Range Reversal", "Volatility Breakout",
+                                            "Futures Squeeze", "Relative Strength / SMT", "Session Liquidity Raid"
+                                        ) }
+                                        val best = sameDirection.firstOrNull { it.entryTriggered } ?: corePlan ?: sameDirection.maxBy { it.score }
                                         val strategyNames = sameDirection.map { it.setup }.distinct()
                                         best.copy(
                                             setup = strategyNames.joinToString(" + "),
