@@ -1053,6 +1053,33 @@ internal object BinanceMarketScanner {
 
 @Composable
 fun DailyTradeIdeasScreen() {
+    var selectedScannerTab by remember { mutableStateOf("Trade Ideas") }
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("Daily Trade Ideas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Trade setups, core SMC patterns and advanced SMC signals in one scanner workspace.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Trade Ideas", "SMC Patterns", "Advanced SMC").forEach { scannerTab ->
+                FilterChip(selected = selectedScannerTab == scannerTab,
+                    onClick = { selectedScannerTab = scannerTab }, label = { Text(scannerTab) })
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (selectedScannerTab) {
+                "SMC Patterns" -> SMCTradeScreen()
+                "Advanced SMC" -> AdvancedSMCSignalsScreen(onOpenTradeIdeas = { selectedScannerTab = "Trade Ideas" })
+                else -> DailyTradeIdeasFeedScreen()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyTradeIdeasFeedScreen() {
     val context = LocalContext.current
     val scanUi by TradeIdeaScanManager.state.collectAsState()
     val ideas = scanUi.ideas

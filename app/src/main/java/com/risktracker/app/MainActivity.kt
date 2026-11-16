@@ -240,7 +240,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "P&L Calendar" to 23,
         ),
         "IDEAS & RISK TOOLS" to listOf(
-            "Unified Trade Scanner" to 30,
             "Position & leverage calculator" to 2,
         ),
         "CONNECTIONS & ACCOUNT" to listOf(
@@ -276,8 +275,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
                 29 -> "Explore"
-                30 -> "Unified Trade Scanner"
-                31 -> "Unified Trade Scanner"
             else -> "Explore"
             }
 
@@ -464,7 +461,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
-                30, 31 -> CombinedSMCIdeasScreen(onOpenTradeIdeas = { tab = 21 })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
