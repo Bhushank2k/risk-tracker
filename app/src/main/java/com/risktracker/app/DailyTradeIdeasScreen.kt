@@ -1070,7 +1070,7 @@ fun DailyTradeIdeasScreen() {
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (selectedScannerTab) {
-                "SMC Signals" -> SMCSIgnalsWorkspace(onOpenTradeIdeas = { selectedScannerTab = "Trade Ideas" })
+                "SMC Signals" -> SMCSignalsWorkspace(onOpenTradeIdeas = { selectedScannerTab = "Trade Ideas" })
                 else -> DailyTradeIdeasFeedScreen()
             }
         }
@@ -1078,7 +1078,7 @@ fun DailyTradeIdeasScreen() {
 }
 
 @Composable
-private fun SMCSIgnalsWorkspace(onOpenTradeIdeas: () -> Unit) {
+private fun SMCSignalsWorkspace(onOpenTradeIdeas: () -> Unit) {
     var selectedMode by remember { mutableStateOf("Core Patterns") }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
