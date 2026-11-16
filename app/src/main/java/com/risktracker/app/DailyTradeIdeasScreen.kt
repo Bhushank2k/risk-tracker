@@ -51,8 +51,8 @@ internal data class SMCTradeSetup(
     val displacement: String, val zoneDescription: String, val location: String
 )
 
-private data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
-private data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
+internal data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
+internal data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
     val last: Double, val entry: Double, val stop: Double, val target1: Double, val target2: Double,
@@ -560,15 +560,32 @@ internal object BinanceMarketScanner {
                                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                                     changePct = liveTicker?.third ?: ticker.changePct
                                 )
-                                val initialIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
-                                val oiChange = if (initialIdeas.isNotEmpty()) openInterestChangePct(ticker.symbol) else null
-                                val ideas = if (oiChange == null) initialIdeas else initialIdeas.map { idea ->
+                                val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                                val supplementalIdeas = SupplementalTradeStrategies.evaluate(
+                                    live, h1, m15, btcH4, micro
+                                )
+                                val detectedIdeas = coreIdeas + supplementalIdeas
+                                val oiChange = if (detectedIdeas.isNotEmpty() && micro.oiChangePct == null)
+                                    openInterestChangePct(ticker.symbol) else micro.oiChangePct
+                                val enrichedIdeas = if (oiChange == null) detectedIdeas else detectedIdeas.map { idea ->
                                     idea.copy(
                                         oiChangePct = oiChange,
-                                        reasons = idea.reasons + ("Open interest changed " +
-                                            "%+.2f".format(Locale.US, oiChange) + "% over the latest 15M samples")
+                                        reasons = if (idea.oiChangePct == null) idea.reasons + ("Open interest changed " +
+                                            "%+.2f".format(Locale.US, oiChange) + "% over the latest 15M samples") else idea.reasons
                                     )
                                 }
+                                // Keep one plan per symbol/side/horizon while retaining all agreeing strategy labels.
+                                val ideas = enrichedIdeas.groupBy { "${it.symbol}|${it.side}|${it.horizon}" }
+                                    .values.map { sameDirection ->
+                                        val best = sameDirection.maxBy { it.score }
+                                        val strategyNames = sameDirection.map { it.setup }.distinct()
+                                        best.copy(
+                                            setup = strategyNames.joinToString(" + "),
+                                            score = sameDirection.maxOf { it.score },
+                                            reasons = (best.reasons + if (strategyNames.size > 1)
+                                                listOf("Strategy confluence: " + strategyNames.joinToString(", ")) else emptyList()).distinct()
+                                        )
+                                    }
                                 DeepScanOutcome(ticker.symbol, ideas)
                             } catch (e: CancellationException) {
                                 throw e
