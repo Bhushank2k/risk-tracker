@@ -562,7 +562,7 @@ internal object BinanceMarketScanner {
                                 )
                                 val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
                                 val supplementalIdeas = SupplementalTradeStrategies.evaluate(
-                                    live, h1, m15, btcH4, micro
+                                    live, h1, m15, btcH1, micro
                                 )
                                 val detectedIdeas = coreIdeas + supplementalIdeas
                                 val oiChange = if (detectedIdeas.isNotEmpty() && micro.oiChangePct == null)
