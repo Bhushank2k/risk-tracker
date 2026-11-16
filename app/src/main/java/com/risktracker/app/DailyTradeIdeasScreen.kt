@@ -561,12 +561,16 @@ internal object BinanceMarketScanner {
                                     changePct = liveTicker?.third ?: ticker.changePct
                                 )
                                 val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                                // Fetch OI only for existing setups or markets with unusually crowded funding;
+                                // this keeps the optional futures-squeeze check from adding an OI request per coin.
+                                val fundingLooksCrowded = micro.fundingRate?.let { abs(it) >= 0.0005 } == true
+                                val oiChange = if (micro.oiChangePct == null && (coreIdeas.isNotEmpty() || fundingLooksCrowded))
+                                    openInterestChangePct(ticker.symbol) else micro.oiChangePct
+                                val strategyMicro = micro.copy(oiChangePct = oiChange)
                                 val supplementalIdeas = SupplementalTradeStrategies.evaluate(
-                                    live, h1, m15, btcH1, micro
+                                    live, h1, m15, btcH1, strategyMicro
                                 )
                                 val detectedIdeas = coreIdeas + supplementalIdeas
-                                val oiChange = if (detectedIdeas.isNotEmpty() && micro.oiChangePct == null)
-                                    openInterestChangePct(ticker.symbol) else micro.oiChangePct
                                 val enrichedIdeas = if (oiChange == null) detectedIdeas else detectedIdeas.map { idea ->
                                     idea.copy(
                                         oiChangePct = oiChange,
