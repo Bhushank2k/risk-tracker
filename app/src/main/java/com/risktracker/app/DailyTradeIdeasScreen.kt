@@ -1832,6 +1832,12 @@ private fun TradeIdeaCard(
                 TradeIdeaStage.TRACKING_TARGET_HIT -> TradeIdeaPaperJournal.recordExit(
                     context, idea.symbol, idea.target1, "TARGET1", risk, trackedEntryKey
                 )
+                TradeIdeaStage.TRACKING_EXPIRED -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, livePrice, "EXPIRED", risk, trackedEntryKey
+                )
+                TradeIdeaStage.TRACKING_INVALID -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, livePrice, "INVALIDATED", risk, trackedEntryKey
+                )
                 else -> Unit
             }
         }
