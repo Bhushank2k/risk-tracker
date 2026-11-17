@@ -87,11 +87,12 @@ internal fun evaluateTradeIdeaEligibility(
     }
     val isScalp = idea.horizon.startsWith("Scalp", true)
     val isSwing = idea.horizon.startsWith("Swing", true)
-    val trendLabel = if (isScalp) "1H" else if (isSwing) "1D" else "1H"
-    val contextLabel = if (isScalp) "15M" else "4H"
+    val trendLabel = if (isScalp) "15M" else if (isSwing) "4H" else "1H"
+    val contextLabel = if (isScalp) "1H" else if (isSwing) "1D" else "4H"
     val executionLabel = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
-    val trendBias = if (isScalp || isSwing) idea.bias4h else idea.bias1h
-    val contextBias = if (isScalp || isSwing) idea.bias1h else idea.bias4h
+    // V2TradePlan.bias1h stores the horizon-specific trend; bias4h stores the higher context.
+    val trendBias = idea.bias1h
+    val contextBias = idea.bias4h
     val trendAligned = validSide && supports(trendBias)
     val contextAligned = validSide && supports(contextBias)
     val executionTrend = validSide && supports(idea.bias5m)
