@@ -1173,7 +1173,9 @@ private fun DailyTradeIdeasFeedScreen() {
             spreadBps = micro.spreadBps,
             bookImbalance = micro.bookImbalance,
             fundingRate = micro.fundingRate,
-            oiChangePct = micro.oiChangePct
+            oiChangePct = micro.oiChangePct,
+            bidDepthUsd = micro.bidDepthUsd,
+            askDepthUsd = micro.askDepthUsd
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
