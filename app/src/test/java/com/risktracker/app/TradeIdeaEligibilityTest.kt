@@ -61,20 +61,68 @@ class TradeIdeaEligibilityTest {
     }
 
     @Test
-    fun missingDirectionalDepthIsBlockedNotReview() {
+    fun missingDirectionalDepthWaitsForFreshDataInsteadOfAvoidingTheSetup() {
         val result = evaluateTradeIdeaEligibility(idea(bidDepth = null))
-        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
-        assertTrue(result.hardGateBlocked)
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertFalse(result.hardGateBlocked)
+        assertTrue(result.hasUnavailableHardGate)
         assertTrue(result.checks.any {
             it.label.contains("Directional order-book") && it.hardGate && it.passed == null
         })
     }
 
     @Test
-    fun missingFundingDataBlocksEntry() {
+    fun missingFundingDataWaitsForFreshData() {
         val result = evaluateTradeIdeaEligibility(idea(funding = null))
-        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
-        assertTrue(result.hardGateBlocked)
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertFalse(result.hardGateBlocked)
+        assertTrue(result.hasUnavailableHardGate)
+    }
+
+    @Test
+    fun missingSpreadDataWaitsRatherThanApprovingOrAvoiding() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(spreadBps = null))
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertTrue(result.hasUnavailableHardGate)
+        assertFalse(result.hardGateBlocked)
+    }
+
+    @Test
+    fun supplementalStrategiesProvideAllCanonicalMandatoryChecks() {
+        val names = listOf(
+            "Trend Pullback", "Range Reversal", "Volatility Breakout",
+            "Futures Squeeze", "Relative Strength / SMT", "Session Liquidity Raid"
+        )
+        names.forEach { name ->
+            val checks = supplementalStrategyChecks(name, "LONG", 100.0, 95.0, 111.0, 115.0)
+            assertTrue("$name must provide a stop-loss check", checks.any { it.first.startsWith("Stop-loss") && it.second == true })
+            assertTrue("$name must provide a target check", checks.any { it.first.startsWith("Target 1") && it.second == true })
+            assertTrue("$name must provide a structure check", checks.any {
+                it.first.contains("trend structure", ignoreCase = true) && it.second == true
+            })
+            assertTrue("$name must remain unconfirmed until a trigger exists", checks.any {
+                it.first.contains("confirmation candle", ignoreCase = true) && it.second == false
+            })
+        }
+    }
+
+    @Test
+    fun supplementalCandidateWithValidStructureWaitsForEntryConfirmation() {
+        val checks = supplementalStrategyChecks("Trend Pullback", "LONG", 100.0, 95.0, 111.0, 115.0)
+        val candidate = idea(entryTriggered = false, confirmation = false).copy(
+            strategyChecks = checks,
+            bias5m = "Awaiting confirmation"
+        )
+        val result = evaluateTradeIdeaEligibility(candidate)
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertFalse(result.hardGateBlocked)
+    }
+
+    @Test
+    fun supplementalStrategyChecksRejectInvalidStopAndTargetGeometry() {
+        val checks = supplementalStrategyChecks("Range Reversal", "LONG", 100.0, 101.0, 99.0, 98.0)
+        assertTrue(checks.any { it.first.startsWith("Stop-loss") && it.second == false })
+        assertTrue(checks.any { it.first.startsWith("Target 1") && it.second == false })
     }
 
     @Test
