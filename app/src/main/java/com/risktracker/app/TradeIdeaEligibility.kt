@@ -16,7 +16,9 @@ internal data class TradeIdeaEligibility(
     val estimatedNetR: Double,
     val reason: String
 ) {
-    val hardGateBlocked: Boolean get() = checks.any { it.hardGate && it.passed != true }
+    /** A failed gate is a confirmed rejection; unavailable data is pending, not a failure. */
+    val hardGateBlocked: Boolean get() = checks.any { it.hardGate && it.passed == false }
+    val hasUnavailableHardGate: Boolean get() = checks.any { it.hardGate && it.passed == null }
 }
 
 /**
@@ -164,9 +166,10 @@ internal fun evaluateTradeIdeaEligibility(
     val reason: String
     when {
         !validSide -> { state = TradeIdeaEligibilityState.AVOID; reason = "Invalid trade direction." }
-        hardFailed || hardUnknown -> { state = TradeIdeaEligibilityState.AVOID; reason = "A mandatory risk, liquidity, funding, structure or data-quality gate failed or is unavailable." }
+        hardFailed -> { state = TradeIdeaEligibilityState.AVOID; reason = "A mandatory risk, liquidity, funding or structure gate failed." }
         !stopNotHit -> { state = TradeIdeaEligibilityState.AVOID; reason = "Live price has reached or crossed the stop." }
         !fresh -> { state = TradeIdeaEligibilityState.AVOID; reason = "Market snapshot has expired." }
+        hardUnknown -> { state = TradeIdeaEligibilityState.WAIT; reason = "A mandatory market-data or strategy-validation value is unavailable; refresh data before considering entry." }
         executionOpposes -> { state = TradeIdeaEligibilityState.AVOID; reason = "Execution timeframe trend opposes the trade direction." }
         favorableExtension -> { state = TradeIdeaEligibilityState.AVOID; reason = "Price has moved beyond the permitted entry distance; do not chase." }
         requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.WAIT; reason = "Mandatory entry confirmation is still pending." }
