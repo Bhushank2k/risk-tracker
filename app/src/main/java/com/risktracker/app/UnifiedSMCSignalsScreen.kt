@@ -29,7 +29,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     var core by remember { mutableStateOf(SMCScanStateStore.loadResults(context)) }
     var advanced by remember { mutableStateOf(AdvancedSMCSignalStore.load(context)) }
     var loading by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf("Ready · one shared scan runs both SMC engines.") }
+    var progress by remember { mutableStateOf("Ready · SMC reuses the shared Daily Trade Ideas market-data pipeline.") }
     var scanned by remember { mutableIntStateOf(0) }
     var total by remember { mutableIntStateOf(0) }
     var filter by remember { mutableStateOf("All") }
@@ -75,7 +75,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         total = 0
         scope.launch {
             try {
-                progress = "Starting one shared SMC market scan…"
+                progress = "Starting SMC scan from the shared market-data pipeline…"
                 val result = BinanceMarketScanner.scanUnifiedSmc(
                     progress = { progress = it },
                     onProgress = { done, count -> scanned = done; total = count }
@@ -101,7 +101,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Core + Advanced · shared market snapshot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Core + Advanced · shared Daily + SMC market data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { scan() }, enabled = !loading) {
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -121,7 +121,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         if (loading || total > 0) {
             Text(progress, style = MaterialTheme.typography.bodySmall)
             LinearProgressIndicator(progress = { if (total > 0) (scanned.toFloat() / total).coerceIn(0f,1f) else 0f }, modifier = Modifier.fillMaxWidth())
-            Text("$scanned / $total markets scanned once for both engines", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$scanned / $total eligible SMC markets checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("${visible.size} combined signals · ${rows.count { it.sources.size > 1 }} confluence matches",
             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
