@@ -294,7 +294,7 @@ internal object BinanceMarketScanner {
     private suspend fun sharedMarketUniverseSnapshot(forceRefresh: Boolean = false): SharedMarketUniverseSnapshot =
         marketUniverseMutex.withLock {
             val now = System.currentTimeMillis()
-            sharedMarketUniverse?.takeIf { !forceRefresh && now - it.first in 0..15_000L }?.second?.let { return@withLock it }
+            sharedMarketUniverse?.takeIf { !forceRefresh && now - it.first in 0..300_000L }?.second?.let { return@withLock it }
             val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
             val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
                 it.optString("status") == "TRADING" &&
@@ -753,8 +753,11 @@ internal object BinanceMarketScanner {
         for (batch in universe.chunked(4)) {
             coroutineContext.ensureActive()
             val batchResults = coroutineScope {
-                batch.map { (symbol, _, last) ->
+                batch.map { (symbol, _, snapshotLast) ->
                     async {
+                        // Keep the shared 24h universe snapshot reusable while preferring
+                        // the live aggregate ticker for price-sensitive SMC evaluation.
+                        val last = BinanceFuturesStream.latestTicker(symbol)?.first ?: snapshotLast
                         val candleSets = supervisorScope {
                             val d1 = async { cachedCandles(symbol, "1d", 260) }
                             val h4 = async { cachedCandles(symbol, "4h", 260) }
