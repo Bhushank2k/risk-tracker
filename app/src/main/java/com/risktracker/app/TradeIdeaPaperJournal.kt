@@ -41,7 +41,7 @@ internal object TradeIdeaPaperJournal {
         val rows = history(context)
         return (0 until rows.length()).any { index ->
             val row = rows.optJSONObject(index)
-            row?.optString("symbol") == symbol &&
+            row != null && row.optString("symbol") == symbol &&
                 row.optString("strategyKey", "") == strategyKey &&
                 !row.has("closedAt")
         }
