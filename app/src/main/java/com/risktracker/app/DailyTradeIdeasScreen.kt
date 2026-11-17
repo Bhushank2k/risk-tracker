@@ -1590,7 +1590,6 @@ private fun EntryGuidancePanel(
             Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
-            val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
             if (guidance.hardGateBlocked) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
