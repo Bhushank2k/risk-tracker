@@ -45,14 +45,15 @@ import kotlin.math.abs
 import java.util.concurrent.ConcurrentHashMap
 
 internal data class SMCTradeSetup(
-internal data class UnifiedSMCScanResults(
-    val core: List<SMCTradeSetup>,
-    val advanced: List<AdvancedSMCSignal>
-)
     val id: String, val symbol: String, val side: String, val horizon: String, val score: Int,
     val status: String, val entryLow: Double, val entryHigh: Double, val stop: Double,
     val target: Double, val rewardRisk: Double, val structure: String, val sweep: String,
     val displacement: String, val zoneDescription: String, val location: String
+)
+
+internal data class UnifiedSMCScanResults(
+    val core: List<SMCTradeSetup>,
+    val advanced: List<AdvancedSMCSignal>
 )
 
 internal data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
