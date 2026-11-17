@@ -945,7 +945,7 @@ internal object BinanceMarketScanner {
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
-        return TradeIdea(
+        val idea = TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
@@ -953,6 +953,12 @@ internal object BinanceMarketScanner {
             micro.oiChangePct, replay, t.volatilityPct,
             strategyChecks, plan.riskCodes, micro.bidDepthUsd, micro.askDepthUsd
         )
+        val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs = 0L)
+        return when (eligibility.state) {
+            TradeIdeaEligibilityState.READY -> idea
+            TradeIdeaEligibilityState.WAIT -> idea.copy(entryTriggered = false, warning = "WAIT: ${eligibility.reason}")
+            TradeIdeaEligibilityState.AVOID -> idea.copy(entryTriggered = false, warning = "BLOCK: ${eligibility.reason}")
+        }
     }
 
     private fun buildStrategyChecks(
