@@ -31,7 +31,7 @@ internal object AdvancedSMCScanScheduler {
         if (AdvancedSMCSignalStore.resultsUpdatedAt(context) == 0L ||
             System.currentTimeMillis() - AdvancedSMCSignalStore.resultsUpdatedAt(context) >= staleAfterMs
         ) {
-            val initialRequest = OneTimeWorkRequestBuilder<AdvancedSMCBackgroundScanWorker>()
+            val initialRequest = OneTimeWorkRequestBuilder<AdvancedSMCScanWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
                 .build()
