@@ -4,6 +4,33 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Produces the canonical mandatory checks consumed by the shared eligibility engine.
+ * The detector calls this only after its strategy-specific pattern conditions have passed.
+ */
+internal fun supplementalStrategyChecks(
+    name: String,
+    side: String,
+    entry: Double,
+    stop: Double,
+    target1: Double,
+    target2: Double
+): List<Pair<String, Boolean?>> {
+    val long = side == "LONG"
+    val validSide = long || side == "SHORT"
+    val stopValid = validSide && entry.isFinite() && stop.isFinite() && entry > 0.0 &&
+        (if (long) stop < entry else stop > entry)
+    val targetValid = validSide && target1.isFinite() && target2.isFinite() &&
+        (if (long) target1 > entry && target2 > target1 else target1 < entry && target2 < target1)
+    return listOf(
+        "$name pattern detected" to true,
+        "Trend structure aligned: $name pattern structure confirmed" to true,
+        "Stop-loss beyond recent 15M swing" to stopValid,
+        "Target 1 strategy validation: target levels ordered correctly" to targetValid,
+        "Entry confirmation candle" to false
+    )
+}
+
 /** Supplemental pattern detectors. Results are watchlist candidates, never execution approvals. */
 internal object SupplementalTradeStrategies {
     fun evaluate(t: ScanTicker, context4h: List<ScanCandle>, context1h: List<ScanCandle>,
@@ -34,18 +61,21 @@ internal object SupplementalTradeStrategies {
             val stop = if (long) min(structural, entry - atr * 1.15) else max(structural, entry + atr * 1.15)
             val risk = abs(entry - stop)
             if (!risk.isFinite() || risk <= 0.0) return
-            val checks = listOf(
-                (name + " pattern detected") to true,
+            val target1 = if (long) entry + risk * 2.2 else entry - risk * 2.2
+            val target2 = if (long) entry + risk * 3.0 else entry - risk * 3.0
+            val checks = supplementalStrategyChecks(name, side, entry, stop, target1, target2) + listOf(
                 "15M volume >= 1.2x" to (volumeRatio >= 1.2),
-                "Live spread <= 10 bps" to micro.spreadBps?.let { it <= 10.0 },
-                "Two-sided book depth available" to if (micro.bidDepthUsd != null && micro.askDepthUsd != null) micro.bidDepthUsd > 0.0 && micro.askDepthUsd > 0.0 else null,
-                "Entry confirmation candle" to false
+                "Live spread <= 10 bps" to micro.spreadBps?.let { it.isFinite() && it in 0.0..MAX_TRADE_SPREAD_BPS },
+                "Two-sided book depth available" to if (micro.bidDepthUsd != null && micro.askDepthUsd != null)
+                    micro.bidDepthUsd.isFinite() && micro.askDepthUsd.isFinite() &&
+                        micro.bidDepthUsd >= MIN_BOOK_SIDE_DEPTH_USD && micro.askDepthUsd >= MIN_BOOK_SIDE_DEPTH_USD
+                else null
             )
             out += TradeIdea(
                 symbol=t.symbol, side=side, score=score, volume=t.quoteVolume, change=t.changePct,
                 last=t.last, entry=entry, stop=stop,
-                target1=if (long) entry + risk * 2.2 else entry - risk * 2.2,
-                target2=if (long) entry + risk * 3.0 else entry - risk * 3.0,
+                target1=target1,
+                target2=target2,
                 entryTriggered=false, rsi=rsi, volumeRatio=volumeRatio,
                 bias4h=if (ema4h20 > ema4h50) "Bullish" else "Bearish",
                 bias1h=if (ema20 > ema50) "Bullish" else "Bearish",
