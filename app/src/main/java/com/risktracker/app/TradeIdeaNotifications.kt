@@ -148,7 +148,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaCache.save(context, scanCompletedAt, allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
 
-            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt)
+            val riskSettings = EntryRiskSettingsStore.load(context)
+            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt, riskPerTradePercent = riskSettings.riskPercent)
             val trackingPrefs = context.getSharedPreferences("trade_idea_tracking_v1", Context.MODE_PRIVATE)
             val manuallyTrackedSymbols = trackingPrefs.all.keys
                 .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
@@ -187,7 +188,6 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             if (!entryAlertsEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
-            val riskSettings = EntryRiskSettingsStore.load(context)
             val dailyRiskAllowsNewEntries =
                 paperRisk.dailyLossPercent < riskSettings.dailyLossLimitPercent &&
                     paperRisk.consecutiveLosses < riskSettings.maxConsecutiveLosses
