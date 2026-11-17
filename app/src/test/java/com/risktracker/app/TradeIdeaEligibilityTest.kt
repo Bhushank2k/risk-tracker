@@ -99,6 +99,34 @@ class TradeIdeaEligibilityTest {
     }
 
     @Test
+    fun spreadAboveTenBasisPointsBlocksEntry() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(spreadBps = 10.1))
+        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertTrue(result.hardGateBlocked)
+    }
+
+    @Test
+    fun unacceptableDirectionalImbalanceBlocksEntry() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(bookImbalance = -0.20))
+        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertTrue(result.hardGateBlocked)
+    }
+
+    @Test
+    fun targetBelowTwoNetRBlocksEntry() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(target1 = 110.0))
+        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertTrue(result.hardGateBlocked)
+    }
+
+    @Test
+    fun relativeVolumeBelowStrategyThresholdBlocksEntry() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(volumeRatio = 0.89))
+        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertTrue(result.hardGateBlocked)
+    }
+
+    @Test
     fun expiredSnapshotBlocksEntry() {
         val result = evaluateTradeIdeaEligibility(idea(), snapshotAgeMs = 61 * 60_000L)
         assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
