@@ -775,10 +775,13 @@ internal object BinanceMarketScanner {
                         val m5 = candleSets[4]
                         val m1 = candleSets[5]
 
+                        // Use the same larger cached candle responses as Daily Trade Ideas,
+                        // but preserve the exact history windows used by the SMC engines before
+                        // this integration so their signal behavior does not change.
                         val core = listOfNotNull(
-                            evaluateSmcSetup(symbol, last, "Scalp", h1, m5, m1),
-                            evaluateSmcSetup(symbol, last, "Intraday", h4, h1, m15),
-                            evaluateSmcSetup(symbol, last, "Swing", d1, h4, h1)
+                            evaluateSmcSetup(symbol, last, "Scalp", h1.takeLast(180), m5.takeLast(180), m1.takeLast(120)),
+                            evaluateSmcSetup(symbol, last, "Intraday", h4.takeLast(160), h1.takeLast(180), m15.takeLast(180)),
+                            evaluateSmcSetup(symbol, last, "Swing", d1.takeLast(120), h4.takeLast(160), h1.takeLast(180))
                         )
 
                         fun convert(rows: List<ScanCandle>) = rows.map {
@@ -786,11 +789,11 @@ internal object BinanceMarketScanner {
                         }
                         val advanced = if (h1.isEmpty() || m15.isEmpty() || m5.isEmpty()) emptyList()
                         else {
-                            val advancedH1 = convert(h1)
-                            val advancedM15 = convert(m15)
-                            val advancedM5 = convert(m5)
-                            val btcH1 = if (symbol == "BTCUSDT") advancedH1 else convert(benchmark.first)
-                            val btcM15 = if (symbol == "BTCUSDT") advancedM15 else convert(benchmark.second)
+                            val advancedH1 = convert(h1.takeLast(180))
+                            val advancedM15 = convert(m15.takeLast(180))
+                            val advancedM5 = convert(m5.takeLast(180))
+                            val btcH1 = if (symbol == "BTCUSDT") advancedH1 else convert(benchmark.first.takeLast(180))
+                            val btcM15 = if (symbol == "BTCUSDT") advancedM15 else convert(benchmark.second.takeLast(180))
                             AdvancedSMCSignalEngine.evaluate(symbol, last, advancedH1, advancedM15, btcH1, "Intraday") +
                                 AdvancedSMCSignalEngine.evaluate(symbol, last, advancedM15, advancedM5, btcM15, "Scalp")
                         }
