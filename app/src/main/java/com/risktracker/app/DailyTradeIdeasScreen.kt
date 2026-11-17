@@ -1628,7 +1628,7 @@ private fun EntryGuidancePanel(
                         color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Aligned trend/context, relative volume, valid stop geometry, funding, fresh data, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing mandatory data is BLOCKED, not Review. RSI, setup-pattern confluence, 15M volume and open interest are supporting checks. The READY / WAIT / AVOID decision above always takes priority.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Aligned trend/context, relative volume, valid stop geometry, funding, fresh data, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing mandatory data is BLOCKED, not Review. Net R estimates assume 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ. RSI, setup-pattern confluence, 15M volume, open interest and BTC regime are supporting checks. News/event risk is not automatically sourced; review major events manually. The READY / WAIT / AVOID decision above always takes priority.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
