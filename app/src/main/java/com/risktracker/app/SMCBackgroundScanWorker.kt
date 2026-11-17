@@ -93,9 +93,8 @@ object SMCBackgroundScanScheduler {
         // Queue one immediate scan when the cached results are absent or stale so
         // switching away from the UI does not depend on a screen-owned coroutine.
         val staleAfterMs = TimeUnit.MINUTES.toMillis(15)
-        if (resultsUpdatedAt(context) == 0L ||
-            System.currentTimeMillis() - resultsUpdatedAt(context) >= staleAfterMs
-        ) {
+        val resultsAt = SMCScanStateStore.resultsUpdatedAt(context)
+        if (resultsAt == 0L || System.currentTimeMillis() - resultsAt >= staleAfterMs) {
             val initialRequest = OneTimeWorkRequestBuilder<SMCBackgroundScanWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
