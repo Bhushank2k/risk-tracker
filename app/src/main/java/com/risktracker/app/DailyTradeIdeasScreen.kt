@@ -1073,15 +1073,7 @@ fun DailyTradeIdeasScreen() {
 
 @Composable
 private fun SMCSignalsWorkspace(onOpenTradeIdeas: () -> Unit) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            SMCTradeScreen()
-        }
-        HorizontalDivider()
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AdvancedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
-        }
-    }
+    UnifiedSMCSignalsScreen(onOpenTradeIdeas = onOpenTradeIdeas)
 }
 
 @Composable
