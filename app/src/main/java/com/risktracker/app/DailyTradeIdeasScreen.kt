@@ -1173,7 +1173,7 @@ private fun DailyTradeIdeasFeedScreen() {
             spreadBps = micro.spreadBps,
             bookImbalance = micro.bookImbalance,
             fundingRate = micro.fundingRate,
-            oiChangePct = micro.oiChangePct,
+            oiChangePct = micro.oiChangePct ?: idea.oiChangePct,
             bidDepthUsd = micro.bidDepthUsd,
             askDepthUsd = micro.askDepthUsd
         )
