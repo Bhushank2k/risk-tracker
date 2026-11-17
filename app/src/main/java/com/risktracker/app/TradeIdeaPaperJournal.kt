@@ -17,7 +17,8 @@ internal data class PaperSetupStats(
 internal data class PaperRiskStatus(
     val dailyLossPercent: Double,
     val consecutiveLosses: Int,
-    val openPositions: Int
+    val openPositions: Int,
+    val manualTrackedPositions: Int = 0
 ) {
     val dailyStopReached: Boolean get() = dailyLossPercent >= 3.0 || consecutiveLosses >= 2
 }
@@ -126,15 +127,22 @@ internal object TradeIdeaPaperJournal {
         val todayClosed = closed.filter { it.optLong("closedAt", 0L) >= dayStart }
         val todayR = todayClosed.sumOf { it.optDouble("rMultiple", 0.0) }
         val consecutiveLosses = todayClosed.asReversed().takeWhile { it.optDouble("rMultiple", 0.0) <= 0.0 }.size
-        val openPositions = (0 until rows.length()).mapNotNull { i ->
-            rows.optJSONObject(i)?.takeIf { !it.has("closedAt") }?.let {
-                it.optString("symbol") + "|" + it.optString("strategyKey", "")
-            }
+        val openRows = (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeIf { !it.has("closedAt") }
+        }
+        val openPositions = openRows.map {
+            it.optString("symbol") + "|" + it.optString("strategyKey", "")
+        }.distinct().size
+        val manualTrackedPositions = openRows.filter {
+            it.optString("strategyKey", "").startsWith("plan_")
+        }.map {
+            it.optString("symbol") + "|" + it.optString("strategyKey", "")
         }.distinct().size
         return PaperRiskStatus(
             dailyLossPercent = (-todayR * riskPerTradePercent.coerceIn(0.5, 2.0)).coerceAtLeast(0.0),
             consecutiveLosses = consecutiveLosses,
-            openPositions = openPositions
+            openPositions = openPositions,
+            manualTrackedPositions = manualTrackedPositions
         )
     }
 }
