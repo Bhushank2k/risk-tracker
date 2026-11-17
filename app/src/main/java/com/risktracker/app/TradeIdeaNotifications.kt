@@ -197,12 +197,15 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
                     (riskSettings.maxActivePositions - plans.size).coerceAtLeast(0)
                 )
             } else 0
-            alertIdeas.filter {
-                it.entryTriggered &&
-                    evaluateTradeIdeaEligibility(it, snapshotAgeMs = 0L, requireEntryConfirmation = true).state == TradeIdeaEligibilityState.READY &&
-                    !evaluateTradeIdeaEligibility(it, snapshotAgeMs = 0L, requireEntryConfirmation = true).hardGateBlocked &&
-                    it.side in setOf("LONG", "SHORT") &&
-                    "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
+            alertIdeas.filter { idea ->
+                val eligibility = evaluateTradeIdeaEligibility(
+                    idea, snapshotAgeMs = 0L, requireEntryConfirmation = true
+                )
+                idea.entryTriggered &&
+                    eligibility.state == TradeIdeaEligibilityState.READY &&
+                    !eligibility.hardGateBlocked &&
+                    idea.side in setOf("LONG", "SHORT") &&
+                    "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}" !in plans
             }.sortedByDescending { it.score }.take(entrySlots).forEach { idea ->
                 val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
                 plans[strategyKey] = TradeIdeaAlertPlan(
