@@ -33,11 +33,11 @@ internal fun evaluateTradeIdeaEligibility(
     val riskDistance = abs(idea.entry - idea.stop)
     val geometry = validSide && idea.entry.isFinite() && idea.stop.isFinite() &&
         idea.target1.isFinite() && idea.target2.isFinite() && idea.entry > 0.0 &&
-        riskDistance > 0.0 && if (isLong) {
+        riskDistance > 0.0 && (if (isLong) {
             idea.stop < idea.entry && idea.target1 > idea.entry && idea.target2 > idea.target1
         } else {
             idea.stop > idea.entry && idea.target1 < idea.entry && idea.target2 < idea.target1
-        }
+        })
 
     val ageLimit = when {
         idea.horizon.contains("scalp", ignoreCase = true) -> 15 * 60_000L
@@ -46,7 +46,7 @@ internal fun evaluateTradeIdeaEligibility(
     }
     val fresh = snapshotAgeMs <= 0L || snapshotAgeMs <= ageLimit
     val stopNotHit = validSide && idea.last.isFinite() && idea.last > 0.0 &&
-        if (isLong) idea.last > idea.stop else idea.last < idea.stop
+        (if (isLong) idea.last > idea.stop else idea.last < idea.stop)
 
     val volumeThreshold = confluenceExecutionVolumeThreshold(idea.setup)
     val volumeOk: Boolean? = if (idea.volumeRatio.isFinite()) idea.volumeRatio >= volumeThreshold else null
@@ -77,13 +77,13 @@ internal fun evaluateTradeIdeaEligibility(
 
     fun supports(bias: String): Boolean {
         val value = bias.lowercase()
-        return if (isLong) listOf("bull", "up", "long", "positive").any(value::contains)
-        else listOf("bear", "down", "short", "negative").any(value::contains)
+        return if (isLong) listOf("bull", "up", "long", "positive").any { value.contains(it) }
+        else listOf("bear", "down", "short", "negative").any { value.contains(it) }
     }
     fun opposes(bias: String): Boolean {
         val value = bias.lowercase()
-        return if (isLong) listOf("bear", "down", "short", "negative").any(value::contains)
-        else listOf("bull", "up", "long", "positive").any(value::contains)
+        return if (isLong) listOf("bear", "down", "short", "negative").any { value.contains(it) }
+        else listOf("bull", "up", "long", "positive").any { value.contains(it) }
     }
     val isScalp = idea.horizon.startsWith("Scalp", true)
     val isSwing = idea.horizon.startsWith("Swing", true)
@@ -104,7 +104,7 @@ internal fun evaluateTradeIdeaEligibility(
         it.first.contains("swing structure aligned", true) || it.first.contains("trend structure", true)
     }?.second
 
-    val rsiOk = idea.rsi.isFinite() && if (isLong) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
+    val rsiOk = idea.rsi.isFinite() && (if (isLong) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0)
     val setupVolumeReview = idea.horizon.startsWith("Intraday", true) &&
         idea.volumeRatio.isFinite() && idea.volumeRatio >= 1.2
     val oiAvailable = idea.oiChangePct?.isFinite() == true
@@ -146,7 +146,7 @@ internal fun evaluateTradeIdeaEligibility(
         val tolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
         riskDistance <= 0.0 || !idea.last.isFinite() || abs(idea.last - idea.entry) > tolerance
     }
-    val favorableExtension = entryTooFar && if (isLong) idea.last > idea.entry else idea.last < idea.entry
+    val favorableExtension = entryTooFar && (if (isLong) idea.last > idea.entry else idea.last < idea.entry)
 
     val state: TradeIdeaEligibilityState
     val reason: String
