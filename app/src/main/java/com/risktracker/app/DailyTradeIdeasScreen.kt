@@ -1495,8 +1495,6 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val volumeThreshold = confluenceExecutionVolumeThreshold(idea.setup)
     val volumeOk = idea.volumeRatio.isFinite() && idea.volumeRatio >= volumeThreshold
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..MAX_TRADE_SPREAD_BPS }
-    val bothDepthSides = idea.bidDepthUsd?.let { it.isFinite() && it >= MIN_BOOK_SIDE_DEPTH_USD } == true &&
-        idea.askDepthUsd?.let { it.isFinite() && it >= MIN_BOOK_SIDE_DEPTH_USD } == true
     val bookOk = isTradeIdeaLiquidityAcceptable(
         idea.side, idea.spreadBps, idea.bookImbalance, idea.bidDepthUsd, idea.askDepthUsd
     )
@@ -1593,7 +1591,7 @@ private fun EntryGuidancePanel(
             if (guidance.hardGateBlocked) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text("A mandatory eligibility check failed. Review the blocked items below before considering this setup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             val criticalChecks = guidance.checks.filter { (label, passed) ->
                 isCriticalTradeIdeaGate(label) && passed != true
