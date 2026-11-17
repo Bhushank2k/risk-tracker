@@ -1207,12 +1207,6 @@ private fun DailyTradeIdeasFeedScreen() {
     }
     val trackedVisible = visible.filter { isPlanTracked(it) }
     val opportunityVisible = visible.filterNot { isPlanTracked(it) }
-    // The default view is selective; every other scanner outcome remains available below.
-    val highQualityShortlist = if (filter == "All") opportunityVisible
-        .filter { isHighQualityDailyTradeIdea(it, scanSnapshotAgeMs) }
-        .take(5) else emptyList()
-    val otherScannerResults = if (filter == "All") opportunityVisible.filterNot { it in highQualityShortlist }
-        else emptyList()
     val readyCount = modeIdeas.count { tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = modeIdeas.count { idea ->
         tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
@@ -1369,13 +1363,7 @@ private fun DailyTradeIdeasFeedScreen() {
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
-        if (filter == "All" && highQualityShortlist.isNotEmpty()) {
-            items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
-                    trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
-                }
-            }
-        } else if (filter != "All" && opportunityVisible.isNotEmpty()) {
+        if (opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
