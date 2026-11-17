@@ -1488,15 +1488,10 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val longSide = idea.side == "LONG"
     val isScalp = idea.horizon.startsWith("Scalp", ignoreCase = true)
     val isSwing = idea.horizon.startsWith("Swing", ignoreCase = true)
-    val trendLabels = when {
-        isScalp -> listOf("1H", "15M", "1M")
-        isSwing -> listOf("1D", "4H", "15M")
-        else -> listOf("1H", "4H", "5M")
-    }
     val setupInterval = if (isScalp) "5M" else if (isSwing) "1H" else "15M"
     val executionInterval = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
-    val trendBias = if (isScalp || isSwing) idea.bias4h else idea.bias1h
-    val contextBias = if (isScalp || isSwing) idea.bias1h else idea.bias4h
+    val trendBias = idea.bias1h
+    val contextBias = idea.bias4h
     val trendAligned = biasSupportsSide(trendBias, idea.side)
     val contextAligned = biasSupportsSide(contextBias, idea.side)
     val executionAligned = biasSupportsSide(idea.bias5m, idea.side)
