@@ -1369,13 +1369,7 @@ private fun DailyTradeIdeasFeedScreen() {
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
-        if (filter == "All" && highQualityShortlist.isNotEmpty()) {
-            items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
-                    trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
-                }
-            }
-        } else if (filter != "All" && opportunityVisible.isNotEmpty()) {
+        if (opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
