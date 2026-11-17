@@ -84,7 +84,8 @@ internal fun evaluateTradeIdeaEligibility(
     val isScalp = idea.horizon.startsWith("Scalp", true)
     val isSwing = idea.horizon.startsWith("Swing", true)
     val trendLabel = if (isScalp) "1H" else if (isSwing) "1D" else "1H"
-    val contextLabel = if (isScalp) "15M" else if (isSwing) "4H" else "4H"
+    val contextLabel = if (isScalp) "15M" else "4H"
+    val executionLabel = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
     val trendBias = if (isScalp || isSwing) idea.bias4h else idea.bias1h
     val contextBias = if (isScalp || isSwing) idea.bias1h else idea.bias4h
     val trendAligned = validSide && supports(trendBias)
@@ -103,11 +104,12 @@ internal fun evaluateTradeIdeaEligibility(
     val setupVolumeReview = idea.horizon.startsWith("Intraday", true) &&
         idea.volumeRatio.isFinite() && idea.volumeRatio >= 1.2
     val oiAvailable = idea.oiChangePct?.isFinite() == true
+    val blockingRiskCode = idea.riskCodes.any { it.blocksEntry }
 
     val checks = listOf(
         TradeIdeaEligibilityCheck("$trendLabel trend aligned", trendAligned, true),
         TradeIdeaEligibilityCheck("$contextLabel context aligned", contextAligned, true),
-        TradeIdeaEligibilityCheck("Execution trend aligned", executionTrend, false),
+        TradeIdeaEligibilityCheck("$executionLabel execution trend aligned", executionTrend, false),
         TradeIdeaEligibilityCheck("RSI in preferred entry band", rsiOk, false),
         TradeIdeaEligibilityCheck("Relative volume at least ${"%.1f".format(java.util.Locale.US, volumeThreshold)}×", volumeOk, true),
         TradeIdeaEligibilityCheck("Live spread at or below 10 bps", spreadOk, true),
@@ -124,10 +126,10 @@ internal fun evaluateTradeIdeaEligibility(
         TradeIdeaEligibilityCheck("Existing READY score threshold", idea.score >= TradeIdeasV2.MIN_SCORE, false),
         TradeIdeaEligibilityCheck("15M relative volume at least 1.2× (supporting)", if (idea.horizon.startsWith("Intraday", true)) setupVolumeReview else null, false),
         TradeIdeaEligibilityCheck("Target 1 strategy validation", strategyTarget, true),
-        TradeIdeaEligibilityCheck("Open-interest context available (supporting)", oiAvailable, false)
+        TradeIdeaEligibilityCheck("Open-interest context available (supporting)", oiAvailable, false),
+        TradeIdeaEligibilityCheck("Existing scanner hard-risk codes clear", !blockingRiskCode, true)
     )
 
-    val blockingRiskCode = idea.riskCodes.any { it.blocksEntry }
     val hardFailed = checks.any { it.hardGate && it.passed == false } || blockingRiskCode
     val hardUnknown = checks.any { it.hardGate && it.passed == null }
     val scoreEligible = idea.score >= TradeIdeasV2.MIN_SCORE
