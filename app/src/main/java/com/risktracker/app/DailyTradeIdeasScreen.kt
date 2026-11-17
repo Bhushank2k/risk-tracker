@@ -1463,7 +1463,7 @@ private fun isCriticalTradeIdeaGate(label: String): Boolean {
     return listOf(
         "trend aligned", "context aligned", "structure aligned",
         "relative volume", "live spread", "both 5-level", "directional order-book",
-        "funding data", "target 1", "stop-loss", "market snapshot", "live price"
+        "funding data", "target 1", "stop-loss", "market snapshot", "live price", "scanner hard-risk codes"
     ).any { value.contains(it) }
 }
 
@@ -1507,7 +1507,7 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         setupBarMinutes = when { isScalp -> 5; isSwing -> 60; else -> 15 }
     ) else Double.NaN
     val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs)
-    val hardGateBlocked = eligibility.state == TradeIdeaEligibilityState.AVOID
+    val hardGateBlocked = eligibility.hardGateBlocked
     val score = (if (trendAligned) 20 else 0) + (if (contextAligned) 5 else 0) +
         (if (executionAligned) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
@@ -1591,7 +1591,7 @@ private fun EntryGuidancePanel(
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
             val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-            if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
+            if (guidance.hardGateBlocked) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -1628,7 +1628,7 @@ private fun EntryGuidancePanel(
                         color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Relative volume, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing depth is BLOCKED, not Review. The READY / WAIT / AVOID decision above always takes priority.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Aligned trend/context, relative volume, valid stop geometry, funding, fresh data, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing mandatory data is BLOCKED, not Review. RSI, setup-pattern confluence, 15M volume and open interest are supporting checks. The READY / WAIT / AVOID decision above always takes priority.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
