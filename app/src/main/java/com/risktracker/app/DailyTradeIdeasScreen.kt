@@ -57,6 +57,7 @@ internal data class UnifiedSMCScanResults(
 )
 
 internal data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
+internal data class SharedMarketUniverseSnapshot(val activeUsdtPerpetualCount: Int, val tickers: List<ScanTicker>)
 internal data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
@@ -284,6 +285,39 @@ internal object TradeIdeaScanManager {
 }
 
 internal object BinanceMarketScanner {
+    // A short-lived bootstrap shared by Daily Trade Ideas and Unified SMC. It contains
+    // the full active USDT-M universe; strategy-specific liquidity thresholds are applied
+    // by each engine after discovery so SMC never inherits Daily's narrower candidate set.
+    private val marketUniverseMutex = Mutex()
+    @Volatile private var sharedMarketUniverse: Pair<Long, SharedMarketUniverseSnapshot>? = null
+
+    private suspend fun sharedMarketUniverseSnapshot(forceRefresh: Boolean = false): SharedMarketUniverseSnapshot =
+        marketUniverseMutex.withLock {
+            val now = System.currentTimeMillis()
+            sharedMarketUniverse?.takeIf { !forceRefresh && now - it.first in 0..15_000L }?.second?.let { return@withLock it }
+            val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
+            val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
+                it.optString("status") == "TRADING" &&
+                    it.optString("contractType") == "PERPETUAL" &&
+                    it.optString("quoteAsset") == "USDT"
+            }.map { it.optString("symbol") }.toSet()
+            val all = JSONArray(get("/fapi/v1/ticker/24hr"))
+            val tickers = (0 until all.length()).mapNotNull { i ->
+                val row = all.optJSONObject(i) ?: return@mapNotNull null
+                val symbol = row.optString("symbol")
+                val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+                val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
+                if (symbol !in allowed || last <= 0.0) null else {
+                    val change = row.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
+                    val high = row.optString("highPrice").toDoubleOrNull() ?: last
+                    val low = row.optString("lowPrice").toDoubleOrNull() ?: last
+                    ScanTicker(symbol, quote, change, last, ((high - low) / last * 100.0).coerceAtLeast(0.0))
+                }
+            }.sortedByDescending { it.quoteVolume }
+            SharedMarketUniverseSnapshot(allowed.size, tickers).also {
+                sharedMarketUniverse = System.currentTimeMillis() to it
+            }
+        }
     private const val BASE = "https://fapi.binance.com"
     private val scanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
@@ -481,28 +515,11 @@ internal object BinanceMarketScanner {
         onPartialResults: (List<TradeIdea>) -> Unit = {},
         ): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
-        report("Loading active USDT perpetual contracts (one REST bootstrap)…")
-        val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
-        val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
-            it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
-        }.map { it.optString("symbol") }.toSet()
-        report("Found ${allowed.size} active USDT-M perpetual pairs. Loading 24h market statistics…")
-        val all = JSONArray(get("/fapi/v1/ticker/24hr"))
-        val prefiltered = (0 until all.length()).mapNotNull { i ->
-            val x = all.optJSONObject(i) ?: return@mapNotNull null
-            val symbol = x.optString("symbol")
-            val quote = x.optString("quoteVolume").toDoubleOrNull() ?: 0.0
-            val last = x.optString("lastPrice").toDoubleOrNull() ?: 0.0
-            if (symbol !in allowed || !isTradeIdeaVolumeEligible(quote) || last <= 0.0) null
-            else {
-                val change = x.optString("priceChangePercent").toDoubleOrNull() ?: 0.0
-                val high = x.optString("highPrice").toDoubleOrNull() ?: last
-                val low = x.optString("lowPrice").toDoubleOrNull() ?: last
-                val rangePct = ((high - low) / last * 100.0).coerceAtLeast(0.0)
-                ScanTicker(symbol, quote, change, last, rangePct)
-            }
-        }.sortedByDescending { it.quoteVolume }
-        report("24h filter: ${prefiltered.size} eligible markets from ${allowed.size} active pairs (minimum $2M), prioritized by quote volume; spread and two-sided depth remain hard gates.")
+        report("Loading shared active USDT-M market universe…")
+        val marketSnapshot = sharedMarketUniverseSnapshot()
+        val allowed = marketSnapshot.activeUsdtPerpetualCount
+        val prefiltered = marketSnapshot.tickers.filter { isTradeIdeaVolumeEligible(it.quoteVolume) }
+        report("24h filter: ${prefiltered.size} eligible markets from ${allowed} active pairs (minimum $2M), prioritized by quote volume; spread and two-sided depth remain hard gates.")
         if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
 
         // Keep every volume-eligible contract in the scan. Use only bulk 24h ticker
@@ -714,22 +731,10 @@ internal object BinanceMarketScanner {
         onProgress: (Int, Int) -> Unit = { _, _ -> }
     ): UnifiedSMCScanResults = scanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
-        report("Loading Binance USDT-M perpetual universe once…")
-        val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
-        val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
-            it.optString("status") == "TRADING" &&
-                it.optString("contractType") == "PERPETUAL" &&
-                it.optString("quoteAsset") == "USDT"
-        }.map { it.optString("symbol") }.toSet()
-        val tickers = JSONArray(get("/fapi/v1/ticker/24hr"))
-        val universe = (0 until tickers.length()).mapNotNull { i ->
-            val row = tickers.optJSONObject(i) ?: return@mapNotNull null
-            val symbol = row.optString("symbol")
-            val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
-            val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
-            if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null
-            else Triple(symbol, quote, last)
-        }.sortedByDescending { it.second }
+        report("Loading shared active USDT-M market universe…")
+        val marketSnapshot = sharedMarketUniverseSnapshot()
+        val universe = marketSnapshot.tickers.filter { it.quoteVolume >= 5_000_000.0 }
+            .map { Triple(it.symbol, it.quoteVolume, it.last) }
         if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
 
         report("Unified SMC · loading shared multi-timeframe candles for ${universe.size} markets…")
@@ -737,8 +742,8 @@ internal object BinanceMarketScanner {
 
         // Benchmark candles are fetched once and reused by every Advanced SMC SMT check.
         val benchmark = supervisorScope {
-            val h1 = async { cachedCandles("BTCUSDT", "1h", 180) }
-            val m15 = async { cachedCandles("BTCUSDT", "15m", 180) }
+            val h1 = async { cachedCandles("BTCUSDT", "1h", 260) }
+            val m15 = async { cachedCandles("BTCUSDT", "15m", 260) }
             h1.await() to m15.await()
         }
         val coreSetups = mutableListOf<SMCTradeSetup>()
@@ -751,15 +756,15 @@ internal object BinanceMarketScanner {
                 batch.map { (symbol, _, last) ->
                     async {
                         val candleSets = supervisorScope {
-                            val d1 = async { cachedCandles(symbol, "1d", 120) }
-                            val h4 = async { cachedCandles(symbol, "4h", 160) }
+                            val d1 = async { cachedCandles(symbol, "1d", 260) }
+                            val h4 = async { cachedCandles(symbol, "4h", 260) }
                             val h1 = async {
-                                if (symbol == "BTCUSDT") benchmark.first else cachedCandles(symbol, "1h", 180)
+                                if (symbol == "BTCUSDT") benchmark.first else cachedCandles(symbol, "1h", 260)
                             }
                             val m15 = async {
-                                if (symbol == "BTCUSDT") benchmark.second else cachedCandles(symbol, "15m", 180)
+                                if (symbol == "BTCUSDT") benchmark.second else cachedCandles(symbol, "15m", 260)
                             }
-                            val m5 = async { cachedCandles(symbol, "5m", 180) }
+                            val m5 = async { cachedCandles(symbol, "5m", 220) }
                             val m1 = async { cachedCandles(symbol, "1m", 120) }
                             listOf(d1.await(), h4.await(), h1.await(), m15.await(), m5.await(), m1.await())
                         }
