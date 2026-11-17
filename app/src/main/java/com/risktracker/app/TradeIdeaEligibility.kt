@@ -81,8 +81,14 @@ internal fun evaluateTradeIdeaEligibility(
         return if (isLong) listOf("bear", "down", "short", "negative").any(value::contains)
         else listOf("bull", "up", "long", "positive").any(value::contains)
     }
-    val trend1h = validSide && supports(idea.bias1h)
-    val context4h = validSide && supports(idea.bias4h)
+    val isScalp = idea.horizon.startsWith("Scalp", true)
+    val isSwing = idea.horizon.startsWith("Swing", true)
+    val trendLabel = if (isScalp) "1H" else if (isSwing) "1D" else "1H"
+    val contextLabel = if (isScalp) "15M" else if (isSwing) "4H" else "4H"
+    val trendBias = if (isScalp || isSwing) idea.bias4h else idea.bias1h
+    val contextBias = if (isScalp || isSwing) idea.bias1h else idea.bias4h
+    val trendAligned = validSide && supports(trendBias)
+    val contextAligned = validSide && supports(contextBias)
     val executionTrend = validSide && supports(idea.bias5m)
     val executionOpposes = validSide && opposes(idea.bias5m)
 
@@ -99,8 +105,8 @@ internal fun evaluateTradeIdeaEligibility(
     val oiAvailable = idea.oiChangePct?.isFinite() == true
 
     val checks = listOf(
-        TradeIdeaEligibilityCheck("1H trend aligned", trend1h, true),
-        TradeIdeaEligibilityCheck("4H context aligned", context4h, true),
+        TradeIdeaEligibilityCheck("$trendLabel trend aligned", trendAligned, true),
+        TradeIdeaEligibilityCheck("$contextLabel context aligned", contextAligned, true),
         TradeIdeaEligibilityCheck("Execution trend aligned", executionTrend, false),
         TradeIdeaEligibilityCheck("RSI in preferred entry band", rsiOk, false),
         TradeIdeaEligibilityCheck("Relative volume at least ${"%.1f".format(java.util.Locale.US, volumeThreshold)}×", volumeOk, true),
@@ -115,6 +121,7 @@ internal fun evaluateTradeIdeaEligibility(
         TradeIdeaEligibilityCheck("Trend structure aligned", strategyStructure, true),
         TradeIdeaEligibilityCheck("Entry confirmation candle", confirmation, false),
         TradeIdeaEligibilityCheck("Entry trigger confirmed", idea.entryTriggered, false),
+        TradeIdeaEligibilityCheck("Existing READY score threshold", idea.score >= TradeIdeasV2.MIN_SCORE, false),
         TradeIdeaEligibilityCheck("15M relative volume at least 1.2× (supporting)", if (idea.horizon.startsWith("Intraday", true)) setupVolumeReview else null, false),
         TradeIdeaEligibilityCheck("Target 1 strategy validation", strategyTarget, true),
         TradeIdeaEligibilityCheck("Open-interest context available (supporting)", oiAvailable, false)
@@ -123,8 +130,8 @@ internal fun evaluateTradeIdeaEligibility(
     val blockingRiskCode = idea.riskCodes.any { it.blocksEntry }
     val hardFailed = checks.any { it.hardGate && it.passed == false } || blockingRiskCode
     val hardUnknown = checks.any { it.hardGate && it.passed == null }
-    val pendingConfirmation = !executionTrend || !idea.entryTriggered || confirmation != true ||
-        idea.score < TradeIdeasV2.MIN_SCORE
+    val scoreEligible = idea.score >= TradeIdeasV2.MIN_SCORE
+    val pendingConfirmation = !executionTrend || !idea.entryTriggered || confirmation != true
     val entryTooFar = run {
         val tolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
         riskDistance <= 0.0 || !idea.last.isFinite() || abs(idea.last - idea.entry) > tolerance
@@ -141,6 +148,7 @@ internal fun evaluateTradeIdeaEligibility(
         executionOpposes -> { state = TradeIdeaEligibilityState.AVOID; reason = "Execution timeframe trend opposes the trade direction." }
         favorableExtension -> { state = TradeIdeaEligibilityState.AVOID; reason = "Price has moved beyond the permitted entry distance; do not chase." }
         requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.WAIT; reason = "Mandatory entry confirmation is still pending." }
+        !scoreEligible -> { state = TradeIdeaEligibilityState.WAIT; reason = "Setup score is below the existing READY qualification threshold." }
         !requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.READY; reason = "Hard risk gates pass; waiting for the entry trigger." }
         else -> { state = TradeIdeaEligibilityState.READY; reason = "All mandatory gates and entry confirmation pass." }
     }
