@@ -945,7 +945,7 @@ internal object BinanceMarketScanner {
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
-        return TradeIdea(
+        val idea = TradeIdea(
             t.symbol, plan.side, plan.score, t.quoteVolume, t.changePct, t.last,
             plan.entry, plan.stop, plan.target1, plan.target2, plan.entryTriggered,
             rsiValue, volumeRatio, bias4, bias1, plan.setup, reasons, plan.warning,
@@ -953,6 +953,12 @@ internal object BinanceMarketScanner {
             micro.oiChangePct, replay, t.volatilityPct,
             strategyChecks, plan.riskCodes, micro.bidDepthUsd, micro.askDepthUsd
         )
+        val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs = 0L)
+        return when (eligibility.state) {
+            TradeIdeaEligibilityState.READY -> idea
+            TradeIdeaEligibilityState.WAIT -> idea.copy(entryTriggered = false, warning = "WAIT: ${eligibility.reason}")
+            TradeIdeaEligibilityState.AVOID -> idea.copy(entryTriggered = false, warning = "BLOCK: ${eligibility.reason}")
+        }
     }
 
     private fun buildStrategyChecks(
@@ -1173,11 +1179,16 @@ private fun DailyTradeIdeasFeedScreen() {
             spreadBps = micro.spreadBps,
             bookImbalance = micro.bookImbalance,
             fundingRate = micro.fundingRate,
-            oiChangePct = micro.oiChangePct
+            oiChangePct = micro.oiChangePct ?: idea.oiChangePct,
+            bidDepthUsd = micro.bidDepthUsd,
+            askDepthUsd = micro.askDepthUsd
         )
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
     fun isPlanTracked(idea: TradeIdea): Boolean = "plan_" + tradeIdeaTrackingId(idea) in trackedPlanKeys
+    val trackedOpenCount = liveIdeas.count { idea ->
+        isPlanTracked(idea) && tradeIdeaStage(idea, tracked = true, snapshotAgeMs = scanSnapshotAgeMs) == TradeIdeaStage.TRACKING
+    }
     // Show every scanner-produced setup, including WAIT and AVOID candidates.
     // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
     val horizonIdeas = liveIdeas.filter { horizonFilter == "All" || it.horizon.startsWith(horizonFilter, ignoreCase = true) }
@@ -1360,12 +1371,12 @@ private fun DailyTradeIdeasFeedScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
                 }
             }
@@ -1456,6 +1467,15 @@ private data class EntryGuidance(
     val hardGateBlocked: Boolean
 )
 
+private fun isCriticalTradeIdeaGate(label: String): Boolean {
+    val value = label.lowercase(Locale.US)
+    return listOf(
+        "trend aligned", "context aligned", "structure aligned",
+        "relative volume", "live spread", "both 5-level", "directional order-book",
+        "funding data", "target 1", "stop-loss", "market snapshot", "live price", "scanner hard-risk codes"
+    ).any { value.contains(it) }
+}
+
 private fun biasSupportsSide(bias: String, side: String): Boolean {
     val value = bias.lowercase(Locale.US)
     val tokens = if (side == "LONG") listOf("bull", "up", "long", "positive")
@@ -1468,33 +1488,32 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val longSide = idea.side == "LONG"
     val isScalp = idea.horizon.startsWith("Scalp", ignoreCase = true)
     val isSwing = idea.horizon.startsWith("Swing", ignoreCase = true)
-    val trendLabels = when {
-        isScalp -> listOf("1H", "15M", "1M")
-        isSwing -> listOf("1D", "4H", "15M")
-        else -> listOf("1H", "4H context", "5M")
-    }
     val setupInterval = if (isScalp) "5M" else if (isSwing) "1H" else "15M"
     val executionInterval = if (isScalp) "1M" else if (isSwing) "15M" else "5M"
-    val trend4h = biasSupportsSide(idea.bias4h, idea.side)
-    val trend1h = biasSupportsSide(idea.bias1h, idea.side)
-    val trend5m = biasSupportsSide(idea.bias5m, idea.side)
+    val trendBias = idea.bias1h
+    val contextBias = idea.bias4h
+    val trendAligned = biasSupportsSide(trendBias, idea.side)
+    val contextAligned = biasSupportsSide(contextBias, idea.side)
+    val executionAligned = biasSupportsSide(idea.bias5m, idea.side)
     val rsiOk = if (longSide) idea.rsi in 42.0..68.0 else idea.rsi in 32.0..58.0
     val volumeThreshold = confluenceExecutionVolumeThreshold(idea.setup)
     val volumeOk = idea.volumeRatio.isFinite() && idea.volumeRatio >= volumeThreshold
     val spreadOk = idea.spreadBps?.let { it.isFinite() && it in 0.0..MAX_TRADE_SPREAD_BPS }
-    // Use the scanner's exact liquidity policy, including both five-level depth sides.
     val bookOk = isTradeIdeaLiquidityAcceptable(
         idea.side, idea.spreadBps, idea.bookImbalance, idea.bidDepthUsd, idea.askDepthUsd
     )
     val riskDistance = abs(idea.entry - idea.stop)
     val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else 0.0
-    val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = when { idea.horizon.startsWith("Scalp", true) -> 5; idea.horizon.startsWith("Swing", true) -> 60; else -> 15 }) else Double.NaN
-    val rewardOk = netR.isFinite() && netR >= 2.0
-    val hardGateBlocked = !volumeOk || spreadOk != true || !bookOk || !rewardOk
-    val score = (if (trend1h) 20 else 0) + (if (trend4h) 5 else 0) +
-        (if (trend5m) 10 else 0) + (if (rsiOk) 15 else 0) +
+    val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(
+        grossR, idea.entry, riskDistance, heldBars = 8,
+        setupBarMinutes = when { isScalp -> 5; isSwing -> 60; else -> 15 }
+    ) else Double.NaN
+    val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs)
+    val hardGateBlocked = eligibility.hardGateBlocked
+    val score = (if (trendAligned) 20 else 0) + (if (contextAligned) 5 else 0) +
+        (if (executionAligned) 10 else 0) + (if (rsiOk) 15 else 0) +
         (if (volumeOk) 15 else 0) + (if (spreadOk == true) 5 else 0) +
-        (if (bookOk == true) 5 else 0) + (if (rewardOk) 25 else 0)
+        (if (bookOk) 5 else 0) + (if (netR.isFinite() && netR >= 2.0) 25 else 0)
     val grade = when {
         score >= 80 -> "Strong checklist"
         score >= 65 -> "Good checklist · verify"
@@ -1505,25 +1524,20 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
     val zoneLow = idea.entry - halfWidth
     val zoneHigh = idea.entry + halfWidth
     val invalidated = livePriceInvalidatesPlan(idea)
-    // Share the main card's final state; the coach score is informational only.
     val sharedStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-    val action = if (hardGateBlocked) {
-        "AVOID: one or more hard checklist gates failed. Relative volume, spread, both order-book depth sides, directional imbalance and Target 1 net reward/risk must all pass."
-    } else when (sharedStage) {
-        TradeIdeaStage.ENTRY_CONFIRMED -> "READY TO ENTER: scanner trigger and live-price safety checks pass. Recheck the live quote, spread and stop before acting."
-        TradeIdeaStage.MONITOR -> "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
-        TradeIdeaStage.WAIT_CONFIRMATION -> "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
-        TradeIdeaStage.AVOID_CHASING -> "AVOID: price has moved beyond the permitted entry distance. Do not chase; wait for a fresh setup and rescan."
-        TradeIdeaStage.DO_NOT_ENTER -> when {
-            snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea) -> "AVOID: this signal snapshot has expired. Run a fresh market scan before considering an entry."
-            invalidated -> "AVOID: live price has reached or crossed the stop; this plan is invalidated."
-            else -> "AVOID: scanner risk validation failed. Do not enter this setup."
-        }
-        TradeIdeaStage.TRACKING -> "TRACKING: this idea is already being tracked; this is not a new-entry approval."
-        TradeIdeaStage.TRACKING_STOP_HIT -> "STOP HIT: the tracked plan has reached its stop."
-        TradeIdeaStage.TRACKING_TARGET_HIT -> "TARGET HIT: target 1 has been reached."
-        TradeIdeaStage.TRACKING_EXPIRED -> "EXPIRED: the tracked plan is stale; do not use it as a fresh entry."
-        TradeIdeaStage.TRACKING_INVALID -> "INVALID: the tracked plan no longer passes risk validation."
+    val action = when {
+        eligibility.state == TradeIdeaEligibilityState.AVOID ->
+            "AVOID: ${eligibility.reason} Do not enter this setup."
+        sharedStage == TradeIdeaStage.ENTRY_CONFIRMED ->
+            "READY TO ENTER: all shared hard gates and the scanner entry trigger pass. Recheck live price, spread and depth before acting."
+        sharedStage == TradeIdeaStage.MONITOR ->
+            "WAIT: price is approaching the planned entry zone. Wait for the scanner's confirmation trigger."
+        sharedStage == TradeIdeaStage.WAIT_CONFIRMATION ->
+            "WAIT: entry confirmation is missing. Do not enter until the scanner confirms the trigger."
+        sharedStage == TradeIdeaStage.AVOID_CHASING ->
+            "AVOID: price has moved beyond the permitted entry distance. Do not chase; wait for a fresh setup and rescan."
+        else -> if (invalidated) "AVOID: live price has reached or crossed the stop; this plan is invalidated."
+            else "AVOID: shared eligibility validation failed."
     }
     val trigger = if (longSide)
         "LONG: wait for a fresh, fully closed $executionInterval candle confirming EMA9 above EMA21. The live/forming candle never qualifies. Then recheck the $setupInterval setup and liquidity gates before entry."
@@ -1533,16 +1547,10 @@ private fun buildEntryGuidance(idea: TradeIdea, snapshotAgeMs: Long = 0L): Entry
         "Cancel the plan if price reaches the stop or closes below retest support before entry."
     else
         "Cancel the plan if price reaches the stop or closes above retest resistance before entry."
-    val combinedChecks = listOf(
-        ("${trendLabels[0]} trend aligned") to trend1h,
-        ("${trendLabels[1]} context aligned") to trend4h,
-        ("${trendLabels[2]} execution trend aligned") to trend5m,
-        ("RSI in preferred entry band (" + "%.1f".format(Locale.US, idea.rsi) + ")") to rsiOk,
-        ("Relative volume at least " + "%.1f".format(Locale.US, volumeThreshold) + "× (" + "%.2f".format(Locale.US, idea.volumeRatio) + "×)") to volumeOk,
-        "Spread at or below 10 bps" to spreadOk,
-        "Directional order-book depth available and acceptable" to bookOk,
-        ("Target 1 offers at least 2.0R estimated net (" + "%.2f".format(Locale.US, netR) + "R)") to rewardOk
-    ) + idea.strategyChecks
+    val combinedChecks = eligibility.checks.map { it.label to it.passed } +
+        listOf("Trend Pullback pattern detected" to
+            (if (idea.setup.contains("pullback", ignoreCase = true)) true else null)) +
+        idea.strategyChecks
     return EntryGuidance(score, grade, action, trigger, invalidation, zoneLow, zoneHigh, combinedChecks, hardGateBlocked)
 }
 
@@ -1584,17 +1592,13 @@ private fun EntryGuidancePanel(
             Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
             HorizontalDivider()
-            val scannerStage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-            if (scannerStage == TradeIdeaStage.DO_NOT_ENTER) {
+            if (guidance.hardGateBlocked) {
                 Text("HARD GATE: BLOCKED", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text("A mandatory eligibility check failed. Review the blocked items below before considering this setup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             val criticalChecks = guidance.checks.filter { (label, passed) ->
-                (label.startsWith("Relative volume", true) ||
-                    label.startsWith("Spread at or below", true) ||
-                    label.startsWith("Directional order-book", true) ||
-                    label.startsWith("Target 1 offers", true)) && passed != true
+                isCriticalTradeIdeaGate(label) && passed != true
             }
             var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
             TextButton(onClick = { checklistExpanded = !checklistExpanded },
@@ -1609,10 +1613,7 @@ private fun EntryGuidancePanel(
             }
             (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val hardGate = label.startsWith("Relative volume", true) ||
-                        label.startsWith("Spread at or below", true) ||
-                        label.startsWith("Directional order-book", true) ||
-                        label.startsWith("Target 1 offers", true)
+                    val hardGate = isCriticalTradeIdeaGate(label)
                     val blocked = hardGate && passed != true
                     Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
                         color = if (passed == true) MaterialTheme.colorScheme.primary
@@ -1628,7 +1629,7 @@ private fun EntryGuidancePanel(
                         color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Relative volume, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing depth is BLOCKED, not Review. The READY / WAIT / AVOID decision above always takes priority.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Aligned trend/context, relative volume, valid stop geometry, funding, fresh data, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing mandatory data is BLOCKED, not Review. Net R estimates assume 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ. RSI, setup-pattern confluence, 15M volume, open interest and BTC regime are supporting checks. News/event risk is not automatically sourced; review major events manually. The READY / WAIT / AVOID decision above always takes priority.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -1732,48 +1733,24 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
         invalidRisk -> TradeIdeaStage.TRACKING_INVALID
         else -> TradeIdeaStage.TRACKING
     }
-    if (expired || invalidRisk || stopHit) return TradeIdeaStage.DO_NOT_ENTER
-    // Legacy cache entries without this strategy data are not eligible for READY.
-    val requiredChecks = idea.strategyChecks.filter { (label, _) ->
-        label.contains("confirmation candle", ignoreCase = true) ||
-            label.startsWith("Stop-loss", ignoreCase = true) ||
-            label.startsWith("Target 1", ignoreCase = true)
-    }
-    if (requiredChecks.isEmpty() || requiredChecks.any { it.second != true }) {
-        val riskDistance = abs(idea.entry - idea.stop)
-        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
-        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
-        return if (idea.entryTriggered && entryTooFarFromPlan(idea) && favorableMove > entryTolerance)
-            TradeIdeaStage.AVOID_CHASING else TradeIdeaStage.WAIT_CONFIRMATION
-    }
-    if (idea.entryTriggered) {
-        if (!entryTooFarFromPlan(idea)) return TradeIdeaStage.ENTRY_CONFIRMED
 
-        // If price has already moved in the trade's favour, the entry was missed:
-        // never label that late quote READY. If price has not reached the planned
-        // entry yet, keep it in WAIT/MONITOR rather than treating the candle flag
-        // alone as an executable entry.
-        val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
-        val riskDistance = abs(idea.entry - idea.stop)
-        val entryTolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
-        return if (favorableMove > entryTolerance) {
-            TradeIdeaStage.AVOID_CHASING
-        } else {
-            val watchDistance = maxOf(idea.entry * 0.003, riskDistance * 0.50)
-            if (abs(idea.last - idea.entry) <= watchDistance) TradeIdeaStage.MONITOR
+    val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs)
+    return when (eligibility.state) {
+        TradeIdeaEligibilityState.READY -> TradeIdeaStage.ENTRY_CONFIRMED
+        TradeIdeaEligibilityState.WAIT -> {
+            if (isWithinSetupWatchRange(idea)) TradeIdeaStage.MONITOR
             else TradeIdeaStage.WAIT_CONFIRMATION
         }
+        TradeIdeaEligibilityState.AVOID -> {
+            val riskDistance = abs(idea.entry - idea.stop)
+            val tolerance = minOf(idea.entry * 0.001, riskDistance * 0.20)
+            val favorableMove = if (idea.side == "LONG") idea.last - idea.entry else idea.entry - idea.last
+            if (riskDistance > 0.0 && entryTooFarFromPlan(idea) && favorableMove > tolerance)
+                TradeIdeaStage.AVOID_CHASING
+            else TradeIdeaStage.DO_NOT_ENTER
+        }
     }
-    val riskDistance = abs(idea.entry - idea.stop)
-    val approachBand = maxOf(idea.entry * 0.0015, riskDistance * 0.25)
-    val approaching = if (idea.side == "LONG") {
-        idea.last < idea.entry && idea.entry - idea.last <= approachBand
-    } else {
-        idea.last > idea.entry && idea.last - idea.entry <= approachBand
-    }
-    return if (approaching) TradeIdeaStage.MONITOR else TradeIdeaStage.WAIT_CONFIRMATION
 }
-
 
 /**
  * High-quality Daily Trade Ideas gate. Keeps Scalp, Intraday and Swing eligible,
@@ -1828,6 +1805,45 @@ private fun TradeIdeaCard(
     val liveIdea = idea.copy(last = livePrice)
     val guidance = remember(liveIdea, snapshotAgeMs) { buildEntryGuidance(liveIdea, snapshotAgeMs) }
     val stage = tradeIdeaStage(liveIdea, trackedEntry != null, snapshotAgeMs)
+    val activePaperPositions = (paperRiskStatus.openPositions - paperRiskStatus.manualTrackedPositions).coerceAtLeast(0) +
+        maxOf(paperRiskStatus.manualTrackedPositions, trackedPositionCount)
+    val manualRiskBlockReason = when {
+        paperRiskStatus.dailyLossPercent >= riskSettings.dailyLossLimitPercent ->
+            "Daily paper-loss limit (${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% / ${"%.2f".format(Locale.US, riskSettings.dailyLossLimitPercent)}%) reached."
+        paperRiskStatus.consecutiveLosses >= riskSettings.maxConsecutiveLosses ->
+            "Consecutive-loss lockout (${paperRiskStatus.consecutiveLosses} losses) reached."
+        activePaperPositions >= riskSettings.maxActivePositions ->
+            "Maximum active paper positions (${riskSettings.maxActivePositions}) reached."
+        else -> null
+    }
+    LaunchedEffect(trackedEntryKey, trackedEntry, stage) {
+        val tracked = trackedEntry
+        if (tracked != null) {
+            val risk = abs(tracked - idea.stop)
+            when (stage) {
+                TradeIdeaStage.TRACKING -> {
+                    if (!TradeIdeaPaperJournal.hasOpenEntry(context, idea.symbol, trackedEntryKey)) {
+                        TradeIdeaPaperJournal.recordEntry(
+                            context, idea.symbol, idea.setup, idea.side, tracked, idea.stop, trackedEntryKey
+                        )
+                    }
+                }
+                TradeIdeaStage.TRACKING_STOP_HIT -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, idea.stop, "STOP", risk, trackedEntryKey
+                )
+                TradeIdeaStage.TRACKING_TARGET_HIT -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, idea.target1, "TARGET1", risk, trackedEntryKey
+                )
+                TradeIdeaStage.TRACKING_EXPIRED -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, livePrice, "EXPIRED", risk, trackedEntryKey
+                )
+                TradeIdeaStage.TRACKING_INVALID -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, livePrice, "INVALIDATED", risk, trackedEntryKey
+                )
+                else -> Unit
+            }
+        }
+    }
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
@@ -1970,18 +1986,25 @@ private fun TradeIdeaCard(
                 LinearProgressIndicator(progress = { stopProgress.toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.error)
                 Text("P&L is price-only and excludes fees, funding, slippage and position size. Tracking is not connected to an exchange order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {
+                    trackedEntry?.let { tracked ->
+                        TradeIdeaPaperJournal.recordExit(
+                            context, idea.symbol, livePrice, "MANUAL_EXIT", abs(tracked - idea.stop), trackedEntryKey
+                        )
+                    }
                     trackingPrefs.edit().remove(trackedEntryKey).apply()
                     trackedEntry = null
                     livePrice = idea.last
                     onTrackingChanged(trackedEntryKey, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
-            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
-                Text("Risk checks passed.", style = MaterialTheme.typography.bodySmall)
+            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED && manualRiskBlockReason == null) {
+                Text("Shared eligibility and paper risk limits passed.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
                         val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
                             ?: livePrice.takeIf { it > 0.0 } ?: idea.last
-                        val startedAt = System.currentTimeMillis()
+                        TradeIdeaPaperJournal.recordEntry(
+                            context, idea.symbol, idea.setup, idea.side, entry, idea.stop, trackedEntryKey
+                        )
                         trackingPrefs.edit()
                             .putFloat(trackedEntryKey, entry.toFloat())
                             .apply()
@@ -1990,6 +2013,9 @@ private fun TradeIdeaCard(
                         onTrackingChanged(trackedEntryKey, true)
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
+            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
+                Text("Paper tracking blocked: $manualRiskBlockReason", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {

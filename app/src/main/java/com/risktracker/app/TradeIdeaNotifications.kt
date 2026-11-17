@@ -148,7 +148,8 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             TradeIdeaCache.save(context, scanCompletedAt, allIdeas)
             TradeIdeaScanHealthStore.succeeded(context)
 
-            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt)
+            val riskSettings = EntryRiskSettingsStore.load(context)
+            val paperRisk = TradeIdeaPaperJournal.riskStatus(context, scanCompletedAt, riskPerTradePercent = riskSettings.riskPercent)
             val trackingPrefs = context.getSharedPreferences("trade_idea_tracking_v1", Context.MODE_PRIVATE)
             val manuallyTrackedSymbols = trackingPrefs.all.keys
                 .filter { it.startsWith("entry_") && (trackingPrefs.all[it] as? Float ?: 0f) > 0f }
@@ -187,12 +188,24 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
             if (!entryAlertsEnabled) return Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
-            val entrySlots = (6 - plans.size).coerceAtLeast(0)
-            alertIdeas.filter {
-                it.entryTriggered && it.score >= 75 && it.volumeRatio >= 1.2 &&
-                    (it.fundingRate == null || kotlin.math.abs(it.fundingRate) <= 0.001) &&
-                    (it.oiChangePct == null || it.oiChangePct > -1.0) &&
-                    it.side in setOf("LONG", "SHORT") && "${it.symbol}|${it.horizon}|${it.side}|${it.setup}" !in plans
+            val dailyRiskAllowsNewEntries =
+                paperRisk.dailyLossPercent < riskSettings.dailyLossLimitPercent &&
+                    paperRisk.consecutiveLosses < riskSettings.maxConsecutiveLosses
+            val entrySlots = if (dailyRiskAllowsNewEntries) {
+                minOf(
+                    (riskSettings.maxActivePositions - paperRisk.openPositions).coerceAtLeast(0),
+                    (riskSettings.maxActivePositions - plans.size).coerceAtLeast(0)
+                )
+            } else 0
+            alertIdeas.filter { idea ->
+                val eligibility = evaluateTradeIdeaEligibility(
+                    idea, snapshotAgeMs = 0L, requireEntryConfirmation = true
+                )
+                idea.entryTriggered &&
+                    eligibility.state == TradeIdeaEligibilityState.READY &&
+                    !eligibility.hardGateBlocked &&
+                    idea.side in setOf("LONG", "SHORT") &&
+                    "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}" !in plans
             }.sortedByDescending { it.score }.take(entrySlots).forEach { idea ->
                 val strategyKey = "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
                 plans[strategyKey] = TradeIdeaAlertPlan(
@@ -290,6 +303,8 @@ private fun alertKey(idea: TradeIdea): String =
     "${idea.symbol}|${idea.horizon}|${idea.side}|${idea.setup}"
 
 private fun isReadyAlertCandidate(idea: TradeIdea): Boolean {
+    val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs = 0L, requireEntryConfirmation = false)
+    if (eligibility.state != TradeIdeaEligibilityState.READY || eligibility.hardGateBlocked) return false
     if (idea.side !in setOf("LONG", "SHORT") || idea.entryTriggered || idea.score < TradeIdeasV2.MIN_SCORE) return false
     if (!idea.entry.isFinite() || !idea.stop.isFinite() || !idea.target1.isFinite() ||
         !idea.target2.isFinite() || !idea.last.isFinite() ||

@@ -17,9 +17,10 @@ internal data class PaperSetupStats(
 internal data class PaperRiskStatus(
     val dailyLossPercent: Double,
     val consecutiveLosses: Int,
-    val openPositions: Int
+    val openPositions: Int,
+    val manualTrackedPositions: Int = 0
 ) {
-    val dailyStopReached: Boolean get() = dailyLossPercent >= 3.0 || consecutiveLosses >= 2
+    val dailyStopReached: Boolean get() = dailyLossPercent >= 1.5 || consecutiveLosses >= 2
 }
 
 internal object TradeIdeaPaperJournal {
@@ -37,6 +38,15 @@ internal object TradeIdeaPaperJournal {
             .edit().putString(KEY, trimmed.toString()).apply()
     }
 
+    fun hasOpenEntry(context: Context, symbol: String, strategyKey: String): Boolean {
+        val rows = history(context)
+        return (0 until rows.length()).any { index ->
+            val row = rows.optJSONObject(index)
+            row != null && row.optString("symbol") == symbol &&
+                row.optString("strategyKey", "") == strategyKey &&
+                !row.has("closedAt")
+        }
+    }
     fun recordEntry(context: Context, symbol: String, setup: String, side: String, entry: Double, stop: Double, strategyKey: String = "") {
         val rows = history(context)
         if ((0 until rows.length()).any { i ->
@@ -117,15 +127,22 @@ internal object TradeIdeaPaperJournal {
         val todayClosed = closed.filter { it.optLong("closedAt", 0L) >= dayStart }
         val todayR = todayClosed.sumOf { it.optDouble("rMultiple", 0.0) }
         val consecutiveLosses = todayClosed.asReversed().takeWhile { it.optDouble("rMultiple", 0.0) <= 0.0 }.size
-        val openPositions = (0 until rows.length()).mapNotNull { i ->
-            rows.optJSONObject(i)?.takeIf { !it.has("closedAt") }?.let {
-                it.optString("symbol") + "|" + it.optString("strategyKey", "")
-            }
+        val openRows = (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeIf { !it.has("closedAt") }
+        }
+        val openPositions = openRows.map {
+            it.optString("symbol") + "|" + it.optString("strategyKey", "")
+        }.distinct().size
+        val manualTrackedPositions = openRows.filter {
+            it.optString("strategyKey", "").startsWith("plan_")
+        }.map {
+            it.optString("symbol") + "|" + it.optString("strategyKey", "")
         }.distinct().size
         return PaperRiskStatus(
             dailyLossPercent = (-todayR * riskPerTradePercent.coerceIn(0.5, 2.0)).coerceAtLeast(0.0),
             consecutiveLosses = consecutiveLosses,
-            openPositions = openPositions
+            openPositions = openPositions,
+            manualTrackedPositions = manualTrackedPositions
         )
     }
 }
