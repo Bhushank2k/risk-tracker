@@ -1118,10 +1118,8 @@ private fun DailyTradeIdeasFeedScreen() {
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
     var scanExpanded by remember { mutableStateOf(false) }
-    var showOtherScannerResults by remember { mutableStateOf(false) }
     var trackedPlanKeys by remember { mutableStateOf(readTrackedPlanKeys(ideas)) }
     LaunchedEffect(ideas) { trackedPlanKeys = readTrackedPlanKeys(ideas) }
-    LaunchedEffect(filter, horizonFilter, ideas) { showOtherScannerResults = false }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
     fun updateRiskSettings(next: EntryRiskSettings) {
@@ -1236,7 +1234,6 @@ private fun DailyTradeIdeasFeedScreen() {
         (if (partialScanVisible) "Partial · " else "") + SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
 
-    var shortlistDetailsExpanded by remember { mutableStateOf(false) }
     var statusFilterMenuExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1367,23 +1364,6 @@ private fun DailyTradeIdeasFeedScreen() {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (filter == "All") "${highQualityShortlist.size}/5 selected"
-                        else "${visible.size} shown · ranked by entry state, then scanner score",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (filter == "All") {
-                        TextButton(onClick = { shortlistDetailsExpanded = !shortlistDetailsExpanded },
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                            Text(if (shortlistDetailsExpanded) "Less" else "Criteria")
-                        }
-                    }
-                }
-                if (filter == "All" && shortlistDetailsExpanded) {
-                    Text("Score ≥80 plus key confirmation and risk checks.",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
         }
         if (trackedVisible.isNotEmpty()) {
@@ -1397,57 +1377,13 @@ private fun DailyTradeIdeasFeedScreen() {
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
-        if (filter == "All") {
-            if (highQualityShortlist.isNotEmpty()) {
-                items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
-                    TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
-                        trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
-                    }
-                }
-            } else if (opportunityVisible.isNotEmpty()) {
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-                    ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("No high-quality setups right now", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                TextButton(onClick = { shortlistDetailsExpanded = !shortlistDetailsExpanded },
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                                    Text(if (shortlistDetailsExpanded) "Less" else "Why?")
-                                }
-                            }
-                            Text("Check other scanner results below or wait for the next scan.",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (shortlistDetailsExpanded) {
-                                Text("No untracked idea currently meets score ≥80 and all key trend, liquidity, confirmation and risk checks.",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+        if (filter == "All" && highQualityShortlist.isNotEmpty()) {
+            items(highQualityShortlist, key = { "top_" + it.symbol + "_" + it.horizon }) { idea ->
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                    trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
                 }
             }
-            if (otherScannerResults.isNotEmpty()) {
-                item {
-                    OutlinedButton(
-                        onClick = { showOtherScannerResults = !showOtherScannerResults },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (showOtherScannerResults) "Hide other scanner results (${otherScannerResults.size})"
-                            else "Show other scanner results (${otherScannerResults.size})")
-                    }
-                }
-                if (showOtherScannerResults) {
-                    items(otherScannerResults, key = { "other_" + it.symbol + "_" + it.horizon }) { idea ->
-                        TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
-                            trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
-                        }
-                    }
-                }
-            }
-        } else if (opportunityVisible.isNotEmpty()) {
+        } else if (filter != "All" && opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
