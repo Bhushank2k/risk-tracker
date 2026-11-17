@@ -1180,6 +1180,9 @@ private fun DailyTradeIdeasFeedScreen() {
     }
     val scanSnapshotAgeMs = updatedAt?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
     fun isPlanTracked(idea: TradeIdea): Boolean = "plan_" + tradeIdeaTrackingId(idea) in trackedPlanKeys
+    val trackedOpenCount = liveIdeas.count { idea ->
+        isPlanTracked(idea) && tradeIdeaStage(idea, tracked = true, snapshotAgeMs = scanSnapshotAgeMs) == TradeIdeaStage.TRACKING
+    }
     // Show every scanner-produced setup, including WAIT and AVOID candidates.
     // Shortlisting belongs in a separate view; it must never hide scanner diagnostics.
     val horizonIdeas = liveIdeas.filter { horizonFilter == "All" || it.horizon.startsWith(horizonFilter, ignoreCase = true) }
@@ -1362,12 +1365,12 @@ private fun DailyTradeIdeasFeedScreen() {
                 }
             }
             items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
             items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
-                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedPlanKeys.size) { planKey, isTracked ->
+                TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
                 }
             }
@@ -1801,6 +1804,37 @@ private fun TradeIdeaCard(
     val liveIdea = idea.copy(last = livePrice)
     val guidance = remember(liveIdea, snapshotAgeMs) { buildEntryGuidance(liveIdea, snapshotAgeMs) }
     val stage = tradeIdeaStage(liveIdea, trackedEntry != null, snapshotAgeMs)
+    val manualRiskBlockReason = when {
+        paperRiskStatus.dailyLossPercent >= riskSettings.dailyLossLimitPercent ->
+            "Daily paper-loss limit (${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% / ${"%.2f".format(Locale.US, riskSettings.dailyLossLimitPercent)}%) reached."
+        paperRiskStatus.consecutiveLosses >= riskSettings.maxConsecutiveLosses ->
+            "Consecutive-loss lockout (${paperRiskStatus.consecutiveLosses} losses) reached."
+        maxOf(paperRiskStatus.openPositions, trackedPositionCount) >= riskSettings.maxActivePositions ->
+            "Maximum active paper positions (${riskSettings.maxActivePositions}) reached."
+        else -> null
+    }
+    LaunchedEffect(trackedEntryKey, trackedEntry, stage) {
+        val tracked = trackedEntry
+        if (tracked != null) {
+            val risk = abs(tracked - idea.stop)
+            when (stage) {
+                TradeIdeaStage.TRACKING -> {
+                    if (!TradeIdeaPaperJournal.hasOpenEntry(context, idea.symbol, trackedEntryKey)) {
+                        TradeIdeaPaperJournal.recordEntry(
+                            context, idea.symbol, idea.setup, idea.side, tracked, idea.stop, trackedEntryKey
+                        )
+                    }
+                }
+                TradeIdeaStage.TRACKING_STOP_HIT -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, idea.stop, "STOP", risk, trackedEntryKey
+                )
+                TradeIdeaStage.TRACKING_TARGET_HIT -> TradeIdeaPaperJournal.recordExit(
+                    context, idea.symbol, idea.target1, "TARGET1", risk, trackedEntryKey
+                )
+                else -> Unit
+            }
+        }
+    }
     val tint = when (stage) {
         TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
         TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
@@ -1943,18 +1977,25 @@ private fun TradeIdeaCard(
                 LinearProgressIndicator(progress = { stopProgress.toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.error)
                 Text("P&L is price-only and excludes fees, funding, slippage and position size. Tracking is not connected to an exchange order.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {
+                    trackedEntry?.let { tracked ->
+                        TradeIdeaPaperJournal.recordExit(
+                            context, idea.symbol, livePrice, "MANUAL_EXIT", abs(tracked - idea.stop), trackedEntryKey
+                        )
+                    }
                     trackingPrefs.edit().remove(trackedEntryKey).apply()
                     trackedEntry = null
                     livePrice = idea.last
                     onTrackingChanged(trackedEntryKey, false)
                 }, modifier = Modifier.fillMaxWidth()) { Text("Stop tracking") }
-            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
-                Text("Risk checks passed.", style = MaterialTheme.typography.bodySmall)
+            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED && manualRiskBlockReason == null) {
+                Text("Shared eligibility and paper risk limits passed.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = {
                     trackingScope.launch {
                         val entry = withContext(Dispatchers.IO) { BinanceMarketScanner.latestPrice(idea.symbol) }
                             ?: livePrice.takeIf { it > 0.0 } ?: idea.last
-                        val startedAt = System.currentTimeMillis()
+                        TradeIdeaPaperJournal.recordEntry(
+                            context, idea.symbol, idea.setup, idea.side, entry, idea.stop, trackedEntryKey
+                        )
                         trackingPrefs.edit()
                             .putFloat(trackedEntryKey, entry.toFloat())
                             .apply()
@@ -1963,6 +2004,9 @@ private fun TradeIdeaCard(
                         onTrackingChanged(trackedEntryKey, true)
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Track this idea") }
+            } else if (stage == TradeIdeaStage.ENTRY_CONFIRMED) {
+                Text("Paper tracking blocked: $manualRiskBlockReason", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             } else if (stage == TradeIdeaStage.MONITOR) {
                 Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
