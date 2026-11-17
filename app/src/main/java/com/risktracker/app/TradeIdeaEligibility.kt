@@ -49,16 +49,20 @@ internal fun evaluateTradeIdeaEligibility(
         if (isLong) idea.last > idea.stop else idea.last < idea.stop
 
     val volumeThreshold = confluenceExecutionVolumeThreshold(idea.setup)
-    val volumeOk = idea.volumeRatio.isFinite() && idea.volumeRatio >= volumeThreshold
-    val spreadOk = idea.spreadBps?.let {
-        it.isFinite() && it in 0.0..MAX_TRADE_SPREAD_BPS
-    } == true
-    val bothDepthSides = idea.bidDepthUsd?.let { it.isFinite() && it >= MIN_BOOK_SIDE_DEPTH_USD } == true &&
-        idea.askDepthUsd?.let { it.isFinite() && it >= MIN_BOOK_SIDE_DEPTH_USD } == true
-    val directionalDepthOk = isTradeIdeaLiquidityAcceptable(
-        idea.side, idea.spreadBps, idea.bookImbalance, idea.bidDepthUsd, idea.askDepthUsd
-    )
-    val fundingOk = isFundingDataAcceptable(idea.side, idea.fundingRate)
+    val volumeOk: Boolean? = if (idea.volumeRatio.isFinite()) idea.volumeRatio >= volumeThreshold else null
+    val spreadOk: Boolean? = idea.spreadBps?.let {
+        if (it.isFinite()) it in 0.0..MAX_TRADE_SPREAD_BPS else null
+    }
+    val bothDepthSides: Boolean? = if (idea.bidDepthUsd == null || idea.askDepthUsd == null) null else {
+        idea.bidDepthUsd.isFinite() && idea.askDepthUsd.isFinite() &&
+            idea.bidDepthUsd >= MIN_BOOK_SIDE_DEPTH_USD && idea.askDepthUsd >= MIN_BOOK_SIDE_DEPTH_USD
+    }
+    val directionalDepthOk: Boolean? = if (idea.spreadBps == null || idea.bookImbalance == null ||
+        idea.bidDepthUsd == null || idea.askDepthUsd == null) null else {
+        isTradeIdeaLiquidityAcceptable(idea.side, idea.spreadBps, idea.bookImbalance, idea.bidDepthUsd, idea.askDepthUsd)
+    }
+    val fundingOk: Boolean? = if (idea.fundingRate == null || !idea.fundingRate.isFinite()) null
+        else isFundingDataAcceptable(idea.side, idea.fundingRate)
 
     val grossR = if (riskDistance > 0.0) abs(idea.target1 - idea.entry) / riskDistance else Double.NaN
     val setupMinutes = when {
@@ -69,7 +73,7 @@ internal fun evaluateTradeIdeaEligibility(
     val netR = if (riskDistance > 0.0) tradeIdeaNetReturnR(
         grossR, idea.entry, riskDistance, heldBars = 8, setupBarMinutes = setupMinutes
     ) else Double.NaN
-    val netRewardOk = netR.isFinite() && netR >= 2.0
+    val netRewardOk: Boolean? = if (netR.isFinite()) netR >= 2.0 else null
 
     fun supports(bias: String): Boolean {
         val value = bias.lowercase()
