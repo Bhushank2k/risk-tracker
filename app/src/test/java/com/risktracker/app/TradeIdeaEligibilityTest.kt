@@ -127,6 +127,19 @@ class TradeIdeaEligibilityTest {
     }
 
     @Test
+    fun scalpUsesFifteenMinuteTrendAndOneHourContext() {
+        val result = evaluateTradeIdeaEligibility(
+            idea().copy(
+                horizon = "Scalp · 5M setup / 1M execution",
+                bias1h = "Bearish",
+                bias4h = "Bullish"
+            )
+        )
+        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertTrue(result.checks.any { it.label.startsWith("15M trend aligned") && it.passed == false })
+        assertTrue(result.checks.any { it.label.startsWith("1H context aligned") && it.passed == true })
+    }
+    @Test
     fun expiredSnapshotBlocksEntry() {
         val result = evaluateTradeIdeaEligibility(idea(), snapshotAgeMs = 61 * 60_000L)
         assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
