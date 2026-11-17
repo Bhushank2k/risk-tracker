@@ -528,7 +528,7 @@ internal object BinanceMarketScanner {
         val candidates = prefiltered.sortedByDescending {
             quickScanMarketPriority(it.volatilityPct, it.changePct, it.quoteVolume)
         }
-        report("Quick filter complete: ${candidates.size}/${allowed.size} active USDT perpetuals queued for full confirmation. Loading BTC context…")
+        report("Quick filter complete: ${candidates.size}/${allowed} active USDT perpetuals queued for full confirmation. Loading BTC context…")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
