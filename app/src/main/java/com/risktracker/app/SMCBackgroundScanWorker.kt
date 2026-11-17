@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.json.JSONArray
@@ -82,9 +84,26 @@ object SMCBackgroundScanScheduler {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
             .build()
-        WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        workManager.enqueueUniquePeriodicWork(
             UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
         )
+
+        // Periodic work is intentionally inexact and may be deferred by Android.
+        // Queue one immediate scan when the cached results are absent or stale so
+        // switching away from the UI does not depend on a screen-owned coroutine.
+        val staleAfterMs = TimeUnit.MINUTES.toMillis(15)
+        if (resultsUpdatedAt(context) == 0L ||
+            System.currentTimeMillis() - resultsUpdatedAt(context) >= staleAfterMs
+        ) {
+            val initialRequest = OneTimeWorkRequestBuilder<SMCBackgroundScanWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+                .build()
+            workManager.enqueueUniqueWork(
+                "${UNIQUE_WORK}_startup", ExistingWorkPolicy.KEEP, initialRequest
+            )
+        }
     }
 }
 
