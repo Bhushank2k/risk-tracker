@@ -1804,12 +1804,13 @@ private fun TradeIdeaCard(
     val liveIdea = idea.copy(last = livePrice)
     val guidance = remember(liveIdea, snapshotAgeMs) { buildEntryGuidance(liveIdea, snapshotAgeMs) }
     val stage = tradeIdeaStage(liveIdea, trackedEntry != null, snapshotAgeMs)
+    val activePaperPositions = (paperRiskStatus.openPositions - paperRiskStatus.manualTrackedPositions).coerceAtLeast(0) + trackedPositionCount
     val manualRiskBlockReason = when {
         paperRiskStatus.dailyLossPercent >= riskSettings.dailyLossLimitPercent ->
             "Daily paper-loss limit (${"%.2f".format(Locale.US, paperRiskStatus.dailyLossPercent)}% / ${"%.2f".format(Locale.US, riskSettings.dailyLossLimitPercent)}%) reached."
         paperRiskStatus.consecutiveLosses >= riskSettings.maxConsecutiveLosses ->
             "Consecutive-loss lockout (${paperRiskStatus.consecutiveLosses} losses) reached."
-        maxOf(paperRiskStatus.openPositions, trackedPositionCount) >= riskSettings.maxActivePositions ->
+        activePaperPositions >= riskSettings.maxActivePositions ->
             "Maximum active paper positions (${riskSettings.maxActivePositions}) reached."
         else -> null
     }
