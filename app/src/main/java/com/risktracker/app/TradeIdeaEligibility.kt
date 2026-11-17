@@ -115,7 +115,7 @@ internal fun evaluateTradeIdeaEligibility(
         TradeIdeaEligibilityCheck("Directional order-book depth and imbalance acceptable", directionalDepthOk, true),
         TradeIdeaEligibilityCheck("Funding data available and acceptable", fundingOk, true),
         TradeIdeaEligibilityCheck("Target 1 estimated net reward at least 2.0R", netRewardOk, true),
-        TradeIdeaEligibilityCheck("Stop-loss geometry valid", geometry && strategyStop != false, true),
+        TradeIdeaEligibilityCheck("Stop-loss geometry valid", geometry && strategyStop == true, true),
         TradeIdeaEligibilityCheck("Market snapshot fresh", fresh, true),
         TradeIdeaEligibilityCheck("Live price has not invalidated the stop", stopNotHit, true),
         TradeIdeaEligibilityCheck("Trend structure aligned", strategyStructure, true),
@@ -149,6 +149,10 @@ internal fun evaluateTradeIdeaEligibility(
         favorableExtension -> { state = TradeIdeaEligibilityState.AVOID; reason = "Price has moved beyond the permitted entry distance; do not chase." }
         requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.WAIT; reason = "Mandatory entry confirmation is still pending." }
         !scoreEligible -> { state = TradeIdeaEligibilityState.WAIT; reason = "Setup score is below the existing READY qualification threshold." }
+        requireEntryConfirmation && entryTooFar && !favorableExtension -> {
+            state = TradeIdeaEligibilityState.WAIT
+            reason = "Price has not reached the permitted entry zone yet."
+        }
         !requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.READY; reason = "Hard risk gates pass; waiting for the entry trigger." }
         else -> { state = TradeIdeaEligibilityState.READY; reason = "All mandatory gates and entry confirmation pass." }
     }
