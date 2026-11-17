@@ -1456,6 +1456,15 @@ private data class EntryGuidance(
     val hardGateBlocked: Boolean
 )
 
+private fun isCriticalTradeIdeaGate(label: String): Boolean {
+    val value = label.lowercase(Locale.US)
+    return listOf(
+        "trend aligned", "context aligned", "structure aligned",
+        "relative volume", "live spread", "both 5-level", "directional order-book",
+        "funding data", "target 1", "stop-loss", "market snapshot", "live price"
+    ).any { value.contains(it) }
+}
+
 private fun biasSupportsSide(bias: String, side: String): Boolean {
     val value = bias.lowercase(Locale.US)
     val tokens = if (side == "LONG") listOf("bull", "up", "long", "positive")
@@ -1586,10 +1595,7 @@ private fun EntryGuidancePanel(
                 Text(idea.warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             val criticalChecks = guidance.checks.filter { (label, passed) ->
-                (label.startsWith("Relative volume", true) ||
-                    label.startsWith("Spread at or below", true) ||
-                    label.startsWith("Directional order-book", true) ||
-                    label.startsWith("Target 1 offers", true)) && passed != true
+                isCriticalTradeIdeaGate(label) && passed != true
             }
             var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
             TextButton(onClick = { checklistExpanded = !checklistExpanded },
@@ -1604,10 +1610,7 @@ private fun EntryGuidancePanel(
             }
             (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val hardGate = label.startsWith("Relative volume", true) ||
-                        label.startsWith("Spread at or below", true) ||
-                        label.startsWith("Directional order-book", true) ||
-                        label.startsWith("Target 1 offers", true)
+                    val hardGate = isCriticalTradeIdeaGate(label)
                     val blocked = hardGate && passed != true
                     Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
                         color = if (passed == true) MaterialTheme.colorScheme.primary
