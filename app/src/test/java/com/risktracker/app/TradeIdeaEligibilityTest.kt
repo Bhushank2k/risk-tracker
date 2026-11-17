@@ -66,7 +66,7 @@ class TradeIdeaEligibilityTest {
         assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
         assertTrue(result.hardGateBlocked)
         assertTrue(result.checks.any {
-            it.label.contains("Directional order-book") && it.hardGate && it.passed == false
+            it.label.contains("Directional order-book") && it.hardGate && it.passed == null
         })
     }
 
