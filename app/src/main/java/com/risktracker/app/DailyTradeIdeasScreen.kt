@@ -1207,12 +1207,6 @@ private fun DailyTradeIdeasFeedScreen() {
     }
     val trackedVisible = visible.filter { isPlanTracked(it) }
     val opportunityVisible = visible.filterNot { isPlanTracked(it) }
-    // The default view is selective; every other scanner outcome remains available below.
-    val highQualityShortlist = if (filter == "All") opportunityVisible
-        .filter { isHighQualityDailyTradeIdea(it, scanSnapshotAgeMs) }
-        .take(5) else emptyList()
-    val otherScannerResults = if (filter == "All") opportunityVisible.filterNot { it in highQualityShortlist }
-        else emptyList()
     val readyCount = modeIdeas.count { tradeIdeaStage(it, isPlanTracked(it), scanSnapshotAgeMs) == TradeIdeaStage.ENTRY_CONFIRMED }
     val monitorCount = modeIdeas.count { idea ->
         tradeIdeaStage(idea, isPlanTracked(idea), scanSnapshotAgeMs) in setOf(TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION) &&
