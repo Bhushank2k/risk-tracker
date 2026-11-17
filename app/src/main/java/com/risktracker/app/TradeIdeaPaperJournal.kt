@@ -37,6 +37,15 @@ internal object TradeIdeaPaperJournal {
             .edit().putString(KEY, trimmed.toString()).apply()
     }
 
+    fun hasOpenEntry(context: Context, symbol: String, strategyKey: String): Boolean {
+        val rows = history(context)
+        return (0 until rows.length()).any { index ->
+            val row = rows.optJSONObject(index)
+            row?.optString("symbol") == symbol &&
+                row.optString("strategyKey", "") == strategyKey &&
+                !row.has("closedAt")
+        }
+    }
     fun recordEntry(context: Context, symbol: String, setup: String, side: String, entry: Double, stop: Double, strategyKey: String = "") {
         val rows = history(context)
         if ((0 until rows.length()).any { i ->
