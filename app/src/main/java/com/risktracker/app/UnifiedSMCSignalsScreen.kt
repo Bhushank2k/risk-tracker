@@ -29,7 +29,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     var core by remember { mutableStateOf(SMCScanStateStore.loadResults(context)) }
     var advanced by remember { mutableStateOf(AdvancedSMCSignalStore.load(context)) }
     var loading by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf("Ready to scan both SMC engines.") }
+    var progress by remember { mutableStateOf("Ready · one shared scan runs both SMC engines.") }
     var scanned by remember { mutableIntStateOf(0) }
     var total by remember { mutableIntStateOf(0) }
     var filter by remember { mutableStateOf("All") }
@@ -75,19 +75,16 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         total = 0
         scope.launch {
             try {
-                progress = "Scanning Core SMC patterns…"
-                core = BinanceMarketScanner.scanSmc(
+                progress = "Starting one shared SMC market scan…"
+                val result = BinanceMarketScanner.scanUnifiedSmc(
                     progress = { progress = it },
                     onProgress = { done, count -> scanned = done; total = count }
                 )
-                SMCScanStateStore.saveResults(context, core)
-                progress = "Scanning Advanced SMC patterns…"
-                advanced = BinanceMarketScanner.scanAdvancedSmc(
-                    progress = { progress = it },
-                    onProgress = { done, count -> scanned = done; total = count }
-                )
-                AdvancedSMCSignalStore.save(context, advanced)
-                progress = "Combined scan complete · ${rows.size} combined ideas."
+                core = result.core
+                advanced = result.advanced
+                SMCScanStateStore.saveResults(context, result.core)
+                AdvancedSMCSignalStore.save(context, result.advanced)
+                progress = "Unified scan complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates."
             } catch (e: Exception) {
                 progress = "Scan incomplete: ${e.message ?: "market data unavailable"}"
             } finally {
@@ -95,7 +92,6 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             }
         }
     }
-
     LaunchedEffect(Unit) {
         if (core.isEmpty() && advanced.isEmpty()) scan()
     }
@@ -105,11 +101,11 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Core + Advanced · one ranked feed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Core + Advanced · shared market snapshot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { scan() }, enabled = !loading) {
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Filled.Refresh, contentDescription = "Scan both SMC engines")
+                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified SMC scan")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -125,7 +121,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         if (loading || total > 0) {
             Text(progress, style = MaterialTheme.typography.bodySmall)
             LinearProgressIndicator(progress = { if (total > 0) (scanned.toFloat() / total).coerceIn(0f,1f) else 0f }, modifier = Modifier.fillMaxWidth())
-            Text("$scanned / $total markets in current engine", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$scanned / $total markets scanned once for both engines", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("${visible.size} combined signals · ${rows.count { it.sources.size > 1 }} confluence matches",
             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
