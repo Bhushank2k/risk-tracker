@@ -104,6 +104,7 @@ internal fun evaluateTradeIdeaEligibility(
     val setupVolumeReview = idea.horizon.startsWith("Intraday", true) &&
         idea.volumeRatio.isFinite() && idea.volumeRatio >= 1.2
     val oiAvailable = idea.oiChangePct?.isFinite() == true
+    val btcContextAvailable = idea.reasons.any { it.startsWith("BTC regime", ignoreCase = true) && !it.contains("unavailable", ignoreCase = true) }
     val blockingRiskCode = idea.riskCodes.any { it.blocksEntry }
 
     val checks = listOf(
@@ -127,6 +128,7 @@ internal fun evaluateTradeIdeaEligibility(
         TradeIdeaEligibilityCheck("15M relative volume at least 1.2× (supporting)", if (idea.horizon.startsWith("Intraday", true)) setupVolumeReview else null, false),
         TradeIdeaEligibilityCheck("Target 1 strategy validation", strategyTarget, true),
         TradeIdeaEligibilityCheck("Open-interest context available (supporting)", oiAvailable, false),
+        TradeIdeaEligibilityCheck("BTC market regime context available (supporting)", btcContextAvailable, false),
         TradeIdeaEligibilityCheck("Existing scanner hard-risk codes clear", !blockingRiskCode, true)
     )
 
