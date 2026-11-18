@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.util.Calendar
@@ -156,11 +157,18 @@ fun TradingAnalyticsScreen(
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("TOTAL EXECUTED VOLUME", style = MaterialTheme.typography.labelMedium,
+                    Text("REALIZED P&L · BEFORE FEES", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(volumeSummary, style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${validFills.size} fetched executions · executed quote amount, counted once per fill",
+                    Text((if (netPnl > 0.0) "+" else "") + netPnl.usd(),
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.ExtraBold, color = pnlColor(netPnl))
+                    Text("Across $decisiveCount realized close orders",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
+                    Text("Executed volume · $volumeSummary", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("${validFills.size} fetched executions · counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
                     volumeByQuoteAsset.forEach { (asset, amount) ->
@@ -498,9 +506,16 @@ private fun AnalyticsMetric(
     valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
     supporting: String? = null
 ) {
-    RiskCard(modifier) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = valueColor.copy(alpha = 0.085f)
+        ),
+        border = BorderStroke(1.dp, valueColor.copy(alpha = 0.28f))
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 val metricIcon = when {
                     label.contains("win", true) || label.contains("profit factor", true) -> Icons.Filled.TrendingUp
                     label.contains("loss", true) || label.contains("drawdown", true) || label.contains("worst", true) -> Icons.Filled.TrendingDown
@@ -509,13 +524,21 @@ private fun AnalyticsMetric(
                     label.contains("balance", true) -> Icons.Filled.AccountBalanceWallet
                     else -> Icons.Filled.Percent
                 }
-                Icon(metricIcon, contentDescription = null, tint = valueColor, modifier = Modifier.size(16.dp))
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = valueColor.copy(alpha = 0.16f)
+                ) {
+                    Icon(metricIcon, contentDescription = null, tint = valueColor,
+                        modifier = Modifier.padding(6.dp).size(17.dp))
+                }
                 Text(label, style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
             }
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = valueColor)
+            Text(value, style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold, color = valueColor)
             supporting?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(it, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
