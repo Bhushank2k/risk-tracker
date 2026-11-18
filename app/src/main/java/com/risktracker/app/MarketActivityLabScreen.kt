@@ -99,8 +99,7 @@ fun MarketActivityLabScreen() {
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         item{Column(verticalArrangement=Arrangement.spacedBy(5.dp)){
             Text("Market Activity Lab",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-            Text("Early movement detection · historical research · paper-only",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Public Binance USD-M Futures data · read-only · no orders",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Early-movement research · public Binance USD-M Futures data · read-only, no orders",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         item{Card{Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
             Text("Scanner settings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
