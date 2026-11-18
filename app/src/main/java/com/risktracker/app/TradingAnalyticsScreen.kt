@@ -20,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -158,11 +157,18 @@ fun TradingAnalyticsScreen(
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("TOTAL EXECUTED VOLUME", style = MaterialTheme.typography.labelMedium,
+                    Text("REALIZED P&L · BEFORE FEES", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(volumeSummary, style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${validFills.size} fetched executions · executed quote amount, counted once per fill",
+                    Text((if (netPnl > 0.0) "+" else "") + netPnl.usd(),
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.ExtraBold, color = pnlColor(netPnl))
+                    Text("Across $decisiveCount realized close orders",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.18f))
+                    Text("Executed volume · $volumeSummary", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("${validFills.size} fetched executions · counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
                     volumeByQuoteAsset.forEach { (asset, amount) ->
