@@ -192,23 +192,22 @@ fun TradingAnalyticsScreen(
                     AnalyticsMetric("Profit factor", profitFactor?.let { if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it) } ?: "—",
                         Modifier.weight(1f))
                 }
-                Text("P&L includes only exchange fills with reported realized P&L. Partial fills from the same exchange order are combined before classifying a win or loss; open or non-realizing orders are excluded.",
+                Text("Realized exchange P&L only; partial fills are grouped by order and open or non-realizing orders are excluded.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AnalyticsMetric("Average win", orderAnalytics.averageWin?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.primary)
                     AnalyticsMetric("Average loss", orderAnalytics.averageLoss?.usd() ?: "—", Modifier.weight(1f), MaterialTheme.colorScheme.error)
                 }
-                Text("Fees in other assets are not converted or subtracted; see Trading fees below. The net figure subtracts only reported USDT/USDC fees from reported realized P&L.",
+                Text("Net after fees subtracts reported USDT/USDC fees only; fees paid in other assets are not converted.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Daily performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Source-reconciled daily results. Binance takes precedence over manual daily P&L, then manual-journal estimates; overlapping sources are not added.",
+                Text("Daily sources are reconciled, not added: Binance takes precedence over manual P&L, then journal estimates. Futures includes realized P&L, fees, funding and insurance; Spot is FIFO-estimated and third-asset fees are not converted.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Futures daily P&L includes Binance realized P&L, commissions, funding and insurance adjustments. Spot P&L is FIFO-estimated; third-asset commissions are not historically converted, so the combined total is best-known rather than a fully converted account-wide net.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AnalyticsMetric("Selected daily P&L", dailySnapshot.netPnl.usd(), Modifier.weight(1f),
                         if (dailySnapshot.netPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)

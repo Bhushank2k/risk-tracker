@@ -1416,7 +1416,7 @@ private fun DailyTradeIdeasFeedScreen() {
                         Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
                     }
                     if (scanExpanded) {
-                        Text("Source · Binance Futures public market data. One market scan feeds core SMC plus Trend Pullback, Range Reversal, Volatility Breakout, Futures Squeeze, Relative Strength/SMT and Session Liquidity strategies. Results share the same ranking, trade cards and live execution checklist; pattern matches remain watchlist ideas until every mandatory entry gate passes.",
+                        Text("Binance Futures public data · READY requires all mandatory entry checks to pass.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ScannerStat("LONG", longCount.toString(), Modifier.weight(1f))
@@ -1427,7 +1427,6 @@ private fun DailyTradeIdeasFeedScreen() {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("READY alerts", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                Text("A trade has passed its entry confirmation checks.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(checked = readyAlertsEnabled, onCheckedChange = { enabled ->
                                 if (!enabled) {
@@ -1441,7 +1440,6 @@ private fun DailyTradeIdeasFeedScreen() {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("ENTRY TRIGGERED alerts", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                                Text("Entry conditions confirmed; exit alerts for tracked paper plans.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(checked = entryAlertsEnabled, onCheckedChange = { enabled ->
                                 if (!enabled) {
