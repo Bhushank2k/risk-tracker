@@ -487,10 +487,6 @@ fun TradingAnalyticsScreen(
                 }
             }
         }
-        item {
-            Text("Data scope: saved Binance Spot and USDⓈ-M Futures fills available on this device. Volume is the sum of executed quote amounts (buy and sell turnover), grouped by detected quote asset; no conversion to USD is assumed. Pair P&L is summed from exchange-reported realized P&L. Win/loss ratios aggregate partial fills by exchange order. Historical completeness depends on the symbols and date ranges successfully imported or synced.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 
