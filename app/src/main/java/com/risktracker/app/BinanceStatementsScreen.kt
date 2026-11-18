@@ -53,7 +53,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Recent history only", style = MaterialTheme.typography.titleMedium)
+                Text("Statement sync", style = MaterialTheme.typography.titleMedium)
                 Text("Recent 7-day window for supported categories; this is not a lifetime archive.", style = MaterialTheme.typography.bodySmall)
                 
                 Button(onClick = {
