@@ -41,7 +41,7 @@ fun CryptoTaxReportScreen() {
     val scope = rememberCoroutineScope()
     var trades by remember { mutableStateOf(CryptoTaxHistory.load(context)) }
     var rateText by remember { mutableStateOf("83.0") }
-    var status by remember { mutableStateOf("Import Binance CSV or ZIP exports. Existing manual journal and Daily P&L records are not changed.") }
+    var status by remember { mutableStateOf("Ready to import Binance exports.") }
     var busy by remember { mutableStateOf(false) }
     var showSpotEstimate by remember { mutableStateOf(SPOT_ESTIMATE_DEFAULT_ENABLED) }
     var selectedYear by remember {
