@@ -304,7 +304,6 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 }
             }
         }
-        Text("3 · HISTORICAL FUTURES P&L", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
