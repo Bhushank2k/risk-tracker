@@ -127,31 +127,47 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val scheme = if (dark) {
                 darkColorScheme(
-                    primary = RiskTrackerDesign.accent,
-                    onPrimary = Color(0xFF06271A),
-                    secondary = Color(0xFF929DAA),
-                    background = RiskTrackerDesign.canvasDark,
-                    surface = RiskTrackerDesign.surfaceDark,
-                    surfaceVariant = RiskTrackerDesign.raisedDark,
-                    outline = RiskTrackerDesign.borderDark,
-                    outlineVariant = RiskTrackerDesign.borderDark,
-                    primaryContainer = Color(0xFF183D2E),
-                    onPrimaryContainer = Color(0xFFD6F8E7),
-                    error = RiskTrackerDesign.danger
+                    primary = Color(0xFF38BDF8),
+                    onPrimary = Color(0xFF062033),
+                    secondary = Color(0xFF22C58B),
+                    onSecondary = Color(0xFF06271A),
+                    tertiary = Color(0xFFA78BFA),
+                    onTertiary = Color(0xFF21133F),
+                    background = Color(0xFF0B1018),
+                    surface = Color(0xFF141C27),
+                    surfaceVariant = Color(0xFF202B38),
+                    outline = Color(0xFF344253),
+                    outlineVariant = Color(0xFF293646),
+                    primaryContainer = Color(0xFF12364A),
+                    onPrimaryContainer = Color(0xFFD8F3FF),
+                    secondaryContainer = Color(0xFF123B31),
+                    onSecondaryContainer = Color(0xFFD5F8EA),
+                    tertiaryContainer = Color(0xFF30234F),
+                    onTertiaryContainer = Color(0xFFE9DFFF),
+                    error = Color(0xFFF05260),
+                    onError = Color.White
                 )
             } else {
                 lightColorScheme(
-                    primary = Color(0xFF16865D),
+                    primary = Color(0xFF087EA4),
                     onPrimary = Color.White,
-                    secondary = Color(0xFF52616B),
-                    background = Color(0xFFF5F7F6),
+                    secondary = Color(0xFF16865D),
+                    onSecondary = Color.White,
+                    tertiary = Color(0xFF7652B5),
+                    onTertiary = Color.White,
+                    background = Color(0xFFF3F6FA),
                     surface = Color(0xFFFFFFFF),
-                    surfaceVariant = Color(0xFFE9EFEC),
-                    outline = Color(0xFFD6DEDA),
-                    outlineVariant = Color(0xFFD6DEDA),
-                    primaryContainer = Color(0xFFDDF4E8),
-                    onPrimaryContainer = Color(0xFF123D2C),
-                    error = Color(0xFFD34B55)
+                    surfaceVariant = Color(0xFFE9EFF5),
+                    outline = Color(0xFFD3DDE7),
+                    outlineVariant = Color(0xFFDCE4EC),
+                    primaryContainer = Color(0xFFD9F1FA),
+                    onPrimaryContainer = Color(0xFF07394B),
+                    secondaryContainer = Color(0xFFDDF4E8),
+                    onSecondaryContainer = Color(0xFF123D2C),
+                    tertiaryContainer = Color(0xFFEDE5FA),
+                    onTertiaryContainer = Color(0xFF35205D),
+                    error = Color(0xFFD94352),
+                    onError = Color.White
                 )
             }
             MaterialTheme(colorScheme = scheme, shapes = RiskTrackerShapes, typography = RiskTrackerTypography) {
