@@ -172,17 +172,7 @@ fun CloudAlertsScreen() {
                 }
             }
         }
-        if (alerts.isEmpty()) {
-            item {
-                Card(shape = RoundedCornerShape(16.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No cloud alerts to show", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("Valid cloud READY Intraday signals will appear here after the scanner publishes them.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        } else {
+        if (alerts.isNotEmpty()) {
             items(alerts, key = { it.id }) { alert ->
                 Card(shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
