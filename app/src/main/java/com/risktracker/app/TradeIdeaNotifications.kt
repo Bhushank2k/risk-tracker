@@ -15,6 +15,8 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.NetworkType
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -61,9 +63,24 @@ object TradeIdeaNotifications {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
             .build()
-        WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
+        val workManager = WorkManager.getInstance(context.applicationContext)
+        workManager.enqueueUniquePeriodicWork(
             UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
         )
+
+        // Periodic work may wait for its first interval. Kick off a scan as soon
+        // as the app is opened when the persisted Daily Ideas snapshot is stale.
+        val lastSuccessAt = TradeIdeaScanHealthStore.load(context.applicationContext).lastSuccessAt
+        val staleAfterMs = TimeUnit.MINUTES.toMillis(15)
+        if (lastSuccessAt == 0L || System.currentTimeMillis() - lastSuccessAt >= staleAfterMs) {
+            val initialRequest = OneTimeWorkRequestBuilder<TradeIdeaMonitorWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+                .build()
+            workManager.enqueueUniqueWork(
+                "${UNIQUE_WORK}_startup", ExistingWorkPolicy.KEEP, initialRequest
+            )
+        }
     }
 
     fun cancel(context: Context) {
