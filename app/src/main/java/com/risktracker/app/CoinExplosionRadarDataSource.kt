@@ -1,5 +1,6 @@
 package com.risktracker.app
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -67,14 +68,23 @@ object CoinExplosionRadarDataSource {
             universe.map { symbol ->
                 async {
                     semaphore.withPermit {
-                        runCatching {
+                        try {
                             val rows = candles(symbol)
                             val qv = tickerMap[symbol]?.first ?: 0.0
-                            val oiChange = if (qv >= 10_000_000.0) runCatching { openInterestChange(symbol) }.getOrNull() else null
+                            val oiChange = if (qv >= 10_000_000.0) {
+                                try { openInterestChange(symbol) }
+                                catch (cancel: CancellationException) { throw cancel }
+                                catch (_: Exception) { null }
+                            } else null
                             val context = ExplosionMarketContext(qv, spreads[symbol], funding[symbol], btcChange,
                                 oiChange, oiChange != null)
                             CoinExplosionRadarEngine.analyze(symbol, rows, context, config)
-                        }.onFailure { failures += symbol + ": " + (it.message ?: "scan failed") }.getOrNull()
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (error: Exception) {
+                            failures += symbol + ": " + (error.message ?: "scan failed")
+                            null
+                        }
                     }
                 }
             }.awaitAll().filterNotNull()
