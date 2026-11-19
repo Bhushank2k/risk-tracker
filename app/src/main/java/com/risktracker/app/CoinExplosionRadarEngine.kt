@@ -82,7 +82,8 @@ object CoinExplosionRadarEngine {
         val rows = candles.filter { c ->
             listOf(c.open, c.high, c.low, c.close, c.volume, c.quoteVolume, c.takerBuyBaseVolume, c.takerBuyQuoteVolume).all { it.isFinite() } &&
                 c.open > 0.0 && c.close > 0.0 && c.low > 0.0 && c.high >= max(c.open, c.close) &&
-                c.low <= min(c.open, c.close) && c.volume >= 0.0 && c.quoteVolume >= 0.0 &&\n                c.takerBuyBaseVolume in 0.0..c.volume && c.takerBuyQuoteVolume in 0.0..c.quoteVolume
+                c.low <= min(c.open, c.close) && c.volume >= 0.0 && c.quoteVolume >= 0.0 &&
+                c.takerBuyBaseVolume in 0.0..c.volume && c.takerBuyQuoteVolume in 0.0..c.quoteVolume
         }
         val need = max(config.lookbackBars, config.volumeLookbackBars) + config.atrPeriod + 2
         if (rows.size < need || !symbol.matches(Regex("[A-Z0-9]{5,20}"))) return null
@@ -156,16 +157,21 @@ object CoinExplosionRadarEngine {
             else -> ExplosionDirection.SHORT
         }
         val risk = mutableListOf<String>()
-        if (!context.quoteVolume24h.isFinite() || context.quoteVolume24h < config.minimumQuoteVolumeUsd) risk += "24h quote volume below liquidity floor or invalid"
-        if (context.spreadBps == null) risk += "Spread data unavailable"
-        else if (context.spreadBps > config.maximumSpreadBps) risk += "Spread exceeds safety limit"
-        if (context.fundingRate == null) risk += "Funding data unavailable"
-        else if (abs(context.fundingRate) >= config.maximumFundingRateAbs) risk += "Extreme funding: crowded positioning risk"
+        if (!context.quoteVolume24h.isFinite() || context.quoteVolume24h < config.minimumQuoteVolumeUsd) {
+            risk += "24h quote volume below liquidity floor or invalid"
+        }
+        val spread = context.spreadBps
+        if (spread == null || !spread.isFinite()) risk += "Spread data unavailable or invalid"
+        else if (spread < 0.0 || spread > config.maximumSpreadBps) risk += "Spread exceeds safety limit"
+        val funding = context.fundingRate
+        if (funding == null || !funding.isFinite()) risk += "Funding data unavailable or invalid"
+        else if (abs(funding) >= config.maximumFundingRateAbs) risk += "Extreme funding: crowded positioning risk"
         if (atrPct != null && atrPct > 8.0) risk += "Extreme 1h ATR: volatility risk"
         if (last.quoteVolume <= 0.0 || context.quoteVolume24h <= 0.0) risk += "No reliable traded volume"
-        val hardReject = context.quoteVolume24h < config.minimumQuoteVolumeUsd ||
-            (context.spreadBps == null || context.spreadBps > config.maximumSpreadBps) ||
-            last.close <= 0.0 || last.quoteVolume <= 0.0
+        val fundingExtreme = funding != null && (!funding.isFinite() || abs(funding) >= config.maximumFundingRateAbs)
+        val hardReject = !context.quoteVolume24h.isFinite() || context.quoteVolume24h < config.minimumQuoteVolumeUsd ||
+            spread == null || !spread.isFinite() || spread < 0.0 || spread > config.maximumSpreadBps ||
+            fundingExtreme || last.close <= 0.0 || last.quoteVolume <= 0.0
         val breakout = last.close > high || last.close < low
         val stage = when {
             hardReject -> ExplosionStage.REJECTED
