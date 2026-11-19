@@ -211,11 +211,21 @@ object CoinExplosionRadarEngine {
             val entry = candles[i + 1].open
             if (entry <= 0.0) { i++; continue }
             val path = candles.subList(i + 1, i + config.replayHorizonBars + 1)
-            val exit = path.last().close
+            val stop = signal.invalidationPrice
+            val stopIndex = if (stop == null) -1 else path.indexOfFirst { bar ->
+                if (sign > 0) bar.low <= stop else bar.high >= stop
+            }
+            val outcomePath = if (stopIndex >= 0) path.take(stopIndex + 1) else path
+            val exit = if (stopIndex >= 0 && stop != null) {
+                val stopBar = path[stopIndex]
+                if (sign > 0 && stopBar.open < stop) stopBar.open
+                else if (sign < 0 && stopBar.open > stop) stopBar.open
+                else stop
+            } else path.last().close
             val costsPct = 2.0 * (config.feeBpsPerSide + config.slippageBpsPerSide) / 100.0
             returns += sign * (exit / entry - 1.0) * 100.0 - costsPct
-            mfes += if (sign > 0) (path.maxOf { it.high } / entry - 1.0) * 100.0 else (entry / path.minOf { it.low } - 1.0) * 100.0
-            maes += if (sign > 0) (path.minOf { it.low } / entry - 1.0) * 100.0 else (entry / path.maxOf { it.high } - 1.0) * 100.0
+            mfes += if (sign > 0) (outcomePath.maxOf { it.high } / entry - 1.0) * 100.0 else (entry / outcomePath.minOf { it.low } - 1.0) * 100.0
+            maes += if (sign > 0) (outcomePath.minOf { it.low } / entry - 1.0) * 100.0 else (entry / outcomePath.maxOf { it.high } - 1.0) * 100.0
             i += config.replayHorizonBars
         }
         if (returns.isEmpty()) return emptyStats(config)
