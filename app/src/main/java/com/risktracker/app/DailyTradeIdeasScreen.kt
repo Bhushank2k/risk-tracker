@@ -833,7 +833,7 @@ internal object BinanceMarketScanner {
     suspend fun scanSmc(
         progress: (String) -> Unit,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): List<SMCTradeSetup> = scanUnifiedSmc(progress, onProgress).coreSetups
+    ): List<SMCTradeSetup> = scanUnifiedSmc(progress, onProgress).core
 
     /**
      * Compatibility wrapper over the unified SMC scan. Avoids a second universe and
@@ -843,7 +843,7 @@ internal object BinanceMarketScanner {
     suspend fun scanAdvancedSmc(
         progress: (String) -> Unit,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): List<AdvancedSMCSignal> = scanUnifiedSmc(progress, onProgress).advancedSignals
+    ): List<AdvancedSMCSignal> = scanUnifiedSmc(progress, onProgress).advanced
 
     private fun evaluateSmcSetup(
         symbol: String, livePrice: Double, horizon: String,
