@@ -825,112 +825,25 @@ internal object BinanceMarketScanner {
         UnifiedSMCScanResults(coreResults, advancedResults)
     } }
 
-    suspend fun scanSmc(progress: (String) -> Unit, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<SMCTradeSetup> =
-        scanMutex.withLock { withContext(Dispatchers.IO) {
-            suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
-            report("Loading Binance USDT-M perpetual universe…")
-            val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
-            val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
-                it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
-            }.map { it.optString("symbol") }.toSet()
-            val tickers = JSONArray(get("/fapi/v1/ticker/24hr"))
-            val universe = (0 until tickers.length()).mapNotNull { i ->
-                val row = tickers.optJSONObject(i) ?: return@mapNotNull null
-                val symbol = row.optString("symbol")
-                val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
-                val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
-                if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null else Triple(symbol, quote, last)
-            }.sortedByDescending { it.second }
-            if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
-            report("SMC scan · loading multi-timeframe candles for all ${universe.size} eligible liquid contracts, highest 24h volume first…")
-            withContext(Dispatchers.Main.immediate) { onProgress(0, universe.size) }
-            val allSetups = mutableListOf<SMCTradeSetup>()
-            var completed = 0
-            for (batch in universe.chunked(4)) {
-                coroutineContext.ensureActive()
-                val rows = coroutineScope {
-                    batch.map { (symbol, quote, last) ->
-                        async {
-                            val candleSets = supervisorScope {
-                                val d1 = async { cachedCandles(symbol, "1d", 120) }
-                                val h4 = async { cachedCandles(symbol, "4h", 160) }
-                                val h1 = async { cachedCandles(symbol, "1h", 180) }
-                                val m15 = async { cachedCandles(symbol, "15m", 180) }
-                                val m5 = async { cachedCandles(symbol, "5m", 180) }
-                                val m1 = async { cachedCandles(symbol, "1m", 120) }
-                                listOf(d1.await(), h4.await(), h1.await(), m15.await(), m5.await(), m1.await())
-                            }
-                            val d1 = candleSets[0]; val h4 = candleSets[1]; val h1 = candleSets[2]
-                            val m15 = candleSets[3]; val m5 = candleSets[4]; val m1 = candleSets[5]
-                            listOfNotNull(
-                                evaluateSmcSetup(symbol, last, "Scalp", h1, m5, m1),
-                                evaluateSmcSetup(symbol, last, "Intraday", h4, h1, m15),
-                                evaluateSmcSetup(symbol, last, "Swing", d1, h4, h1)
-                            )
-                        }
-                    }.awaitAll()
-                }
-                rows.forEach { allSetups.addAll(it) }
-                completed += batch.size
-                report("SMC scan · ${completed}/${universe.size} markets checked · ${allSetups.size} validated candidates…")
-                withContext(Dispatchers.Main.immediate) { onProgress(completed, universe.size) }
-            }
-            val ranked = allSetups.sortedByDescending { it.score }
-            val onePerHorizon = listOf("Scalp", "Intraday", "Swing").mapNotNull { h -> ranked.firstOrNull { it.horizon == h } }
-            (onePerHorizon + ranked).distinctBy { it.id }.take(5)
-        } }
+    /**
+     * Compatibility wrapper. The unified scanner owns market discovery and candle loading
+     * for both SMC engines; keep this API without retaining a second scan implementation.
+     */
+    @Deprecated("Use scanUnifiedSmc() to scan both SMC engines from one market snapshot.")
+    suspend fun scanSmc(
+        progress: (String) -> Unit,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): List<SMCTradeSetup> = scanUnifiedSmc(progress, onProgress).coreSetups
 
+    /**
+     * Compatibility wrapper over the unified SMC scan. Avoids a second universe and
+     * per-symbol candle fetch when legacy callers request Advanced SMC alone.
+     */
+    @Deprecated("Use scanUnifiedSmc() to scan both SMC engines from one market snapshot.")
     suspend fun scanAdvancedSmc(
         progress: (String) -> Unit,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): List<AdvancedSMCSignal> = scanMutex.withLock { withContext(Dispatchers.IO) {
-        suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
-        report("Loading advanced SMC market universe…")
-        val info = JSONObject(get("/fapi/v1/exchangeInfo")).optJSONArray("symbols") ?: JSONArray()
-        val allowed = (0 until info.length()).mapNotNull { info.optJSONObject(it) }.filter {
-            it.optString("status") == "TRADING" && it.optString("contractType") == "PERPETUAL" && it.optString("quoteAsset") == "USDT"
-        }.map { it.optString("symbol") }.toSet()
-        val tickers = JSONArray(get("/fapi/v1/ticker/24hr"))
-        val universe = (0 until tickers.length()).mapNotNull { i ->
-            val row = tickers.optJSONObject(i) ?: return@mapNotNull null
-            val symbol = row.optString("symbol")
-            val quote = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
-            val last = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
-            if (symbol !in allowed || quote < 5_000_000.0 || last <= 0.0) null else Triple(symbol, quote, last)
-        }.sortedByDescending { it.second }
-        if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
-        val btcH1 = cachedCandles("BTCUSDT", "1h", 100).map { AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime) }
-        val btcM15 = cachedCandles("BTCUSDT", "15m", 100).map { AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime) }
-        withContext(Dispatchers.Main.immediate) { onProgress(0, universe.size) }
-        val signals = mutableListOf<AdvancedSMCSignal>()
-        var completed = 0
-        for (batch in universe.chunked(4)) {
-            coroutineContext.ensureActive()
-            val batchResults = coroutineScope {
-                batch.map { (symbol, _, last) ->
-                    async {
-                        val candles = supervisorScope {
-                            val h1 = async { cachedCandles(symbol, "1h", 140) }
-                            val m15 = async { cachedCandles(symbol, "15m", 160) }
-                            val m5 = async { cachedCandles(symbol, "5m", 120) }
-                            listOf(h1.await(), m15.await(), m5.await())
-                        }
-                        fun convert(rows: List<ScanCandle>) = rows.map {
-                            AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime)
-                        }
-                        val h1 = convert(candles[0]); val m15 = convert(candles[1]); val m5 = convert(candles[2])
-                        AdvancedSMCSignalEngine.evaluate(symbol, last, h1, m15, btcH1, "Intraday") +
-                            AdvancedSMCSignalEngine.evaluate(symbol, last, m15, m5, btcM15, "Scalp")
-                    }
-                }.awaitAll()
-            }
-            batchResults.forEach { signals.addAll(it) }
-            completed += batch.size
-            report("Advanced SMC · $completed/${universe.size} eligible markets checked · ${signals.size} pattern candidates…")
-            withContext(Dispatchers.Main.immediate) { onProgress(completed, universe.size) }
-        }
-        signals.distinctBy { it.id }.sortedWith(compareByDescending<AdvancedSMCSignal> { it.score }.thenByDescending { it.rewardRisk }).take(30)
-    } }
+    ): List<AdvancedSMCSignal> = scanUnifiedSmc(progress, onProgress).advancedSignals
 
     private fun evaluateSmcSetup(
         symbol: String, livePrice: Double, horizon: String,
