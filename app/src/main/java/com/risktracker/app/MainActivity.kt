@@ -103,6 +103,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     27 -> Icons.Filled.Notifications
     30 -> Icons.Filled.ShowChart
     31 -> Icons.Filled.ShowChart
+    32 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -252,6 +253,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         "TRADING" to listOf(
             "Live positions & orders" to 16,
         ),
+        "MARKET RESEARCH" to listOf(
+            "Coin Explosion Radar" to 32,
+        ),
         "PERFORMANCE" to listOf(
             "P&L Calendar" to 23,
         ),
@@ -291,6 +295,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
                 29 -> "Explore"
+                32 -> "Coin Explosion Radar"
             else -> "Explore"
             }
 
@@ -477,6 +482,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
+                32 -> CoinExplosionRadarScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -555,7 +561,7 @@ private fun ExploreToolCard(
         25, 28 -> Color(0xFFD0A5FF)
         23, 9, 14 -> Color(0xFFFF9FBD)
         6, 17 -> Color(0xFF76DFE4)
-        26, 27 -> Color(0xFFFFA66B)
+        26, 27, 32 -> Color(0xFFFFA66B)
         else -> Color(0xFF91A8FF)
     }
     val subtitle = when (destination) {
@@ -566,6 +572,7 @@ private fun ExploreToolCard(
         28 -> "Market research"
         26 -> "Confirmed signals"
         27 -> "Market notifications"
+        32 -> "Early pressure scanner"
         2 -> "Position & leverage"
         13 -> "Risk scenarios"
         19 -> "Risk notifications"
