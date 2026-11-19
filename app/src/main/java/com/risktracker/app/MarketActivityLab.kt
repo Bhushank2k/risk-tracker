@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.*
 
 data class MarketTicker(val symbol:String,val lastPrice:Double,val changePercent:Double,val quoteVolume:Double)
-data class MarketCandle(val openTime:Long,val open:Double,val high:Double,val low:Double,val close:Double,val volume:Double,val closeTime:Long,val quoteVolume:Double)
+data class MarketCandle(val openTime:Long,val open:Double,val high:Double,val low:Double,val close:Double,val volume:Double,val closeTime:Long,val quoteVolume:Double,val takerBuyBaseVolume:Double=0.0,val takerBuyQuoteVolume:Double=0.0)
 enum class MarketInterval(val api:String,val label:String){M5("5m","5m"),M15("15m","15m"),H1("1h","1h"),H4("4h","4h"),D1("1d","1D")}
 enum class ActivityState{WATCH,CONFIRMED_HISTORICAL_BREAKOUT,INVALIDATED,NO_SETUP}
 enum class ActivityDirection{BULLISH,BEARISH,NEUTRAL}
