@@ -17,11 +17,12 @@ class TradeIdeaRiskPlanTest {
     )
 
     @Test fun positionNotionalIsCappedByEquityAndLeverage() {
-        val plan = calculateEntryRiskPlan(idea(), EntryRiskSettings(accountEquity = 100.0, riskPercent = 2.0, maxLeverage = 3))
+        // A 50% risk budget and 10% stop request $500 notional; 3x leverage caps it at $300.
+        val plan = calculateEntryRiskPlan(idea(), EntryRiskSettings(accountEquity = 100.0, riskPercent = 50.0, maxLeverage = 3))
         assertNotNull(plan)
         assertEquals(300.0, plan!!.positionNotional, 1e-9)
         assertEquals(30.0, plan.riskAmount, 1e-9)
-        assertEquals(2.0, plan.requestedRiskAmount, 1e-9)
+        assertEquals(50.0, plan.requestedRiskAmount, 1e-9)
         assertTrue(plan.leverageCapped)
         assertEquals(100.0, plan.estimatedInitialMargin, 1e-9)
         assertEquals(60.0, plan.target1Profit, 1e-9)
