@@ -93,7 +93,10 @@ object CoinExplosionRadarDataSource {
             universe.size, failures.toList(), System.currentTimeMillis())
     }
 
-    suspend fun replay(symbol: String, config: ExplosionConfig = ExplosionConfig()): ExplosionReplayStats =\n        CoinExplosionRadarEngine.replay(candles(symbol), config)\n\n    private suspend fun candles(symbol: String): List<MarketCandle> = withContext(Dispatchers.IO) {
+    suspend fun replay(symbol: String, config: ExplosionConfig = ExplosionConfig()): ExplosionReplayStats =
+        CoinExplosionRadarEngine.replay(candles(symbol), config)
+
+    private suspend fun candles(symbol: String): List<MarketCandle> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         cache[symbol]?.takeIf { now - it.first < 60_000L }?.let { return@withContext it.second }
         val rows = JSONArray(get("/fapi/v1/klines?symbol=$symbol&interval=1h&limit=120"))
