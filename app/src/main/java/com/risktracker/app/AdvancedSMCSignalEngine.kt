@@ -119,7 +119,7 @@ internal object AdvancedSMCSignalEngine {
         val inZone=price in lo..hi
         val shown=if(status=="CONFIRMED RETEST" && inZone) "CONFIRMED — RISK CHECK REQUIRED"
                    else if(inZone || abs(price-entry)<=atr*.5) "ENTRY ZONE — WAIT FOR CONFIRMATION" else status
-        return AdvancedSMCSignal("\${symbol}_\${type.replace(' ','_')}_\${h}",symbol,side,type,h,
+        return AdvancedSMCSignal("${symbol}_${type.replace(' ','_')}_${h}",symbol,side,type,h,
             (score+if(inZone)4 else 0).coerceAtMost(96),shown,lo,hi,stop,t1,t2,rr,why,confirm,r.last().closeTime)
     }
 }
