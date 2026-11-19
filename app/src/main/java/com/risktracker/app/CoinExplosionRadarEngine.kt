@@ -150,8 +150,8 @@ object CoinExplosionRadarEngine {
         val flowLong = takerRatio >= 0.52
         val flowShort = takerRatio <= 0.48
         val direction = when {
-            longPressure && flowLong -> ExplosionDirection.LONG
-            !longPressure && flowShort -> ExplosionDirection.SHORT
+            flowLong -> ExplosionDirection.LONG
+            flowShort -> ExplosionDirection.SHORT
             longPressure -> ExplosionDirection.LONG
             else -> ExplosionDirection.SHORT
         }
