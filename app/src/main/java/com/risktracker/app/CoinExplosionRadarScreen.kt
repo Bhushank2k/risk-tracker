@@ -38,7 +38,7 @@ fun CoinExplosionRadarScreen() {
             runCatching { CoinExplosionRadarDataSource.scan(config) }
                 .onSuccess {
                     result = it
-                    selected = it.signals.firstOrNull { signal -> signal.stage != ExplosionStage.REJECTED }
+                    selected = it.signals.firstOrNull { signal -> signal.stage != ExplosionStage.REJECTED && signal.score >= config.watchScore }
                     status = "Scanned ${it.scanned} contracts · ${it.signals.count { s -> s.stage != ExplosionStage.REJECTED }} passed safety filters · ${it.failed.size} data failures."
                 }
                 .onFailure { status = it.message ?: "Radar scan failed." }
@@ -46,7 +46,7 @@ fun CoinExplosionRadarScreen() {
         }
     }
 
-    val visible = result?.signals.orEmpty().filter { showRejected || it.stage != ExplosionStage.REJECTED }
+    val visible = result?.signals.orEmpty().filter { showRejected || (it.stage != ExplosionStage.REJECTED && it.score >= config.watchScore) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -87,7 +87,7 @@ fun CoinExplosionRadarScreen() {
                 }
             }
         }
-        if (visible.isEmpty() && result != null) item { Text("No eligible candidates in this scan. This is a valid result; do not lower safety limits just to force signals.") }
+        if (visible.isEmpty() && result != null) item { Text("No candidates reached the ${config.watchScore}/100 early-warning threshold. This is a valid result; do not lower safety limits just to force signals.") }
         items(visible, key = { it.symbol }) { signal ->
             Card(Modifier.fillMaxWidth().clickable { selected = signal; replay = null }) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -129,6 +129,7 @@ fun CoinExplosionRadarScreen() {
                         replay?.let { stats ->
                             HorizontalDivider()
                             Text("Historical replay · ${stats.trades} trades · ${stats.horizonBars}h holding horizon", fontWeight = FontWeight.SemiBold)
+                            if (stats.trades < 30) Text("INSUFFICIENT SAMPLE · Fewer than 30 historical trades; do not infer an edge.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                             Text("Win rate ${stats.winRatePct?.let { "%.1f%%".format(it) } ?: "—"} · Avg return ${stats.averageReturnPct?.let { "%+.2f%%".format(it) } ?: "—"} · Profit factor ${stats.profitFactor?.let { "%.2f".format(it) } ?: "—"}",
                                 style = MaterialTheme.typography.bodySmall)
                             Text("Max drawdown ${stats.maxDrawdownPct?.let { "%.2f%%".format(it) } ?: "—"} · Avg MFE ${stats.averageMfePct?.let { "%.2f%%".format(it) } ?: "—"} · Avg MAE ${stats.averageMaePct?.let { "%.2f%%".format(it) } ?: "—"}",
