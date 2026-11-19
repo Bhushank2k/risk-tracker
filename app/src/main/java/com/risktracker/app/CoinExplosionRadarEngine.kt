@@ -3,7 +3,6 @@ package com.risktracker.app
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 
 enum class ExplosionStage { BUILDING, IGNITION, CONFIRMED, REJECTED }
 enum class ExplosionDirection { LONG, SHORT, NEUTRAL }
@@ -107,10 +106,10 @@ object CoinExplosionRadarEngine {
             else -> 0
         }
         val volumePoints = when {
-            relativeVolume >= 2.5 -> 15
-            relativeVolume >= 1.8 -> 12
-            relativeVolume >= 1.4 -> 9
-            relativeVolume >= 1.15 -> 5
+            relativeVolume >= 2.5 -> 20
+            relativeVolume >= 1.8 -> 16
+            relativeVolume >= 1.4 -> 11
+            relativeVolume >= 1.15 -> 6
             else -> 0
         }
         val distanceToHighPct = (high - last.close) / last.close * 100.0
@@ -129,13 +128,12 @@ object CoinExplosionRadarEngine {
             takerRatio >= 0.52 || takerRatio <= 0.48 -> 3
             else -> 0
         }
-        val relativeChange = context.btcChange24hPct?.let { null } // market-relative strength is supplied below via the explicit context value
-        val rs = context.btcChange24hPct?.let { it } // retained for a stable, explicit market context contract
+        val rs = context.btcChange24hPct
         val coinChangeProxy = if (rows.size >= 25) (last.close / rows[rows.size - 25].close - 1.0) * 100.0 else 0.0
         val relativeStrength = if (rs != null) when {
-            coinChangeProxy - rs >= 5.0 -> 15
-            coinChangeProxy - rs >= 2.5 -> 11
-            coinChangeProxy - rs >= 1.0 -> 6
+            coinChangeProxy - rs >= 5.0 -> 20
+            coinChangeProxy - rs >= 2.5 -> 14
+            coinChangeProxy - rs >= 1.0 -> 8
             else -> 0
         } else 0
         val oi = context.openInterestChangePct
@@ -166,7 +164,7 @@ object CoinExplosionRadarEngine {
         if (atrPct != null && atrPct > 8.0) risk += "Extreme 1h ATR: volatility risk"
         if (last.quoteVolume <= 0.0 || context.quoteVolume24h <= 0.0) risk += "No reliable traded volume"
         val hardReject = context.quoteVolume24h < config.minimumQuoteVolumeUsd ||
-            (context.spreadBps != null && context.spreadBps > config.maximumSpreadBps) ||
+            (context.spreadBps == null || context.spreadBps > config.maximumSpreadBps) ||
             last.close <= 0.0 || last.quoteVolume <= 0.0
         val breakout = last.close > high || last.close < low
         val stage = when {
