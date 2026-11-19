@@ -103,6 +103,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     27 -> Icons.Filled.Notifications
     30 -> Icons.Filled.ShowChart
     31 -> Icons.Filled.ShowChart
+    32 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -476,7 +477,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 18 -> BinanceSyncHealthScreen()
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
+                29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })\n                32 -> CoinExplosionRadarScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -555,7 +556,7 @@ private fun ExploreToolCard(
         25, 28 -> Color(0xFFD0A5FF)
         23, 9, 14 -> Color(0xFFFF9FBD)
         6, 17 -> Color(0xFF76DFE4)
-        26, 27 -> Color(0xFFFFA66B)
+        26, 27, 32 -> Color(0xFFFFA66B)
         else -> Color(0xFF91A8FF)
     }
     val subtitle = when (destination) {
@@ -565,7 +566,7 @@ private fun ExploreToolCard(
         25 -> "Scanner analytics"
         28 -> "Market research"
         26 -> "Confirmed signals"
-        27 -> "Market notifications"
+        27 -> "Market notifications"\n        32 -> "Early pressure scanner"
         2 -> "Position & leverage"
         13 -> "Risk scenarios"
         19 -> "Risk notifications"
