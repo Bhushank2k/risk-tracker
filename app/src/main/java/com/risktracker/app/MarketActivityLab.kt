@@ -1,6 +1,8 @@
 package com.risktracker.app
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -93,7 +95,7 @@ object MarketActivityDataSource {
                 val arr=JSONArray(res.body?.string()?:error("Empty Binance response"))
                 val list=(0 until arr.length()).map{j->val row=arr.getJSONArray(j);MarketCandle(row.getLong(0),row.getString(1).toDouble(),row.getString(2).toDouble(),row.getString(3).toDouble(),row.getString(4).toDouble(),row.getString(5).toDouble(),row.getLong(6),row.getString(7).toDouble())}.filter{it.closeTime<now&&it.close>0&&it.high>=it.low}
                 if(list.size<30)error("Too few completed candles");cache[key]=now to list;return@withContext list}
-        }catch(e:Exception){err=e;if(attempt<2)Thread.sleep(300L*(attempt+1))}}
+        }catch(e:CancellationException){throw e}catch(e:Exception){err=e;if(attempt<2)delay(300L*(attempt+1))}}
         throw IllegalStateException(err?.message?:"Market data unavailable",err)
     }
 }
