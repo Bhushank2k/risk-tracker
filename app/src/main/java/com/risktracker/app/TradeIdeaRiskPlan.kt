@@ -56,7 +56,10 @@ internal object EntryRiskSettingsStore {
 }
 
 internal data class EntryRiskCalculation(
+    /** Actual loss at stop after applying the leverage/notional cap. */
     val riskAmount: Double,
+    val requestedRiskAmount: Double,
+    val leverageCapped: Boolean,
     val stopDistancePercent: Double,
     val positionNotional: Double,
     val quantity: Double,
@@ -72,21 +75,28 @@ internal fun calculateEntryRiskPlan(idea: TradeIdea, settings: EntryRiskSettings
         entry <= 0.0 || !entry.isFinite() || stopDistance <= 0.0 || !stopDistance.isFinite()) return null
     if (idea.side == "LONG" && (idea.stop >= entry || idea.target1 <= entry || idea.target2 <= idea.target1)) return null
     if (idea.side == "SHORT" && (idea.stop <= entry || idea.target1 >= entry || idea.target2 >= idea.target1)) return null
-    val riskAmount = settings.accountEquity * settings.riskPercent / 100.0
+    val requestedRiskAmount = settings.accountEquity * settings.riskPercent / 100.0
     val stopDistancePercent = stopDistance / entry * 100.0
-    if (stopDistancePercent <= 0.0) return null
-    val notional = riskAmount / (stopDistancePercent / 100.0)
+    if (stopDistancePercent <= 0.0 || !requestedRiskAmount.isFinite() || requestedRiskAmount <= 0.0) return null
+    val leverage = settings.maxLeverage.coerceIn(1, 3)
+    val desiredNotional = requestedRiskAmount / (stopDistancePercent / 100.0)
+    val maxNotional = settings.accountEquity * leverage
+    val notional = minOf(desiredNotional, maxNotional)
     if (!notional.isFinite() || notional <= 0.0) return null
+    val actualRiskAmount = notional * (stopDistancePercent / 100.0)
+    val leverageCapped = notional + 1e-9 < desiredNotional
     val reward1R = abs(idea.target1 - entry) / stopDistance
     val reward2R = abs(idea.target2 - entry) / stopDistance
     return EntryRiskCalculation(
-        riskAmount = riskAmount,
+        riskAmount = actualRiskAmount,
+        requestedRiskAmount = requestedRiskAmount,
+        leverageCapped = leverageCapped,
         stopDistancePercent = stopDistancePercent,
         positionNotional = notional,
         quantity = notional / entry,
-        estimatedInitialMargin = notional / settings.maxLeverage.coerceAtLeast(1),
-        target1Profit = riskAmount * reward1R,
-        target2Profit = riskAmount * reward2R
+        estimatedInitialMargin = notional / leverage,
+        target1Profit = actualRiskAmount * reward1R,
+        target2Profit = actualRiskAmount * reward2R
     )
 }
 
@@ -100,7 +110,7 @@ internal fun EntryRiskPlanSettingsCard(
     )) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Entry & Risk Plan", style = MaterialTheme.typography.titleMedium)
-            Text("Risk profile · ${"%.1f".format(Locale.US, settings.riskPercent)}% account risk · maximum 3x leverage. Position size is calculated from stop distance; leverage only estimates margin.",
+            Text("Risk profile · ${"%.1f".format(Locale.US, settings.riskPercent)}% account risk · maximum 3x leverage. Position notional is capped at equity × leverage.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = if (settings.accountEquity > 0.0) settings.accountEquity.toString() else "",
@@ -167,7 +177,11 @@ internal fun EntryRiskPlanDetails(idea: TradeIdea, settings: EntryRiskSettings) 
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    RiskPlanMetric("Account risk at stop", formatRiskUsd(plan.riskAmount) + " (${"%.2f".format(Locale.US, settings.riskPercent)}%)")
+    RiskPlanMetric("Actual risk at stop", formatRiskUsd(plan.riskAmount))
+    RiskPlanMetric(
+        if (plan.leverageCapped) "Requested risk (reduced by leverage cap)" else "Risk budget",
+        formatRiskUsd(plan.requestedRiskAmount)
+    )
     RiskPlanMetric("Stop distance", "${"%.2f".format(Locale.US, plan.stopDistancePercent)}%")
     RiskPlanMetric("Position notional", formatRiskUsd(plan.positionNotional))
     RiskPlanMetric("Estimated quantity", "${"%.6f".format(Locale.US, plan.quantity)}")
