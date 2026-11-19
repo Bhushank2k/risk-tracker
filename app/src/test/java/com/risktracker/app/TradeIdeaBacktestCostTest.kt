@@ -20,6 +20,30 @@ class TradeIdeaBacktestCostTest {
     }
 
     @Test
+    fun replayEntryUsesNextCandleOpenNotSignalClose() {
+        val candles = listOf(
+            V2Candle(101.0, 99.0, 100.0, 1.0, 1_000L, open = 99.5),
+            V2Candle(104.0, 100.0, 103.0, 1.0, 2_000L, open = 102.0),
+            V2Candle(106.0, 102.0, 105.0, 1.0, 3_000L, open = 103.0)
+        )
+        val fill = nextReplayOpenFill(candles, signalIndex = 0)
+        assertEquals(1, fill!!.candleIndex)
+        assertEquals(102.0, fill.price, 0.0)
+    }
+
+    @Test
+    fun replayEntryRejectsMissingOrInvalidNextOpen() {
+        val candles = listOf(V2Candle(101.0, 99.0, 100.0, 1.0, 1_000L, open = 99.5))
+        assertEquals(null, nextReplayOpenFill(candles, signalIndex = 0))
+        assertEquals(null, nextReplayOpenFill(candles, signalIndex = -1))
+        val invalid = listOf(
+            V2Candle(101.0, 99.0, 100.0, 1.0, 1_000L),
+            V2Candle(104.0, 100.0, 103.0, 1.0, 2_000L, open = Double.NaN)
+        )
+        assertEquals(null, nextReplayOpenFill(invalid, signalIndex = 0))
+    }
+
+    @Test
     fun stopWinsWhenLongBarTouchesStopAndTargets() {
         val candle = V2Candle(107.0, 97.0, 102.0, 1.0, 1L)
         assertEquals(-1.0, resolveTradeReplayBar(true, 100.0, 98.0, 2.0, false, candle).exitR!!, 0.0)

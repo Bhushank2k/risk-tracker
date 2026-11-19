@@ -62,6 +62,17 @@ internal fun resolveTradeReplayBar(
 }
 
 
+internal data class TradeReplayEntryFill(val candleIndex: Int, val price: Double)
+
+/** Simulate a market entry at the next candle open after a fully closed signal candle. */
+internal fun nextReplayOpenFill(candles: List<V2Candle>, signalIndex: Int): TradeReplayEntryFill? {
+    if (signalIndex < 0) return null
+    val fillIndex = signalIndex + 1
+    val open = candles.getOrNull(fillIndex)?.open ?: return null
+    if (!open.isFinite() || open <= 0.0) return null
+    return TradeReplayEntryFill(fillIndex, open)
+}
+
 /** Only candles whose close is known at the decision timestamp may inform replay signals. */
 internal fun closedReplayCandlesAtOrBefore(candles: List<V2Candle>, decisionCloseTime: Long): List<V2Candle> =
     candles.filter { it.closeTime <= decisionCloseTime }
@@ -146,72 +157,78 @@ internal object TradeIdeasV2 {
             val rangeShort = isReplayRangeReversal(false, rangeMode, current, rangeHigh, rangeLow, atr, setupRsi)
 
             val sideLong: Boolean
-            val entryCandle: V2Candle
-            val entryIndex: Int
+            val signalIndex: Int
             val stopReference: List<V2Candle>
             val setupFamily: String
             when {
                 breakout && breakoutTouched && breakoutHeld -> {
                     sideLong = long
-                    entryCandle = retest
-                    entryIndex = i + 1
+                    signalIndex = i + 1 // retest candle must close before the decision is made
                     stopReference = listOf(current, retest)
                     setupFamily = "BREAKOUT"
                 }
                 pullback && relativeVolume >= 0.9 -> {
                     sideLong = long
-                    entryCandle = current
-                    entryIndex = i
+                    signalIndex = i
                     stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
                     setupFamily = "PULLBACK"
                 }
                 (rangeLong || rangeShort) && relativeVolume >= 1.2 -> {
                     sideLong = rangeLong
-                    entryCandle = current
-                    entryIndex = i
+                    signalIndex = i
                     stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
                     setupFamily = "REVERSAL"
                 }
                 else -> { i++; continue }
             }
-            val executionBars = closedReplayCandlesAtOrBefore(m5, entryCandle.closeTime)
+            // A signal is only known after its candle closes. Fill at the following
+            // candle open instead of retroactively assuming a fill at the signal close.
+            val fill = nextReplayOpenFill(m15, signalIndex)
+            if (fill == null) { i++; continue }
+            val entryIndex = fill.candleIndex
+            if (entryIndex + maxHoldingBars >= m15.size) { i++; continue }
+            val decisionCloseTime = m15[signalIndex].closeTime
+            val executionBars = closedReplayCandlesAtOrBefore(m5, decisionCloseTime)
             val executionCloses = executionBars.map { it.close }
             val executionFast = ema(executionCloses, 9)
             val executionSlow = ema(executionCloses, 21)
             val executionConfirmed = executionBars.isNotEmpty() &&
-                entryCandle.closeTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
+                decisionCloseTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
                 executionFast != null && executionSlow != null &&
                 (if (sideLong) executionBars.last().close > executionFast && executionFast > executionSlow
                 else executionBars.last().close < executionFast && executionFast < executionSlow)
             if (!executionConfirmed) { i++; continue }
 
             val sign = if (sideLong) 1.0 else -1.0
-            val entry = entryCandle.close
+            val entry = fill.price
             val stop = if (sideLong) stopReference.minOf { it.low } - atr * 0.20
                 else stopReference.maxOf { it.high } + atr * 0.20
+            // Reject gaps through the structural stop; never model a fill beyond invalidation.
+            if ((sideLong && stop >= entry) || (!sideLong && stop <= entry)) { i++; continue }
             val risk = abs(entry - stop)
             if (risk < atr * 0.35 || risk > atr * 2.5) { i++; continue }
 
             var partial = false
             var result = -1.0
             var exitAt = -1
-            val maxExit = min(entryIndex + 1 + maxHoldingBars, m15.size)
-            for (j in entryIndex + 1 until maxExit) {
+            val maxExit = entryIndex + maxHoldingBars
+            // Include the fill candle: its post-open range can hit the stop or targets.
+            for (j in entryIndex until maxExit) {
                 val candle = m15[j]
                 val barResult = resolveTradeReplayBar(sideLong, entry, stop, risk, partial, candle)
                 if (barResult.exitR != null) { result = barResult.exitR; exitAt = j; break }
                 if (barResult.reachedTarget1) { partial = true; result = 1.0 }
             }
             if (exitAt >= 0) {
-                val heldBars = (exitAt - entryIndex).coerceAtLeast(0)
+                val heldBars = (exitAt - entryIndex + 1).coerceAtLeast(1)
                 outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
                     tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
                 i = exitAt + 1
             } else {
-                // The complete window is present by the loop guard; mark any open remainder at its time stop.
+                // The complete forward window is present; mark any open remainder at its time stop.
                 val finalIndex = maxExit - 1
                 val openR = (m15[finalIndex].close - entry) / risk * sign
-                val heldBars = (finalIndex - entryIndex).coerceAtLeast(0)
+                val heldBars = (finalIndex - entryIndex + 1).coerceAtLeast(1)
                 outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
                     tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
                         entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
