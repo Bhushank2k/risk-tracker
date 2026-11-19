@@ -41,6 +41,7 @@ class CoinExplosionRadarEngineTest {
         assertTrue(signal.score in 0..100)
         assertTrue(signal.invalidationPrice != null && signal.invalidationPrice!! > 0.0)
         assertTrue(signal.breakdown.total == signal.score)
+        assertEquals(ExplosionDirection.LONG, signal.direction)
     }
 
     @Test fun replayReportsCostsAndDoesNotInventTradesOnShortHistory() {
