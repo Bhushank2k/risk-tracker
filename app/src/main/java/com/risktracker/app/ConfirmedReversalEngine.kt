@@ -38,14 +38,17 @@ internal object ConfirmedReversalEngine {
  const val INTERVAL="15m";const val MIN_SCORE=65;const val TARGET_R=2.0
  fun detect(symbol:String,rows:List<ReversalCandle>,leftBars:Int=3,rightBars:Int=3,minimumScore:Int=MIN_SCORE):List<ConfirmedReversalSignal> {
   if(!validReversalCandles(rows)||rows.size<40||leftBars<1||rightBars<1||minimumScore !in 1..100)return emptyList()
+  val pivots=ScannerCalculationCore.confirmedPivots(rows.map{it.high},rows.map{it.low},leftBars,rightBars)
+  val pivotLows=pivots.asSequence().filter{!it.isHigh}.map{it.index}.toHashSet()
+  val pivotHighs=pivots.asSequence().filter{it.isHigh}.map{it.index}.toHashSet()
   val out=mutableListOf<ConfirmedReversalSignal>();var priorLow:Pair<Int,Double>?=null;var priorHigh:Pair<Int,Double>?=null;val emitted=mutableSetOf<Int>()
   for(ci in leftBars+rightBars until rows.size) {
    val p=ci-rightBars;val pivot=rows[p];val confirm=rows[ci];val rsi=rsiAt(rows,p)?:continue;val atr=atrAt(rows,ci)?:continue
-   val priorVolumes=rows.take(p).map { it.volume }
+   val priorVolumes=rows.subList(0,p).takeLast(20).map { it.volume }
    val avg=ScannerCalculationCore.averageVolume(priorVolumes,minOf(20,priorVolumes.size)) ?: 0.0
    val rv=if(avg>0)pivot.volume/avg else 0.0;val body=abs(pivot.close-pivot.open);val range=(pivot.high-pivot.low).coerceAtLeast(1e-12)
    val lower=min(pivot.open,pivot.close)-pivot.low;val upper=pivot.high-max(pivot.open,pivot.close)
-   if(isConfirmedPivotLow(rows,p,leftBars,rightBars,ci)) {
+   if(p in pivotLows) {
     val prev=priorLow;val div=prev!=null&&pivot.low<rows[prev.first].low&&rsi>=prev.second+2;val os=rsi<=35;val wick=lower>=max(body*.8,range*.30)
     if(p !in emitted&&(div||os)&&confirm.close>pivot.high&&confirm.close>confirm.open) {
      val stop=pivot.low-atr*.15;val entry=confirm.close;val risk=entry-stop
@@ -57,7 +60,7 @@ internal object ConfirmedReversalEngine {
      }
     };priorLow=p to rsi
    }
-   if(isConfirmedPivotHigh(rows,p,leftBars,rightBars,ci)) {
+   if(p in pivotHighs) {
     val prev=priorHigh;val div=prev!=null&&pivot.high>rows[prev.first].high&&rsi<=prev.second-2;val ob=rsi>=65;val wick=upper>=max(body*.8,range*.30)
     if(p !in emitted&&(div||ob)&&confirm.close<pivot.low&&confirm.close<confirm.open) {
      val stop=pivot.high+atr*.15;val entry=confirm.close;val risk=stop-entry
@@ -92,11 +95,11 @@ internal object ConfirmedReversalEngine {
  }
  private fun rsiAt(rows:List<ReversalCandle>,i:Int,period:Int=14):Double? {
   if (i < period || i >= rows.size) return null
-  return ScannerCalculationCore.rsiSimple(rows.take(i + 1).map { it.close }, period)
+  return ScannerCalculationCore.rsiSimple(rows.subList(i - period, i + 1).map { it.close }, period)
  }
  private fun atrAt(rows:List<ReversalCandle>,i:Int):Double? {
   if (i < 14 || i >= rows.size) return null
-  val sample = rows.take(i + 1)
+  val sample = rows.subList(i - 14, i + 1)
   return ScannerCalculationCore.atr(sample.map { it.high }, sample.map { it.low }, sample.map { it.close }, 14)
  }
 }
