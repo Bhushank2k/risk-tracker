@@ -94,19 +94,21 @@ object CoinExplosionRadarDataSource {
     }
 
     suspend fun replay(symbol: String, config: ExplosionConfig = ExplosionConfig()): ExplosionReplayStats =
-        CoinExplosionRadarEngine.replay(candles(symbol), config)
+        CoinExplosionRadarEngine.replay(candles(symbol, limit = 1500), config)
 
-    private suspend fun candles(symbol: String): List<MarketCandle> = withContext(Dispatchers.IO) {
+    private suspend fun candles(symbol: String, limit: Int = 120): List<MarketCandle> = withContext(Dispatchers.IO) {
+        require(limit in 30..1500) { "Kline limit must be between 30 and 1500." }
         val now = System.currentTimeMillis()
-        cache[symbol]?.takeIf { now - it.first < 60_000L }?.let { return@withContext it.second }
-        val rows = JSONArray(get("/fapi/v1/klines?symbol=$symbol&interval=1h&limit=120"))
+        val cacheKey = "$symbol:$limit"
+        cache[cacheKey]?.takeIf { now - it.first < 60_000L }?.let { return@withContext it.second }
+        val rows = JSONArray(get("/fapi/v1/klines?symbol=$symbol&interval=1h&limit=$limit"))
         val candles = (0 until rows.length()).mapNotNull { i ->
             val r = rows.optJSONArray(i) ?: return@mapNotNull null
             runCatching { MarketCandle(r.getLong(0), r.getString(1).toDouble(), r.getString(2).toDouble(),
                 r.getString(3).toDouble(), r.getString(4).toDouble(), r.getString(5).toDouble(),
                 r.getLong(6), r.getString(7).toDouble(), r.getString(9).toDouble(), r.getString(10).toDouble()) }.getOrNull()
         }.filter { it.closeTime < now }
-        cache[symbol] = now to candles
+        cache[cacheKey] = now to candles
         candles
     }
 
