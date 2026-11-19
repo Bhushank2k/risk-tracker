@@ -206,7 +206,7 @@ object CoinExplosionRadarEngine {
             val history = candles.take(i + 1)
             val signal = analyze("REPLAY", history, ExplosionMarketContext(
                 quoteVolume24h = 10_000_000.0, spreadBps = 5.0, fundingRate = 0.0,
-                btcChange24hPct = 0.0, openInterestChangePct = null, openInterestAvailable = false
+                btcChange24hPct = null, openInterestChangePct = null, openInterestAvailable = false
             ), config) ?: run { i++; continue }
             if (signal.stage == ExplosionStage.REJECTED || signal.score < scoreThreshold) { i++; continue }
             val sign = if (signal.direction == ExplosionDirection.SHORT) -1.0 else 1.0
