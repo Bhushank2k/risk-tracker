@@ -80,9 +80,9 @@ object CoinExplosionRadarEngine {
         config: ExplosionConfig = ExplosionConfig()
     ): ExplosionSignal? {
         val rows = candles.filter { c ->
-            listOf(c.open, c.high, c.low, c.close, c.volume, c.quoteVolume).all(Double::isFinite) &&
+            listOf(c.open, c.high, c.low, c.close, c.volume, c.quoteVolume, c.takerBuyBaseVolume, c.takerBuyQuoteVolume).all { it.isFinite() } &&
                 c.open > 0.0 && c.close > 0.0 && c.low > 0.0 && c.high >= max(c.open, c.close) &&
-                c.low <= min(c.open, c.close) && c.volume >= 0.0 && c.quoteVolume >= 0.0
+                c.low <= min(c.open, c.close) && c.volume >= 0.0 && c.quoteVolume >= 0.0 &&\n                c.takerBuyBaseVolume in 0.0..c.volume && c.takerBuyQuoteVolume in 0.0..c.quoteVolume
         }
         val need = max(config.lookbackBars, config.volumeLookbackBars) + config.atrPeriod + 2
         if (rows.size < need || !symbol.matches(Regex("[A-Z0-9]{5,20}"))) return null
@@ -156,7 +156,7 @@ object CoinExplosionRadarEngine {
             else -> ExplosionDirection.SHORT
         }
         val risk = mutableListOf<String>()
-        if (context.quoteVolume24h < config.minimumQuoteVolumeUsd) risk += "24h quote volume below liquidity floor"
+        if (!context.quoteVolume24h.isFinite() || context.quoteVolume24h < config.minimumQuoteVolumeUsd) risk += "24h quote volume below liquidity floor or invalid"
         if (context.spreadBps == null) risk += "Spread data unavailable"
         else if (context.spreadBps > config.maximumSpreadBps) risk += "Spread exceeds safety limit"
         if (context.fundingRate == null) risk += "Funding data unavailable"
