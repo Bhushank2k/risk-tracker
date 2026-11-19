@@ -253,6 +253,9 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
         "TRADING" to listOf(
             "Live positions & orders" to 16,
         ),
+        "MARKET RESEARCH" to listOf(
+            "Coin Explosion Radar" to 32,
+        ),
         "PERFORMANCE" to listOf(
             "P&L Calendar" to 23,
         ),
@@ -292,6 +295,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
                 29 -> "Explore"
+                32 -> "Coin Explosion Radar"
             else -> "Explore"
             }
 
@@ -477,7 +481,8 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 18 -> BinanceSyncHealthScreen()
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
-                29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })\n                32 -> CoinExplosionRadarScreen()
+                29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
+                32 -> CoinExplosionRadarScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -566,7 +571,8 @@ private fun ExploreToolCard(
         25 -> "Scanner analytics"
         28 -> "Market research"
         26 -> "Confirmed signals"
-        27 -> "Market notifications"\n        32 -> "Early pressure scanner"
+        27 -> "Market notifications"
+        32 -> "Early pressure scanner"
         2 -> "Position & leverage"
         13 -> "Risk scenarios"
         19 -> "Risk notifications"
