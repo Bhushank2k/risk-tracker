@@ -12,7 +12,7 @@ class CoinExplosionRadarEngineTest {
             val low = minOf(base, close) - 0.08
             val quote = if (i == count - 1) 2_000_000.0 else 1_000_000.0
             MarketCandle(i * 3_600_000L, base, high, low, close, quote / close, (i + 1) * 3_600_000L - 1,
-                quote, quote * 0.58, quote * 0.58)
+                quote, (quote / close) * 0.58, quote * 0.58)
         }
     }
     private val context = ExplosionMarketContext(20_000_000.0, 5.0, 0.0001, 0.0, 3.0, true)
