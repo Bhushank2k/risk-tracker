@@ -45,7 +45,6 @@ internal object SupplementalTradeStrategies {
         val ema4h50 = ema(c4.map { it.close }, 50) ?: return emptyList()
         val ema20 = ema(c.map { it.close }, 20) ?: return emptyList()
         val ema50 = ema(c.map { it.close }, 50) ?: return emptyList()
-        val setupEma = ema(s.map { it.close }, 20) ?: return emptyList()
         val last = s.last()
         val previous = s.dropLast(1)
         val volumeAvg = previous.takeLast(20).map { it.volume }.average()
@@ -89,24 +88,8 @@ internal object SupplementalTradeStrategies {
             )
         }
 
-        // Trend pullback: higher-timeframe EMA alignment and 15M EMA20 reclaim/rejection.
-        if (ema20 > ema50 && c.last().close > ema20 &&
-            previous.takeLast(3).any { it.low <= setupEma * 1.003 } && last.close > setupEma && last.close > last.open)
-            add("Trend Pullback", "LONG", 78, "1H EMA20 above EMA50; 15M pulled back to and reclaimed EMA20.")
-        if (ema20 < ema50 && c.last().close < ema20 &&
-            previous.takeLast(3).any { it.high >= setupEma * 0.997 } && last.close < setupEma && last.close < last.open)
-            add("Trend Pullback", "SHORT", 78, "1H EMA20 below EMA50; 15M retested and rejected EMA20.")
-
-        // Range reversal: rejection at an outer range boundary plus RSI.
-        val range = s.takeLast(30)
-        val hi = range.maxOf { it.high }; val lo = range.minOf { it.low }; val width = hi - lo
-        if (width > atr * 2.0) {
-            val location = (last.close - lo) / width
-            if (location <= 0.15 && rsi <= 40.0 && last.close > last.open)
-                add("Range Reversal", "LONG", 73, "Rejected lower 15% of 30-bar range; RSI " + "%.1f".format(rsi) + ".")
-            if (location >= 0.85 && rsi >= 60.0 && last.close < last.open)
-                add("Range Reversal", "SHORT", 73, "Rejected upper 15% of 30-bar range; RSI " + "%.1f".format(rsi) + ".")
-        }
+        // Trend pullback and range reversal are owned by ConfluenceScannerV4.
+        // Keep this engine focused on additional, non-overlapping watchlist patterns.
 
         // Volatility squeeze then expansion through the prior 20-bar range.
         val compressed = atr(s.takeLast(8)); val baseline = atr(s.takeLast(30))
