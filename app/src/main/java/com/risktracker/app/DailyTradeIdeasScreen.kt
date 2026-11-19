@@ -1149,7 +1149,7 @@ private fun DailyTradeIdeasFeedScreen() {
         return tracked
     }
     var scanHealth by remember { mutableStateOf(TradeIdeaScanHealthStore.load(context)) }
-    var filter by remember { mutableStateOf("All") }
+    var filter by remember { mutableStateOf("Ready") }
     var horizonFilter by remember { mutableStateOf("All") }
     var riskSettings by remember { mutableStateOf(EntryRiskSettingsStore.load(context)) }
     val density = "Compact"
@@ -1269,7 +1269,6 @@ private fun DailyTradeIdeasFeedScreen() {
         (if (partialScanVisible) "Partial · " else "") + SimpleDateFormat("dd MMM · HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") }.format(Date(it)) + " IST"
     } ?: "Not scanned yet"
 
-    var statusFilterMenuExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -1376,25 +1375,28 @@ private fun DailyTradeIdeasFeedScreen() {
                     Text(readyCount.toString() + " ready · " + monitorCount + " waiting · " + blockedCount + " avoid",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
-                            FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option },
-                                label = { Text(option) }, modifier = Modifier.height(34.dp))
-                        }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        Triple("Ready", "Ready", readyCount),
+                        Triple("Watch", "Wait", monitorCount),
+                        Triple("All", "All", modeIdeas.size),
+                        Triple("Tracking", "Tracking", modeIdeas.count { isPlanTracked(it) }),
+                        Triple("Avoid", "Avoid", blockedCount)
+                    ).forEach { (label, value, count) ->
+                        FilterChip(
+                            selected = filter == value,
+                            onClick = { filter = value },
+                            label = { Text("$label · $count") },
+                            modifier = Modifier.height(36.dp)
+                        )
                     }
-                    Box {
-                        TextButton(onClick = { statusFilterMenuExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                            Text(filter + " ▾", maxLines = 1)
-                        }
-                        DropdownMenu(expanded = statusFilterMenuExpanded, onDismissRequest = { statusFilterMenuExpanded = false }) {
-                            listOf("All", "Ready", "Wait", "Avoid", "Tracking").forEach { option ->
-                                DropdownMenuItem(text = { Text(option) }, onClick = {
-                                    filter = option
-                                    statusFilterMenuExpanded = false
-                                })
-                            }
-                        }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("All", "Scalp", "Intraday", "Swing").forEach { option ->
+                        FilterChip(selected = horizonFilter == option, onClick = { horizonFilter = option },
+                            label = { Text(option) }, modifier = Modifier.height(34.dp))
                     }
                 }
             }
