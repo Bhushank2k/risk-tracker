@@ -28,6 +28,14 @@ class CoinExplosionRadarEngineTest {
         assertEquals(ExplosionStage.REJECTED, wide.stage)
     }
 
+
+    @Test fun rejectsUnknownSpreadAndCrowdedFunding() {
+        val noSpread = CoinExplosionRadarEngine.analyze("TESTUSDT", candles(), context.copy(spreadBps = null))!!
+        assertEquals(ExplosionStage.REJECTED, noSpread.stage)
+        val crowded = CoinExplosionRadarEngine.analyze("TESTUSDT", candles(), context.copy(fundingRate = 0.001))!!
+        assertEquals(ExplosionStage.REJECTED, crowded.stage)
+    }
+
     @Test fun computesBoundedScoreAndRiskLevels() {
         val signal = CoinExplosionRadarEngine.analyze("TESTUSDT", candles(), context)!!
         assertTrue(signal.score in 0..100)
