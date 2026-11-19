@@ -58,7 +58,7 @@ import kotlin.math.min
     volatility: Boolean, notExtended: Boolean, volume: Boolean, momentum: Boolean,
     entryConfirmed: Boolean, score: Int, structureConfirmed: Boolean = true
 ): Boolean = liquid && geometry && rewardRisk && funding && volatility &&
-    notExtended && volume && entryConfirmed && score >= 70
+    notExtended && volume && entryConfirmed && structureConfirmed && score >= 70
 
  fun isTradeIdeaHorizonSupported(horizon: String): Boolean = horizon in setOf("Scalp", "Intraday", "Swing")
 
@@ -127,6 +127,27 @@ import kotlin.math.min
                     setups.add(Setup("Range reversal","LONG",lo,true,"Neutral regime; lower-edge liquidity sweep, reclaim and RSI turn"))
                 if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58&&hasTradeIdeaLiquiditySweep(m15,"SHORT"))
                     setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral regime; upper-edge liquidity sweep, reclaim and RSI turn"))
+
+                // Separate range-only Bollinger path. A touch alone is not a signal:
+                // the completed candle must close back inside the outer band.
+                val closes = m15.dropLast(1).takeLast(20).map { it.close }
+                if (closes.size == 20) {
+                    val mean = closes.average()
+                    val variance = closes.sumOf { (it - mean) * (it - mean) } / closes.size
+                    val deviation = kotlin.math.sqrt(variance)
+                    val lowerBand = mean - 2.0 * deviation
+                    val upperBand = mean + 2.0 * deviation
+                    val bullishReclaim = cur.low <= lowerBand && cur.close > lowerBand &&
+                        cur.close > cur.open && cur.close > prev.close
+                    val bearishReclaim = cur.high >= upperBand && cur.close < upperBand &&
+                        cur.close < cur.open && cur.close < prev.close
+                    if (bullishReclaim && rsi <= 48.0)
+                        setups.add(Setup("Bollinger Band Reversal", "LONG", lowerBand, true,
+                            "Range regime; lower Bollinger band reclaimed by a bullish close"))
+                    if (bearishReclaim && rsi >= 52.0)
+                        setups.add(Setup("Bollinger Band Reversal", "SHORT", upperBand, true,
+                            "Range regime; upper Bollinger band reclaimed by a bearish close"))
+                }
             }
         }
         if(setups.isEmpty())return null
