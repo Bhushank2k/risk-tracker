@@ -1,25 +1,19 @@
 package com.risktracker.app
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Result
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import java.util.concurrent.TimeUnit
 
 internal object AdvancedSMCScanScheduler {
     private const val UNIQUE_WORK = "advanced_smc_signal_scan"
 
     fun cancelLegacyWork(context: Context) {
         // The unified SMC worker now saves Core and Advanced results in one pass.
-        // Cancel the former duplicate Advanced-only periodic/startup work.
+        // cancelUniqueWork also cancels periodic work registered under this name.
         val workManager = WorkManager.getInstance(context.applicationContext)
-        workManager.cancelUniquePeriodicWork(UNIQUE_WORK)
+        workManager.cancelUniqueWork(UNIQUE_WORK)
         workManager.cancelUniqueWork("${UNIQUE_WORK}_startup")
     }
 }
