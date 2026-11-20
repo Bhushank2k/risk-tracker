@@ -1638,49 +1638,97 @@ private fun EntryGuidancePanel(
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 Text("A mandatory eligibility check failed. Review the blocked items below before considering this setup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            val criticalChecks = guidance.checks.filter { (label, passed) ->
-                isCriticalTradeIdeaGate(label) && passed != true
+            val allHardChecks = guidance.checks.filter { (label, _) ->
+                isCriticalTradeIdeaGate(label)
             }
-            val criticalFailures = criticalChecks.filter { it.second == false }
-            val criticalPending = criticalChecks.filter { it.second == null }
-            var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
-            TextButton(onClick = { checklistExpanded = !checklistExpanded },
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
-                Text("Checklists · " + guidance.checks.count { it.second == true } + "/" +
-                    guidance.checks.count { it.second != null } + " passed · " +
-                    if (checklistExpanded) "Hide details" else "View details")
+            val criticalFailures = allHardChecks.filter { it.second == false }
+            val criticalPending = allHardChecks.filter { it.second == null }
+            val actionableHardChecks = criticalFailures + criticalPending
+            val supportingChecks = guidance.checks.filter { (label, _) ->
+                !isCriticalTradeIdeaGate(label)
             }
-            if (criticalFailures.isNotEmpty()) {
-                Text("Confirmed hard-gate failures", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-            }
-            if (criticalPending.isNotEmpty()) {
-                Text("Mandatory data waiting", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
-            }
-            (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val hardGate = isCriticalTradeIdeaGate(label)
-                    val blocked = hardGate && passed == false
-                    val waitingForData = hardGate && passed == null
-                    Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
-                        color = if (passed == true) MaterialTheme.colorScheme.primary
-                            else if (blocked) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall)
-                    Text(label + when {
-                        passed == true -> " · pass"
-                        blocked -> " · BLOCKED"
-                        waitingForData -> " · unavailable — WAITING FOR DATA"
-                        passed == null -> " · unavailable"
-                        else -> " · supporting review"
-                    }, style = MaterialTheme.typography.labelSmall,
+            var safetyDetailsExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+            var supportingExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+
+            if (actionableHardChecks.isEmpty()) {
+                Text("All mandatory safety checks currently pass.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold)
+            } else {
+                if (criticalFailures.isNotEmpty()) {
+                    Text("BLOCKING ISSUES · ${criticalFailures.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+                if (criticalPending.isNotEmpty()) {
+                    Text("WAITING FOR DATA · ${criticalPending.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                }
+                actionableHardChecks.forEach { (label, passed) ->
+                    val blocked = passed == false
+                    Text((if (blocked) "✕ " else "○ ") + label +
+                        if (blocked) " · BLOCKED" else " · WAITING FOR DATA",
+                        style = MaterialTheme.typography.labelSmall,
                         color = if (blocked) MaterialTheme.colorScheme.error
-                            else if (waitingForData) MaterialTheme.colorScheme.tertiary
-                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                            else MaterialTheme.colorScheme.tertiary)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Mandatory gates include aligned trend/context and structure, valid stop and target geometry, acceptable funding, fresh market data, spread within limit, sufficient bid and ask depth, acceptable directional liquidity, no active hard-risk codes and at least 2.0R estimated net Target 1. A confirmed mandatory failure is BLOCKED; missing mandatory data is WAITING FOR DATA and cannot become READY. Relative volume, RSI, setup-pattern confluence, 15M volume, open interest and BTC regime are supporting evidence, not universal hard gates. Strategy-specific entry confirmation still has to pass before READY. Net R estimates assume 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ. News/event risk is not automatically sourced; review major events manually. The READY / WAIT / AVOID decision above always takes priority.",
+
+            TextButton(onClick = { safetyDetailsExpanded = !safetyDetailsExpanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text("Safety checks · ${allHardChecks.count { it.second == true }}/${allHardChecks.size} passed · " +
+                    if (safetyDetailsExpanded) "Hide" else "View")
+            }
+            if (safetyDetailsExpanded) {
+                allHardChecks.forEach { (label, passed) ->
+                    val blocked = passed == false
+                    val waiting = passed == null
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
+                            color = if (passed == true) MaterialTheme.colorScheme.primary
+                                else if (blocked) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.tertiary,
+                            style = MaterialTheme.typography.labelSmall)
+                        Text(label + when {
+                            passed == true -> " · pass"
+                            blocked -> " · BLOCKED"
+                            waiting -> " · WAITING FOR DATA"
+                            else -> ""
+                        }, style = MaterialTheme.typography.labelSmall,
+                            color = if (blocked) MaterialTheme.colorScheme.error
+                                else if (waiting) MaterialTheme.colorScheme.tertiary
+                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            TextButton(onClick = { supportingExpanded = !supportingExpanded },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text("Supporting indicators · ${supportingChecks.size} · " +
+                    if (supportingExpanded) "Hide" else "Optional details")
+            }
+            if (supportingExpanded) {
+                supportingChecks.forEach { (label, passed) ->
+                    val status = when (passed) {
+                        true -> "PASS"
+                        false -> "REVIEW"
+                        null -> "N/A"
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(status, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Text("Checklist score measures setup confluence, not win probability or trade approval. Only mandatory safety and execution gates can block eligibility. Failed mandatory checks are BLOCKED; missing mandatory data is WAITING FOR DATA. Supporting indicators are optional context and never override a failed safety gate. Strategy-specific entry confirmation is still required. Estimated net R assumes 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
