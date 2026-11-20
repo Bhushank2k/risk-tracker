@@ -1622,8 +1622,8 @@ private fun EntryGuidancePanel(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            Text("Planned entry zone: " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
-                fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+            Text("Entry zone is shown in the trade plan above.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(guidance.action, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             if (guidance.action.startsWith("READY TO ENTER")) {
                 Text("Next step: the scanner trigger is already confirmed. Recheck the current price and spread; the coach score is not additional approval.",
@@ -1750,62 +1750,6 @@ private fun EntryGuidancePanel(
     }
 }
 
-@Composable
-private fun EntryCoachSummary(idea: TradeIdea, snapshotAgeMs: Long, isTracked: Boolean) {
-    if (idea.side !in setOf("LONG", "SHORT")) return
-    val guidance = remember(idea, snapshotAgeMs) { buildEntryGuidance(idea, snapshotAgeMs) }
-    val stage = tradeIdeaStage(idea, tracked = isTracked, snapshotAgeMs = snapshotAgeMs)
-    val accent = when (stage) {
-        TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
-        TradeIdeaStage.TRACKING_STOP_HIT, TradeIdeaStage.TRACKING_INVALID, TradeIdeaStage.TRACKING_EXPIRED, TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> MaterialTheme.colorScheme.error
-        TradeIdeaStage.TRACKING_TARGET_HIT -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.tertiary
-    }
-    val distancePct = if (idea.entry > 0.0) abs(idea.last - idea.entry) / idea.entry * 100.0 else 0.0
-    val priceRelation = when {
-        abs(idea.last - idea.entry) < 0.0000001 -> "at planned entry"
-        idea.last > idea.entry -> "%.2f%% above planned entry".format(Locale.US, distancePct)
-        else -> "%.2f%% below planned entry".format(Locale.US, distancePct)
-    }
-    val nextStep = when (stage) {
-        TradeIdeaStage.ENTRY_CONFIRMED -> "The scanner trigger is confirmed. Recheck live price, spread, depth and net reward/risk before acting."
-        TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION -> guidance.trigger
-        TradeIdeaStage.AVOID_CHASING -> "Do not chase this move. Wait for a fresh pullback and a new scanner confirmation."
-        TradeIdeaStage.DO_NOT_ENTER -> "Do not enter. " + idea.warning
-        TradeIdeaStage.TRACKING -> "This idea is already being tracked; this is not a new-entry signal."
-        TradeIdeaStage.TRACKING_STOP_HIT -> "Tracked plan stop has been reached. Review the paper position."
-        TradeIdeaStage.TRACKING_TARGET_HIT -> "Tracked plan target 1 has been reached. Review the paper position."
-        TradeIdeaStage.TRACKING_EXPIRED -> "Tracked signal expired. Do not use it as a new entry."
-        TradeIdeaStage.TRACKING_INVALID -> "Tracked plan failed risk validation."
-    }
-    RiskCard(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
-    ) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("IDEAL ENTRY COACH", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Surface(color = accent.copy(alpha = 0.13f), shape = RoundedCornerShape(50)) {
-                    Text(stage.title, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
-                }
-            }
-            Text("Planned zone  " + guidance.zoneLow.usd(6) + " – " + guidance.zoneHigh.usd(6),
-                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            Text("Live price is " + priceRelation, style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("NEXT ACTION", style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
-            Text(nextStep, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-            if (stage == TradeIdeaStage.MONITOR || stage == TradeIdeaStage.WAIT_CONFIRMATION) {
-                Text("Invalidation: " + guidance.invalidation, style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error)
-            }
-            Text(guidance.checks.count { it.second == true }.toString() + "/" +
-                guidance.checks.count { it.second != null } + " available checklist checks passed · checklist is not trade approval",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 
 /**
  * A confirmed candle is not permission to chase an already-extended move.
@@ -2006,7 +1950,6 @@ private fun TradeIdeaCard(
                     color = if (snapshotAgeMs > ideaMaxAgeMs(idea)) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
                 if (idea.side == "LONG" || idea.side == "SHORT") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
@@ -2138,9 +2081,9 @@ private fun TradeIdeaCard(
                 Text("Paper tracking blocked: $manualRiskBlockReason", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             } else if (stage == TradeIdeaStage.MONITOR) {
-                Text("Entry zone: " + zoneLow.usd(6) + " – " + zoneHigh.usd(6), style = MaterialTheme.typography.bodySmall)
+                Text("Monitor the setup and wait for the confirmation listed in Setup details.", style = MaterialTheme.typography.bodySmall)
             } else if (stage == TradeIdeaStage.WAIT_CONFIRMATION) {
-                Text("Entry trigger: " + idea.entry.usd(6) + " · confirmation is still missing.", style = MaterialTheme.typography.bodySmall)
+                Text("Wait for the strategy-specific entry trigger; see Setup details for confirmation requirements.", style = MaterialTheme.typography.bodySmall)
             } else {
                 val expired = snapshotAgeMs > 0L && snapshotAgeMs > ideaMaxAgeMs(idea)
                 Text(if (expired) "This signal has expired. Refresh the market scan before considering it."
@@ -2155,7 +2098,7 @@ private fun TradeIdeaCard(
                 HistoricalOutcomePanel(idea)
                 Text("WHY THIS SETUP?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    idea.setup + " · " + idea.side + " · " + idea.score + "/100 confluence",
+                    idea.setup + " · " + idea.side + " setup details",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
