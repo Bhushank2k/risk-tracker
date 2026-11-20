@@ -130,8 +130,8 @@ internal object UnifiedSMCScanManager {
                     }
                 )
                 withContext(Dispatchers.IO) {
-                    SMCScanStateStore.saveResults(app, result.core)
                     AdvancedSMCSignalStore.save(app, result.advanced)
+                    SMCScanStateStore.saveResults(app, result.core)
                 }
                 val completedAt = maxOf(
                     SMCScanStateStore.resultsUpdatedAt(app),
