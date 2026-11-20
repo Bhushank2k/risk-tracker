@@ -1507,6 +1507,9 @@ private data class EntryGuidance(
 
 private fun isCriticalTradeIdeaGate(label: String): Boolean {
     val value = label.lowercase(Locale.US)
+    // Execution-timeframe alignment is strategy/entry evidence, not a universal
+    // hard gate. The setup and higher-timeframe context remain mandatory.
+    if (value.contains("execution trend aligned")) return false
     return listOf(
         "trend aligned", "context aligned", "structure aligned",
         "live spread", "both 5-level", "directional order-book",
