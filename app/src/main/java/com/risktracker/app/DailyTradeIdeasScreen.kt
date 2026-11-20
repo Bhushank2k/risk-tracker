@@ -1507,9 +1507,12 @@ private data class EntryGuidance(
 
 private fun isCriticalTradeIdeaGate(label: String): Boolean {
     val value = label.lowercase(Locale.US)
+    // Execution-timeframe alignment is strategy/entry evidence, not a universal
+    // hard gate. The setup and higher-timeframe context remain mandatory.
+    if (value.contains("execution trend aligned")) return false
     return listOf(
         "trend aligned", "context aligned", "structure aligned",
-        "relative volume", "live spread", "both 5-level", "directional order-book",
+        "live spread", "both 5-level", "directional order-book",
         "funding data", "target 1", "stop-loss", "market snapshot", "live price", "scanner hard-risk codes"
     ).any { value.contains(it) }
 }
@@ -1638,6 +1641,8 @@ private fun EntryGuidancePanel(
             val criticalChecks = guidance.checks.filter { (label, passed) ->
                 isCriticalTradeIdeaGate(label) && passed != true
             }
+            val criticalFailures = criticalChecks.filter { it.second == false }
+            val criticalPending = criticalChecks.filter { it.second == null }
             var checklistExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
             TextButton(onClick = { checklistExpanded = !checklistExpanded },
                 contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
@@ -1645,29 +1650,37 @@ private fun EntryGuidancePanel(
                     guidance.checks.count { it.second != null } + " passed · " +
                     if (checklistExpanded) "Hide details" else "View details")
             }
-            if (criticalChecks.isNotEmpty()) {
-                Text("Critical blockers", style = MaterialTheme.typography.labelSmall,
+            if (criticalFailures.isNotEmpty()) {
+                Text("Confirmed hard-gate failures", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+            if (criticalPending.isNotEmpty()) {
+                Text("Mandatory data waiting", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
             }
             (if (checklistExpanded) guidance.checks else criticalChecks).forEach { (label, passed) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
                     val hardGate = isCriticalTradeIdeaGate(label)
-                    val blocked = hardGate && passed != true
+                    val blocked = hardGate && passed == false
+                    val waitingForData = hardGate && passed == null
                     Text(if (passed == true) "✓" else if (blocked) "✕" else "○",
                         color = if (passed == true) MaterialTheme.colorScheme.primary
-                            else if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            else if (blocked) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall)
                     Text(label + when {
                         passed == true -> " · pass"
-                        blocked && passed == null -> " · unavailable — BLOCKED"
                         blocked -> " · BLOCKED"
+                        waitingForData -> " · unavailable — WAITING FOR DATA"
                         passed == null -> " · unavailable"
-                        else -> " · review"
+                        else -> " · supporting review"
                     }, style = MaterialTheme.typography.labelSmall,
-                        color = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = if (blocked) MaterialTheme.colorScheme.error
+                            else if (waitingForData) MaterialTheme.colorScheme.tertiary
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Aligned trend/context, relative volume, valid stop geometry, funding, fresh data, spread, both 5-level depth sides, directional imbalance and ≥2.0R estimated net Target 1 are hard gates. Missing mandatory data is BLOCKED, not Review. Net R estimates assume 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ. RSI, setup-pattern confluence, 15M volume, open interest and BTC regime are supporting checks. News/event risk is not automatically sourced; review major events manually. The READY / WAIT / AVOID decision above always takes priority.",
+            Text("Checklist points measure setup confluence only; they are not confidence, win probability or trade approval. Mandatory gates include aligned trend/context and structure, valid stop and target geometry, acceptable funding, fresh market data, spread within limit, sufficient bid and ask depth, acceptable directional liquidity, no active hard-risk codes and at least 2.0R estimated net Target 1. A confirmed mandatory failure is BLOCKED; missing mandatory data is WAITING FOR DATA and cannot become READY. Relative volume, RSI, setup-pattern confluence, 15M volume, open interest and BTC regime are supporting evidence, not universal hard gates. Strategy-specific entry confirmation still has to pass before READY. Net R estimates assume 8 bps round-trip fees, 4 bps slippage and 1 bps per 8h funding; actual costs may differ. News/event risk is not automatically sourced; review major events manually. The READY / WAIT / AVOID decision above always takes priority.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

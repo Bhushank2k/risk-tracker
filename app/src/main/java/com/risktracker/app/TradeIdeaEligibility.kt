@@ -131,10 +131,10 @@ internal fun evaluateTradeIdeaEligibility(
         TradeIdeaEligibilityCheck("$contextLabel context aligned ($contextBias)", contextAligned, true),
         TradeIdeaEligibilityCheck("$executionLabel execution trend aligned (${idea.bias5m})", executionTrend, false),
         TradeIdeaEligibilityCheck("RSI in preferred entry band ($rsiText)", rsiOk, false),
-        TradeIdeaEligibilityCheck("Relative volume at least ${"%.1f".format(java.util.Locale.US, volumeThreshold)}× ($volumeText)", volumeOk, true),
+        TradeIdeaEligibilityCheck("Relative volume at least ${"%.1f".format(java.util.Locale.US, volumeThreshold)}× ($volumeText, supporting)", volumeOk, false),
         TradeIdeaEligibilityCheck("Live spread at or below 10 bps ($spreadText)", spreadOk, true),
-        TradeIdeaEligibilityCheck("Both 5-level order-book depth sides available ($bidDepthText / $askDepthText)", bothDepthSides, true),
-        TradeIdeaEligibilityCheck("Directional order-book depth and imbalance acceptable ($imbalanceText)", directionalDepthOk, true),
+        TradeIdeaEligibilityCheck("Both 5-level order-book depth sides sufficient ($bidDepthText / $askDepthText)", bothDepthSides, true),
+        TradeIdeaEligibilityCheck("Directional order-book liquidity and imbalance acceptable ($imbalanceText)", directionalDepthOk, true),
         TradeIdeaEligibilityCheck("Funding data available and acceptable ($fundingText)", fundingOk, true),
         TradeIdeaEligibilityCheck("Target 1 estimated net reward at least 2.0R ($netRText)", netRewardOk, true),
         TradeIdeaEligibilityCheck("Stop-loss geometry valid", geometry && strategyStop == true, true),
@@ -170,7 +170,7 @@ internal fun evaluateTradeIdeaEligibility(
         !stopNotHit -> { state = TradeIdeaEligibilityState.AVOID; reason = "Live price has reached or crossed the stop." }
         !fresh -> { state = TradeIdeaEligibilityState.AVOID; reason = "Market snapshot has expired." }
         hardUnknown -> { state = TradeIdeaEligibilityState.WAIT; reason = "A mandatory market-data or strategy-validation value is unavailable; refresh data before considering entry." }
-        executionOpposes -> { state = TradeIdeaEligibilityState.AVOID; reason = "Execution timeframe trend opposes the trade direction." }
+        executionOpposes -> { state = TradeIdeaEligibilityState.WAIT; reason = "Execution timeframe trend currently opposes the trade; wait for alignment and a confirmed trigger." }
         favorableExtension -> { state = TradeIdeaEligibilityState.AVOID; reason = "Price has moved beyond the permitted entry distance; do not chase." }
         requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.WAIT; reason = "Mandatory entry confirmation is still pending." }
         !scoreEligible -> { state = TradeIdeaEligibilityState.WAIT; reason = "Setup score is below the existing READY qualification threshold." }
