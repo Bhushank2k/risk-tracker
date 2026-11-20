@@ -9,7 +9,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-enum class MarketMoverPhase { EARLY_MOVE, ACTIVE_MOVE, EXTENDED_MOVE }
+enum class MarketMoverPhase { NOTABLE_MOVE, STRONG_MOVE, EXTENDED_MOVE }
 
 data class MarketMover(
     val symbol: String,
@@ -34,7 +34,6 @@ object MarketMoversDiscovery {
     @Volatile private var cachedAt = 0L
     @Volatile private var cached: List<MarketMover> = emptyList()
     private const val CACHE_MS = 15_000L
-    private const val MIN_QUOTE_VOLUME_USDT = 1_000_000.0
 
     suspend fun discover(forceRefresh: Boolean = false): List<MarketMover> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
@@ -68,7 +67,7 @@ object MarketMoversDiscovery {
                 val change = row.optString("priceChangePercent").toDoubleOrNull() ?: continue
                 val volume = row.optString("quoteVolume").toDoubleOrNull() ?: continue
                 if (!price.isFinite() || price <= 0.0 || !change.isFinite() ||
-                    !volume.isFinite() || volume < MIN_QUOTE_VOLUME_USDT) continue
+                    !volume.isFinite()) continue
                 val direction = when {
                     change > 0.0 -> ActivityDirection.BULLISH
                     change < 0.0 -> ActivityDirection.BEARISH
@@ -77,8 +76,8 @@ object MarketMoversDiscovery {
                 if (direction == ActivityDirection.NEUTRAL) continue
                 val phase = when {
                     abs(change) >= 8.0 -> MarketMoverPhase.EXTENDED_MOVE
-                    abs(change) >= 3.0 -> MarketMoverPhase.ACTIVE_MOVE
-                    else -> MarketMoverPhase.EARLY_MOVE
+                    abs(change) >= 3.0 -> MarketMoverPhase.STRONG_MOVE
+                    else -> MarketMoverPhase.NOTABLE_MOVE
                 }
                 add(MarketMover(symbol, price, change, volume, direction, phase))
             }
