@@ -1,9 +1,6 @@
 package com.risktracker.app
 
-/** Stable Compose identity for a specific plan; side/setup/levels prevent key collisions. */
-    entry = idea.entry, stop = idea.stop
-)
-
+/** Stable identity for a specific plan; direction, setup and levels prevent Compose key collisions. */
 internal fun tradeIdeaTrackingKeyParts(
     symbol: String, side: String, horizon: String, setup: String, entry: Double, stop: Double
 ): String = symbol + "_" + horizon.replace(Regex("[^A-Za-z0-9]"), "") + "_" +
