@@ -2,7 +2,6 @@ package com.risktracker.app
 
 import android.content.Context
 import androidx.work.CoroutineWorker
-import androidx.work.Result
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 
