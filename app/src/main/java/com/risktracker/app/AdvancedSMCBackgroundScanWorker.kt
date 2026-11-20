@@ -1,44 +1,20 @@
 package com.risktracker.app
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Result
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import java.util.concurrent.TimeUnit
 
 internal object AdvancedSMCScanScheduler {
     private const val UNIQUE_WORK = "advanced_smc_signal_scan"
 
-    fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<AdvancedSMCScanWorker>(30, TimeUnit.MINUTES)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-            .build()
+    fun cancelLegacyWork(context: Context) {
+        // The unified SMC worker now saves Core and Advanced results in one pass.
+        // cancelUniqueWork also cancels periodic work registered under this name.
         val workManager = WorkManager.getInstance(context.applicationContext)
-        workManager.enqueueUniquePeriodicWork(
-            UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
-        )
-
-        // Periodic work can be deferred by Android. Start a one-time scan when
-        // there is no recent cached result, independent of any visible screen.
-        val staleAfterMs = TimeUnit.MINUTES.toMillis(30)
-        if (AdvancedSMCSignalStore.resultsUpdatedAt(context) == 0L ||
-            System.currentTimeMillis() - AdvancedSMCSignalStore.resultsUpdatedAt(context) >= staleAfterMs
-        ) {
-            val initialRequest = OneTimeWorkRequestBuilder<AdvancedSMCScanWorker>()
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-                .build()
-            workManager.enqueueUniqueWork(
-                "${UNIQUE_WORK}_startup", ExistingWorkPolicy.KEEP, initialRequest
-            )
-        }
+        workManager.cancelUniqueWork(UNIQUE_WORK)
+        workManager.cancelUniqueWork("${UNIQUE_WORK}_startup")
     }
 }
 

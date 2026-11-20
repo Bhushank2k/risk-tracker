@@ -112,7 +112,7 @@ class SMCBackgroundScanWorker(context: Context, params: WorkerParameters) : Coro
         return try {
             BinanceMarketScanner.initialize(app)
             SMCScanStateStore.update(app, 0, 0, true, "Loading liquid USDT perpetual markets…")
-            val setups = BinanceMarketScanner.scanSmc(
+            val result = BinanceMarketScanner.scanUnifiedSmc(
                 progress = { message ->
                     val old = SMCScanStateStore.status(app)
                     SMCScanStateStore.update(
@@ -126,13 +126,13 @@ class SMCBackgroundScanWorker(context: Context, params: WorkerParameters) : Coro
                     )
                 }
             )
-            SMCScanStateStore.saveResults(app, setups)
+            // One background pass populates both SMC result stores.
+            AdvancedSMCSignalStore.save(app, result.advanced)
+            SMCScanStateStore.saveResults(app, result.core)
+            val total = SMCScanStateStore.status(app).optInt("total")
             SMCScanStateStore.update(
-                app,
-                SMCScanStateStore.status(app).optInt("total"),
-                SMCScanStateStore.status(app).optInt("total"),
-                false,
-                "Background scan complete · ${setups.size} qualified setups"
+                app, total, total, false,
+                "Background unified SMC complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates"
             )
             Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
