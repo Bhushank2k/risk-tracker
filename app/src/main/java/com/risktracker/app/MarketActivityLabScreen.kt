@@ -112,7 +112,7 @@ fun MarketActivityLabScreen() {
         item {
             Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("Market Movers · all USDT perpetuals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Broad-universe discovery is separate from trade approval. Shows 24-hour movers with at least 1M USDT quote volume; it does not label them READY or recommend chasing.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Broad-universe discovery is separate from trade approval. Ranks every currently trading USDT perpetual by 24-hour move; quote volume is shown for context, not used to hide symbols. This is not a READY signal.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val gainers = marketMovers.filter { it.direction == ActivityDirection.BULLISH }.take(10)
                 val losers = marketMovers.filter { it.direction == ActivityDirection.BEARISH }.take(10)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
