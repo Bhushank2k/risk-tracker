@@ -170,7 +170,7 @@ internal fun evaluateTradeIdeaEligibility(
         !stopNotHit -> { state = TradeIdeaEligibilityState.AVOID; reason = "Live price has reached or crossed the stop." }
         !fresh -> { state = TradeIdeaEligibilityState.AVOID; reason = "Market snapshot has expired." }
         hardUnknown -> { state = TradeIdeaEligibilityState.WAIT; reason = "A mandatory market-data or strategy-validation value is unavailable; refresh data before considering entry." }
-        executionOpposes -> { state = TradeIdeaEligibilityState.AVOID; reason = "Execution timeframe trend opposes the trade direction." }
+        executionOpposes -> { state = TradeIdeaEligibilityState.WAIT; reason = "Execution timeframe trend currently opposes the trade; wait for alignment and a confirmed trigger." }
         favorableExtension -> { state = TradeIdeaEligibilityState.AVOID; reason = "Price has moved beyond the permitted entry distance; do not chase." }
         requireEntryConfirmation && pendingConfirmation -> { state = TradeIdeaEligibilityState.WAIT; reason = "Mandatory entry confirmation is still pending." }
         !scoreEligible -> { state = TradeIdeaEligibilityState.WAIT; reason = "Setup score is below the existing READY qualification threshold." }
