@@ -1408,12 +1408,12 @@ private fun DailyTradeIdeasFeedScreen() {
                     Text(trackedVisible.size.toString() + " tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            items(trackedVisible, key = { tradeIdeaCardKey(it) }) { idea ->
+            items(trackedVisible, key = { "tracked_" + tradeIdeaTrackingId(it) }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
-            items(opportunityVisible, key = { tradeIdeaCardKey(it) }) { idea ->
+            items(opportunityVisible, key = { "idea_" + tradeIdeaTrackingId(it) }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
                 }
@@ -1888,7 +1888,7 @@ internal fun isHighQualityDailyTradeIdea(idea: TradeIdea, snapshotAgeMs: Long = 
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
 
-private fun tradeIdeaTrackingId(idea: TradeIdea): String = idea.symbol + "_" + idea.horizon.replace(Regex("[^A-Za-z0-9]"), "") + "_" + idea.setup.replace(Regex("[^A-Za-z0-9]"), "") + "_" + idea.side + "_" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(idea.entry)) + "_" + java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(idea.stop))
+private fun tradeIdeaTrackingId(idea: TradeIdea): String = tradeIdeaTrackingKeyParts(idea.symbol, idea.side, idea.horizon, idea.setup, idea.entry, idea.stop)
 
 @Composable
 private fun TradeIdeaCard(
