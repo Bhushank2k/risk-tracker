@@ -133,9 +133,11 @@ class TradeIdeaEligibilityTest {
     }
 
     @Test
-    fun opposingExecutionTrendAvoidsEntry() {
+    fun opposingExecutionTrendWaitsForAlignmentInsteadOfBecomingAnAbsoluteBlock() {
         val result = evaluateTradeIdeaEligibility(idea(bias5m = "Bearish"))
-        assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertFalse(result.hardGateBlocked)
+        assertTrue(result.reason.contains("wait for alignment"))
     }
 
     @Test
