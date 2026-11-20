@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,6 +36,7 @@ fun MarketActivityLabScreen() {
     var interval by remember{mutableStateOf(MarketInterval.M15)}
     var rows by remember{mutableStateOf<List<ActivityAnalysis>>(emptyList())}
     var tickerMap by remember{mutableStateOf<Map<String,MarketTicker>>(emptyMap())}
+    var marketMovers by remember{mutableStateOf<List<MarketMover>>(emptyList())}
     var selected by remember{mutableStateOf("BTCUSDT")}
     var watch by remember{mutableStateOf(prefs.getStringSet("watchlist",setOf("BTCUSDT","ETHUSDT"))?.toSet()?:setOf("BTCUSDT","ETHUSDT"))}
     var loading by remember{mutableStateOf(false)}
@@ -80,6 +82,7 @@ fun MarketActivityLabScreen() {
         loading=true
         scope.launch{
             tickerMap=runCatching{MarketActivityDataSource.tickers()}.getOrDefault(emptyMap())
+            marketMovers=runCatching{MarketMoversDiscovery.discover(forceRefresh=true)}.getOrDefault(marketMovers)
             val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval),config.thresholds)}.getOrNull()}}.awaitAll()
             result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
             events=MarketActivityPreferences.loadEvents(context)
@@ -89,7 +92,12 @@ fun MarketActivityLabScreen() {
             loading=false
         }
     }
-    LaunchedEffect(interval){refresh()}
+    LaunchedEffect(interval){
+        while (true) {
+            refresh()
+            delay(30_000L)
+        }
+    }
     LaunchedEffect(selected,interval){
         val loaded=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
         chartCandles=loaded
@@ -101,6 +109,31 @@ fun MarketActivityLabScreen() {
             Text("Market Activity Lab",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
             Text("Early-movement research · public Binance USD-M Futures data · read-only, no orders",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
+        item {
+            Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Market Movers · all USDT perpetuals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Broad-universe discovery is separate from trade approval. Shows 24-hour movers with at least 1M USDT quote volume; it does not label them READY or recommend chasing.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val gainers = marketMovers.filter { it.direction == ActivityDirection.BULLISH }.take(10)
+                val losers = marketMovers.filter { it.direction == ActivityDirection.BEARISH }.take(10)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Up ${gainers.size}", color = Color(0xFF35B77A), fontWeight = FontWeight.SemiBold)
+                    Text("Down ${losers.size}", color = Color(0xFFE16B70), fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { refresh() }, enabled = !loading) { Text("Refresh") }
+                }
+                (gainers + losers).sortedByDescending { kotlin.math.abs(it.changePercent24h) }.forEach { mover ->
+                    Row(Modifier.fillMaxWidth().clickable { selected = mover.symbol }.padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text(mover.symbol, fontWeight = FontWeight.SemiBold)
+                            Text(mover.phase.name.replace('_', ' '), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(String.format(Locale.US, "%+.2f%%", mover.changePercent24h), color = if (mover.direction == ActivityDirection.BULLISH) Color(0xFF35B77A) else Color(0xFFE16B70), fontWeight = FontWeight.Bold)
+                        Text(String.format(Locale.US, "%.1fM", mover.quoteVolume24h / 1_000_000.0), style = MaterialTheme.typography.bodySmall)
+                    }
+                    HorizontalDivider()
+                }
+                if (marketMovers.isEmpty()) Text("Mover snapshot unavailable. Refresh to retry.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } }
+        }
         item{Card{Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
             Text("Scanner settings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
             OutlinedTextField(value=symbolsDraft,onValueChange={symbolsDraft=it},modifier=Modifier.fillMaxWidth(),label={Text("Binance USD-M symbols")},supportingText={Text("Comma-separated · up to 40 pairs")},minLines=2)
