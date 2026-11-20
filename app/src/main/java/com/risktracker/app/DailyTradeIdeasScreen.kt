@@ -2000,6 +2000,7 @@ private fun TradeIdeaCard(
                     }
                 }
                 Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
                 if (idea.side == "LONG" || idea.side == "SHORT") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
@@ -2044,7 +2045,6 @@ private fun TradeIdeaCard(
                     Text(stage.detail, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (!expanded) EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
             if (idea.side == "LONG" || idea.side == "SHORT") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
