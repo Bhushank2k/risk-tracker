@@ -127,8 +127,8 @@ class SMCBackgroundScanWorker(context: Context, params: WorkerParameters) : Coro
                 }
             )
             // One background pass populates both SMC result stores.
-            SMCScanStateStore.saveResults(app, result.core)
             AdvancedSMCSignalStore.save(app, result.advanced)
+            SMCScanStateStore.saveResults(app, result.core)
             val total = SMCScanStateStore.status(app).optInt("total")
             SMCScanStateStore.update(
                 app, total, total, false,
