@@ -1614,7 +1614,8 @@ private fun EntryGuidancePanel(
                 Text(if (idea.side == "LONG") "BUY CHECKLIST" else "SELL CHECKLIST", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(
                     if (guidance.hardGateBlocked) "HARD GATE · BLOCKED"
-                    else guidance.checks.count { it.second == true }.toString() + "/" + guidance.checks.count { it.second != null } + " checks passed",
+                    else guidance.checks.count { (label, passed) -> isCriticalTradeIdeaGate(label) && passed == true }.toString() + "/" +
+                        guidance.checks.count { (label, _) -> isCriticalTradeIdeaGate(label) }.toString() + " safety gates pass",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (guidance.hardGateBlocked) MaterialTheme.colorScheme.error
                         else if (guidance.score >= 65) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
