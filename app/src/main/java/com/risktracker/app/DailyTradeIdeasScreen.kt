@@ -1932,38 +1932,116 @@ private fun TradeIdeaCard(
     RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.padding(if (density == "Compact" && !expanded) 11.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (density == "Compact" && !expanded) 5.dp else 8.dp)) {
             if (!expanded) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(idea.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                if (density == "Compact") {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(idea.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                displayIdeaHorizon(idea.horizon) + " · " + idea.setup,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                (if (idea.side == "WAIT") "NO DIRECTION" else idea.side) + " · " + stage.title,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = tint,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(
+                                idea.score.toString() + "/100",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
-                        Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
-                        Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
+                    if (stage != TradeIdeaStage.ENTRY_CONFIRMED && stage != TradeIdeaStage.TRACKING) {
+                        Text(
+                            stage.detail,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (stage == TradeIdeaStage.DO_NOT_ENTER || stage == TradeIdeaStage.AVOID_CHASING)
+                                MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
-                }
-                Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                Text(
-                    tradeIdeaSnapshotAgeLabel(snapshotAgeMs, ideaMaxAgeMs(idea)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (snapshotAgeMs > ideaMaxAgeMs(idea)) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (idea.side == "LONG" || idea.side == "SHORT") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
-                        SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
-                        SummaryLevel("Target · 2R", idea.target1.usd(6), Modifier.weight(1f))
+                    if (idea.side == "LONG" || idea.side == "SHORT") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            SummaryLevel("Entry", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.3f))
+                            SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(0.9f))
+                            SummaryLevel("Target", idea.target1.usd(6), Modifier.weight(0.9f))
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Live " + livePrice.usd(6),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                tradeIdeaSnapshotAgeLabel(snapshotAgeMs, ideaMaxAgeMs(idea)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (snapshotAgeMs > ideaMaxAgeMs(idea)) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        Text("No directional setup currently qualifies.", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
- } else {
-                    Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
-                    Text("Setup details")
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.ExpandMore, contentDescription = null)
+                    TextButton(
+                        onClick = { expanded = true },
+                        modifier = Modifier.align(Alignment.End),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Text("Details")
+                        Spacer(Modifier.width(2.dp))
+                        Icon(Icons.Default.ExpandMore, contentDescription = null)
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(idea.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                            Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
+                            Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    Text(
+                        tradeIdeaSnapshotAgeLabel(snapshotAgeMs, ideaMaxAgeMs(idea)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (snapshotAgeMs > ideaMaxAgeMs(idea)) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (idea.side == "LONG" || idea.side == "SHORT") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
+                            SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
+                            SummaryLevel("Target · 2R", idea.target1.usd(6), Modifier.weight(1f))
+                        }
+                        Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text("No directional setup currently qualifies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = { expanded = true }, modifier = Modifier.align(Alignment.End)) {
+                        Text("Setup details")
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.ExpandMore, contentDescription = null)
+                    }
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
