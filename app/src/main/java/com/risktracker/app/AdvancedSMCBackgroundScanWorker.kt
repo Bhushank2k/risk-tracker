@@ -21,7 +21,8 @@ internal object AdvancedSMCScanScheduler {
         val workManager = WorkManager.getInstance(context.applicationContext)
         workManager.cancelUniquePeriodicWork(UNIQUE_WORK)
         workManager.cancelUniqueWork("${UNIQUE_WORK}_startup")
-    }}
+    }
+}
 
 internal class AdvancedSMCScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
