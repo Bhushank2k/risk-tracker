@@ -11,7 +11,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private data class UnifiedSMCRow(
@@ -22,19 +31,152 @@ private data class UnifiedSMCRow(
     val id: String
 )
 
+internal data class UnifiedSMCScanUiState(
+    val initialized: Boolean = false,
+    val core: List<SMCTradeSetup> = emptyList(),
+    val advanced: List<AdvancedSMCSignal> = emptyList(),
+    val loading: Boolean = false,
+    val progress: String = "Preparing independent SMC scan…",
+    val scanned: Int = 0,
+    val total: Int = 0,
+    val updatedAt: Long = 0L,
+    val error: String? = null
+)
+
+/**
+ * Process-owned SMC scan lifecycle. The scan survives switching between Trade Ideas
+ * and SMC Signals; the screen only observes this state and never owns the scan job.
+ */
+internal object UnifiedSMCScanManager {
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mutableState = MutableStateFlow(UnifiedSMCScanUiState())
+    val state: StateFlow<UnifiedSMCScanUiState> = mutableState
+    private var scanJob: Job? = null
+
+    fun initialize(context: android.content.Context) {
+        val app = context.applicationContext
+        if (mutableState.value.initialized) return
+
+        val core = SMCScanStateStore.loadResults(app)
+        val advanced = AdvancedSMCSignalStore.load(app)
+        val updatedAt = maxOf(
+            SMCScanStateStore.resultsUpdatedAt(app),
+            AdvancedSMCSignalStore.resultsUpdatedAt(app)
+        )
+        val status = SMCScanStateStore.status(app)
+        val running = status.optBoolean("running")
+        mutableState.value = UnifiedSMCScanUiState(
+            initialized = true,
+            core = core,
+            advanced = advanced,
+            loading = running,
+            progress = status.optString("message", "Ready · independent SMC scan"),
+            scanned = status.optInt("scanned"),
+            total = status.optInt("total"),
+            updatedAt = updatedAt
+        )
+
+        // Observe WorkManager results too, so background refreshes appear without
+        // requiring the user to leave and reopen the SMC tab.
+        managerScope.launch {
+            while (true) {
+                val latestStatus = SMCScanStateStore.status(app)
+                val latestAt = maxOf(
+                    SMCScanStateStore.resultsUpdatedAt(app),
+                    AdvancedSMCSignalStore.resultsUpdatedAt(app)
+                )
+                val current = mutableState.value
+                val hasNewResults = latestAt > current.updatedAt
+                mutableState.value = current.copy(
+                    core = if (hasNewResults) SMCScanStateStore.loadResults(app) else current.core,
+                    advanced = if (hasNewResults) AdvancedSMCSignalStore.load(app) else current.advanced,
+                    updatedAt = maxOf(current.updatedAt, latestAt),
+                    loading = latestStatus.optBoolean("running") || scanJob?.isActive == true,
+                    progress = latestStatus.optString("message", current.progress),
+                    scanned = latestStatus.optInt("scanned"),
+                    total = latestStatus.optInt("total")
+                )
+                delay(1_000)
+            }
+        }
+
+        val age = if (updatedAt > 0L) (System.currentTimeMillis() - updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+        if (!running && age >= 15L * 60L * 1000L) refresh(app)
+    }
+
+    fun refresh(context: android.content.Context) {
+        val app = context.applicationContext
+        if (scanJob?.isActive == true) return
+        mutableState.value = mutableState.value.copy(
+            loading = true,
+            error = null,
+            scanned = 0,
+            total = 0,
+            progress = "Starting unified SMC scan · Trade Ideas continues independently…"
+        )
+        SMCScanStateStore.update(app, 0, 0, true, "Loading shared SMC market data…")
+        scanJob = managerScope.launch {
+            try {
+                val result = BinanceMarketScanner.scanUnifiedSmc(
+                    progress = { message ->
+                        mutableState.value = mutableState.value.copy(progress = message)
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), true, message)
+                    },
+                    onProgress = { done, count ->
+                        mutableState.value = mutableState.value.copy(scanned = done, total = count)
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(app, done, count, true, old.optString("message"))
+                    }
+                )
+                withContext(Dispatchers.IO) {
+                    SMCScanStateStore.saveResults(app, result.core)
+                    AdvancedSMCSignalStore.save(app, result.advanced)
+                }
+                val completedAt = maxOf(
+                    SMCScanStateStore.resultsUpdatedAt(app),
+                    AdvancedSMCSignalStore.resultsUpdatedAt(app)
+                )
+                mutableState.value = mutableState.value.copy(
+                    core = result.core,
+                    advanced = result.advanced,
+                    updatedAt = completedAt,
+                    error = null,
+                    progress = "Unified SMC complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates."
+                )
+                SMCScanStateStore.update(app, mutableState.value.total, mutableState.value.total, false,
+                    "Unified SMC scan complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val message = e.message ?: "SMC market scan failed."
+                mutableState.value = mutableState.value.copy(error = message, progress = "SMC scan incomplete: $message")
+                val old = SMCScanStateStore.status(app)
+                SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), false,
+                    "SMC scan failed: $message")
+            } finally {
+                mutableState.value = mutableState.value.copy(loading = false)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val scope = rememberCoroutineScope()
-    var core by remember { mutableStateOf(SMCScanStateStore.loadResults(context)) }
-    var advanced by remember { mutableStateOf(AdvancedSMCSignalStore.load(context)) }
-    var loading by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf("Ready · SMC reuses the shared Daily Trade Ideas market-data pipeline.") }
-    var scanned by remember { mutableIntStateOf(0) }
-    var total by remember { mutableIntStateOf(0) }
+    val scanState by UnifiedSMCScanManager.state.collectAsState()
+    val core = scanState.core
+    val advanced = scanState.advanced
+    val loading = scanState.loading
+    val progress = scanState.progress
+    val scanned = scanState.scanned
+    val total = scanState.total
     var filter by remember { mutableStateOf("All") }
     var horizon by remember { mutableStateOf("All") }
     var expanded by remember { mutableStateOf<String?>(null) }
+
+    fun scan() = UnifiedSMCScanManager.refresh(context)
+    LaunchedEffect(Unit) { UnifiedSMCScanManager.initialize(context) }
 
     val rows = remember(core, advanced) {
         val merged = linkedMapOf<String, UnifiedSMCRow>()
@@ -68,33 +210,6 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         rows.filter { (filter == "All" || it.side == filter) && (horizon == "All" || it.horizon == horizon) }
     }
 
-    fun scan() {
-        if (loading) return
-        loading = true
-        scanned = 0
-        total = 0
-        scope.launch {
-            try {
-                progress = "Starting SMC scan from the shared market-data pipeline…"
-                val result = BinanceMarketScanner.scanUnifiedSmc(
-                    progress = { progress = it },
-                    onProgress = { done, count -> scanned = done; total = count }
-                )
-                core = result.core
-                advanced = result.advanced
-                SMCScanStateStore.saveResults(context, result.core)
-                AdvancedSMCSignalStore.save(context, result.advanced)
-                progress = "Unified scan complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates."
-            } catch (e: Exception) {
-                progress = "Scan incomplete: ${e.message ?: "market data unavailable"}"
-            } finally {
-                loading = false
-            }
-        }
-    }
-    LaunchedEffect(Unit) {
-        if (core.isEmpty() && advanced.isEmpty()) scan()
-    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
