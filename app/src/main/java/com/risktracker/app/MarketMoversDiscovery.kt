@@ -90,7 +90,7 @@ object MarketMoversDiscovery {
 
     internal fun phaseFor(changePercent: Double): MarketMoverPhase = when {
         abs(changePercent) >= 8.0 -> MarketMoverPhase.EXTENDED_MOVE
-        abs(changePercent) >= 3.0 -> MarketMoverPhase.ACTIVE_MOVE
-        else -> MarketMoverPhase.EARLY_MOVE
+        abs(changePercent) >= 3.0 -> MarketMoverPhase.STRONG_MOVE
+        else -> MarketMoverPhase.NOTABLE_MOVE
     }
 }
