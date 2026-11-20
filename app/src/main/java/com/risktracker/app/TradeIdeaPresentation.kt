@@ -1,8 +1,6 @@
 package com.risktracker.app
 
 /** Stable Compose identity for a specific plan; side/setup/levels prevent key collisions. */
-internal fun tradeIdeaCardKey(idea: TradeIdea): String = "trade_idea_" + tradeIdeaTrackingKeyParts(
-    symbol = idea.symbol, side = idea.side, horizon = idea.horizon, setup = idea.setup,
     entry = idea.entry, stop = idea.stop
 )
 
