@@ -168,10 +168,40 @@ class TradeIdeaEligibilityTest {
     }
 
     @Test
-    fun relativeVolumeBelowStrategyThresholdBlocksEntry() {
+    fun relativeVolumeBelowThresholdIsSupportingEvidenceNotAUniversalHardBlock() {
         val result = evaluateTradeIdeaEligibility(idea().copy(volumeRatio = 0.89))
+        assertEquals(TradeIdeaEligibilityState.READY, result.state)
+        assertFalse(result.hardGateBlocked)
+        assertTrue(result.checks.any {
+            it.label.contains("Relative volume") && it.passed == false && !it.hardGate
+        })
+    }
+
+    @Test
+    fun everyGateIsReportedEvenWhenSeveralMandatoryGatesFail() {
+        val result = evaluateTradeIdeaEligibility(
+            idea().copy(
+                spreadBps = 16.0,
+                bidDepthUsd = 1_000.0,
+                askDepthUsd = 900.0,
+                bookImbalance = -0.5
+            )
+        )
         assertEquals(TradeIdeaEligibilityState.AVOID, result.state)
-        assertTrue(result.hardGateBlocked)
+        assertTrue(result.checks.any { it.label.contains("Live spread") && it.passed == false })
+        assertTrue(result.checks.any { it.label.contains("depth sides sufficient") && it.passed == false })
+        assertTrue(result.checks.any { it.label.contains("Directional order-book") && it.passed == false })
+    }
+
+    @Test
+    fun missingMandatoryDataIsPendingRatherThanAConfirmedHardFailure() {
+        val result = evaluateTradeIdeaEligibility(idea().copy(spreadBps = null))
+        assertEquals(TradeIdeaEligibilityState.WAIT, result.state)
+        assertFalse(result.hardGateBlocked)
+        assertTrue(result.hasUnavailableHardGate)
+        assertTrue(result.checks.any {
+            it.label.contains("Live spread") && it.passed == null && it.hardGate
+        })
     }
 
     @Test
