@@ -1643,15 +1643,21 @@ private fun EntryGuidancePanel(
             }
             val criticalFailures = allHardChecks.filter { it.second == false }
             val criticalPending = allHardChecks.filter { it.second == null }
+            val entryActionChecks = guidance.checks.filter { (label, passed) ->
+                val value = label.lowercase(Locale.US)
+                (value.contains("entry confirmation") || value.contains("entry trigger")) && passed != true
+            }
             val actionableHardChecks = criticalFailures + criticalPending
             val supportingChecks = guidance.checks.filter { (label, _) ->
-                !isCriticalTradeIdeaGate(label)
+                !isCriticalTradeIdeaGate(label) &&
+                    !label.contains("entry confirmation", ignoreCase = true) &&
+                    !label.contains("entry trigger", ignoreCase = true)
             }
             var safetyDetailsExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
             var supportingExpanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
 
-            if (actionableHardChecks.isEmpty()) {
-                Text("All mandatory safety checks currently pass.",
+            if (actionableHardChecks.isEmpty() && entryActionChecks.isEmpty()) {
+                Text("All mandatory safety and entry checks currently pass.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold)
@@ -1673,6 +1679,15 @@ private fun EntryGuidancePanel(
                         style = MaterialTheme.typography.labelSmall,
                         color = if (blocked) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.tertiary)
+                }
+                if (entryActionChecks.isNotEmpty()) {
+                    Text("ENTRY CONFIRMATION", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                    entryActionChecks.forEach { (label, _) ->
+                        Text("○ " + label + " · WAITING",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary)
+                    }
                 }
             }
 
