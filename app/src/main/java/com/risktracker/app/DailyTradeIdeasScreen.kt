@@ -1903,15 +1903,24 @@ private fun TradeIdeaCard(
             }
         }
     }
+    // Semantic text accents only; all card and inset surfaces remain unchanged.
+    val readyText = Color(0xFF35C98B)
+    val shortText = Color(0xFFFF6B75)
+    val waitText = Color(0xFFE9B45A)
+    val trackingText = Color(0xFF55A9FF)
+    val scoreText = Color(0xFF55A9FF)
     val tint = when (stage) {
-        TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.TRACKING -> MaterialTheme.colorScheme.primary
-        TradeIdeaStage.DO_NOT_ENTER -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.tertiary
+        TradeIdeaStage.ENTRY_CONFIRMED -> readyText
+        TradeIdeaStage.TRACKING, TradeIdeaStage.TRACKING_STOP_HIT,
+        TradeIdeaStage.TRACKING_TARGET_HIT, TradeIdeaStage.TRACKING_EXPIRED,
+        TradeIdeaStage.TRACKING_INVALID -> trackingText
+        TradeIdeaStage.DO_NOT_ENTER, TradeIdeaStage.AVOID_CHASING -> shortText
+        else -> waitText
     }
     val sideTint = when (idea.side) {
-        "LONG" -> Color(0xFF16A34A)
-        "SHORT" -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        "LONG" -> Color(0xFF20C997)
+        "SHORT" -> shortText
+        else -> waitText
     }
     val riskDistance = abs(idea.entry - idea.stop)
     val zoneHalfWidth = maxOf(idea.entry * 0.00075, riskDistance * 0.10)
@@ -1958,7 +1967,7 @@ private fun TradeIdeaCard(
                             Text(
                                 idea.score.toString() + "/100",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = scoreText,
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -1974,9 +1983,9 @@ private fun TradeIdeaCard(
                     }
                     if (idea.side == "LONG" || idea.side == "SHORT") {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            SummaryLevel("Entry", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.3f))
-                            SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(0.9f))
-                            SummaryLevel("Target", idea.target1.usd(6), Modifier.weight(0.9f))
+                            SummaryLevel("Entry", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.3f), Color(0xFFF1F5F9))
+                            SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(0.9f), shortText)
+                            SummaryLevel("Target", idea.target1.usd(6), Modifier.weight(0.9f), readyText)
                         }
                         Row(
                             Modifier.fillMaxWidth(),
@@ -2015,7 +2024,7 @@ private fun TradeIdeaCard(
                             Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                            Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = scoreText, fontWeight = FontWeight.SemiBold)
                             Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
                             Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
                         }
@@ -2074,9 +2083,9 @@ private fun TradeIdeaCard(
             }
             if (idea.side == "LONG" || idea.side == "SHORT") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
-                    SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
-                    SummaryLevel("TP2 · 2R", idea.target1.usd(6), Modifier.weight(1f))
+                    SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f), Color(0xFFF1F5F9))
+                    SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f), shortText)
+                    SummaryLevel("TP2 · 2R", idea.target1.usd(6), Modifier.weight(1f), readyText)
                 }
                 if (density != "Compact") TargetLadder(idea)
             }
@@ -2298,13 +2307,13 @@ private fun TargetLadder(idea: TradeIdea) {
 }
 
 @Composable
-private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modifier) {
+private fun SummaryLevel(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
     Column(
         modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.labelMedium, color = valueColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
