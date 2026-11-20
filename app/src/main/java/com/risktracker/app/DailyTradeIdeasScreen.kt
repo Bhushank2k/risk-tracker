@@ -1408,12 +1408,12 @@ private fun DailyTradeIdeasFeedScreen() {
                     Text(trackedVisible.size.toString() + " tracking", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            items(trackedVisible, key = { "tracked_" + it.symbol + "_" + it.horizon }) { idea ->
+            items(trackedVisible, key = { tradeIdeaCardKey(it) }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked -> trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey }
             }
         }
         if (opportunityVisible.isNotEmpty()) {
-            items(opportunityVisible, key = { "idea_" + it.symbol + "_" + it.horizon }) { idea ->
+            items(opportunityVisible, key = { tradeIdeaCardKey(it) }) { idea ->
                 TradeIdeaCard(idea, density, scanSnapshotAgeMs, paperRiskStatus, trackedOpenCount, riskSettings) { planKey, isTracked ->
                     trackedPlanKeys = if (isTracked) trackedPlanKeys + planKey else trackedPlanKeys - planKey
                 }
@@ -2000,6 +2000,12 @@ private fun TradeIdeaCard(
                     }
                 }
                 Text(stage.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Text(
+                    tradeIdeaSnapshotAgeLabel(snapshotAgeMs, ideaMaxAgeMs(idea)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (snapshotAgeMs > ideaMaxAgeMs(idea)) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 EntryCoachSummary(liveIdea, snapshotAgeMs, trackedEntry != null)
                 if (idea.side == "LONG" || idea.side == "SHORT") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
