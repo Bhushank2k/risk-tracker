@@ -1480,7 +1480,7 @@ private fun ScannerStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 private enum class TradeIdeaStage(val title: String, val detail: String) {
-    MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."), WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."), ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."), AVOID_CHASING("AVOID", "Price moved too far from the planned entry. Do not chase; wait for a fresh setup."), TRACKING("TRACKING", "Live market price and progress are being monitored."), TRACKING_STOP_HIT("TRACKING · STOP HIT", "Tracked plan has reached its stop. Review the paper tracking record."), TRACKING_TARGET_HIT("TRACKING · TARGET HIT", "Tracked plan has reached target 1. Review the paper tracking record."), TRACKING_EXPIRED("TRACKING · EXPIRED", "The tracked signal has expired. Do not treat it as a fresh entry."), TRACKING_INVALID("TRACKING · INVALID", "The tracked plan no longer passes its risk validation."), DO_NOT_ENTER("AVOID", "The setup is invalid or its risk checks failed. Do not enter.")
+    MONITOR("WAIT", "Setup is getting close to the entry zone. Wait for confirmation."), WAIT_CONFIRMATION("WAIT", "Entry confirmation is missing. Do not enter yet."), ENTRY_CONFIRMED("READY TO ENTER", "Entry trigger confirmed and price remains inside the valid plan. Recheck the live price before acting."), AVOID_CHASING("AVOID", "Entry missed. Do not chase; wait for a fresh setup."), TRACKING("TRACKING", "Live market price and progress are being monitored."), TRACKING_STOP_HIT("TRACKING · STOP HIT", "Tracked plan has reached its stop. Review the paper tracking record."), TRACKING_TARGET_HIT("TRACKING · TARGET HIT", "Tracked plan has reached target 1. Review the paper tracking record."), TRACKING_EXPIRED("TRACKING · EXPIRED", "The tracked signal has expired. Do not treat it as a fresh entry."), TRACKING_INVALID("TRACKING · INVALID", "The tracked plan no longer passes its risk validation."), DO_NOT_ENTER("AVOID", "Invalid setup or failed risk checks. Do not enter.")
 }
 
 private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean =
@@ -1492,6 +1492,11 @@ private fun tradeIdeaRiskValid(idea: TradeIdea): Boolean =
         target2 = idea.target2,
         riskCodes = idea.riskCodes
     )
+
+/** Never present a zero or invalid target as a usable price in the card. */
+private fun tradeIdeaTargetLabel(idea: TradeIdea): String =
+    if (idea.target1.isFinite() && idea.target1 > 0.0 && tradeIdeaRiskValid(idea)) idea.target1.usd(6)
+    else "Not available"
 
 private data class EntryGuidance(
     val score: Int,
@@ -1939,7 +1944,7 @@ private fun TradeIdeaCard(
     } ?: 0.0
 
     RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.padding(if (density == "Compact" && !expanded) 11.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (density == "Compact" && !expanded) 5.dp else 8.dp)) {
+        Column(Modifier.padding(if (density == "Compact" && !expanded) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(if (density == "Compact" && !expanded) 4.dp else 8.dp)) {
             if (!expanded) {
                 if (density == "Compact") {
                     Row(
@@ -1965,7 +1970,7 @@ private fun TradeIdeaCard(
                                 maxLines = 1
                             )
                             Text(
-                                idea.score.toString() + "/100",
+                                "Setup score · " + idea.score + "/100",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = scoreText,
                                 fontWeight = FontWeight.Medium
@@ -1985,7 +1990,7 @@ private fun TradeIdeaCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             SummaryLevel("Entry", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.3f), Color(0xFFF1F5F9))
                             SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(0.9f), shortText)
-                            SummaryLevel("Target", idea.target1.usd(6), Modifier.weight(0.9f), readyText)
+                            SummaryLevel("Target", tradeIdeaTargetLabel(idea), Modifier.weight(0.9f), readyText)
                         }
                         Row(
                             Modifier.fillMaxWidth(),
@@ -2010,7 +2015,7 @@ private fun TradeIdeaCard(
                     }
                     TextButton(
                         onClick = { expanded = true },
-                        modifier = Modifier.align(Alignment.End),
+                        modifier = Modifier.align(Alignment.End).heightIn(min = 28.dp),
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                     ) {
                         Text("Details")
@@ -2024,7 +2029,7 @@ private fun TradeIdeaCard(
                             Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = scoreText, fontWeight = FontWeight.SemiBold)
+                            Text("Setup score · " + idea.score + "/100", style = MaterialTheme.typography.labelSmall, color = scoreText, fontWeight = FontWeight.SemiBold)
                             Text(if (idea.side == "WAIT") "NO DIRECTION" else idea.side, style = MaterialTheme.typography.labelMedium, color = sideTint, fontWeight = FontWeight.Bold)
                             Text(stage.title, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
                         }
@@ -2040,7 +2045,7 @@ private fun TradeIdeaCard(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f))
                             SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f))
-                            SummaryLevel("Target · 2R", idea.target1.usd(6), Modifier.weight(1f))
+                            SummaryLevel("Target · 2R", tradeIdeaTargetLabel(idea), Modifier.weight(1f))
                         }
                         Text("Live price  " + livePrice.usd(6), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
@@ -2059,7 +2064,7 @@ private fun TradeIdeaCard(
                     Text(displayIdeaHorizon(idea.horizon) + " · " + idea.setup, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("Score " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Setup score · " + idea.score + "/100", style = MaterialTheme.typography.labelMedium, color = scoreText, fontWeight = FontWeight.SemiBold)
                     if (idea.side == "LONG" || idea.side == "SHORT") {
                         Surface(color = sideTint.copy(alpha = 0.12f), shape = RoundedCornerShape(50)) {
                             Text(
@@ -2085,7 +2090,7 @@ private fun TradeIdeaCard(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SummaryLevel("Entry zone", zoneLow.usd(6) + "–" + zoneHigh.usd(6), Modifier.weight(1.25f), Color(0xFFF1F5F9))
                     SummaryLevel("Stop", idea.stop.usd(6), Modifier.weight(1f), shortText)
-                    SummaryLevel("TP2 · 2R", idea.target1.usd(6), Modifier.weight(1f), readyText)
+                    SummaryLevel("TP2 · 2R", tradeIdeaTargetLabel(idea), Modifier.weight(1f), readyText)
                 }
                 if (density != "Compact") TargetLadder(idea)
             }
