@@ -250,25 +250,19 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     // Secondary destinations stay available, but are grouped by the task they support.
     // Keep route IDs unchanged: these values are consumed by the screen router below.
     val menuGroups = listOf(
-        "TRADING" to listOf(
+        "TRADING & TOOLS" to listOf(
             "Live positions & orders" to 16,
+            "Position & leverage calculator" to 2
         ),
-        "MARKET RESEARCH" to listOf(
-            "Coin Explosion Radar" to 32,
-        ),
-        "PERFORMANCE" to listOf(
+        "MARKET DISCOVERY" to listOf("Coin Explosion Radar" to 32),
+        "PERFORMANCE & REPORTS" to listOf(
             "P&L Calendar" to 23,
+            "Crypto tax report" to 9
         ),
-        "IDEAS & RISK TOOLS" to listOf(
-            "Position & leverage calculator" to 2,
-        ),
-        "CONNECTIONS & ACCOUNT" to listOf(
+        "EXCHANGE & ACCOUNT" to listOf(
             "Binance Sync & imports" to 6,
             "Sync health" to 18,
             "Account activity & statements" to 17
-        ),
-        "RECORDS & REPORTS" to listOf(
-            "Crypto tax report" to 9,
         ),
         "APP" to listOf(
             "Settings" to 7,
@@ -502,47 +496,127 @@ private fun ExploreScreen(
     menuGroups: List<Pair<String, List<Pair<String, Int>>>>,
     onNavigate: (Int) -> Unit
 ) {
+    val categoryAccents = mapOf(
+        "TRADING & TOOLS" to Color(0xFF2874DC),
+        "MARKET DISCOVERY" to Color(0xFF159B68),
+        "PERFORMANCE & REPORTS" to Color(0xFF9254D1),
+        "EXCHANGE & ACCOUNT" to Color(0xFFDB8730),
+        "APP" to Color(0xFFD45B83)
+    )
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item {
             Text(
-                "Specialist tools and account services",
-                style = MaterialTheme.typography.bodySmall,
+                "Tools & account services",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         menuGroups.forEachIndexed { groupIndex, (group, destinations) ->
+            val accent = categoryAccents[group] ?: MaterialTheme.colorScheme.primary
             item(key = "explore-heading-$groupIndex") {
-                Text(
-                    group.lowercase().replaceFirstChar { it.uppercase() },
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            items(
-                destinations.chunked(2),
-                key = { row -> "explore-row-$groupIndex-${row.first().second}" }
-            ) { row ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(top = 5.dp, bottom = 1.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    row.forEach { (label, destination) ->
-                        ExploreToolCard(
-                            label = label,
-                            destination = destination,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onNavigate(destination) }
-                        )
-                    }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier.size(7.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(accent)
+                    )
+                    Text(
+                        group.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
+            if (group == "TRADING & TOOLS") {
+                items(
+                    destinations.chunked(2),
+                    key = { row -> "explore-grid-$groupIndex-${row.first().second}" }
+                ) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { (label, destination) ->
+                            ExploreToolCard(
+                                label = label,
+                                destination = destination,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onNavigate(destination) }
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            } else {
+                items(
+                    destinations,
+                    key = { destination -> "explore-item-$groupIndex-${destination.second}" }
+                ) { (label, destination) ->
+                    ExploreToolRow(
+                        label = label,
+                        destination = destination,
+                        accent = accent,
+                        onClick = { onNavigate(destination) }
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(4.dp)) }
+    }
+}
+
+@Composable
+private fun ExploreToolRow(
+    label: String,
+    destination: Int,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = accent.copy(
+                alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.13f else 0.075f
+            )
+        ),
+        border = androidx.compose.foundation.BorderStroke(0.7.dp, accent.copy(alpha = 0.22f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = pageIcon(destination),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                "›",
+                color = accent,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
@@ -554,68 +628,48 @@ private fun ExploreToolCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val accent = when (destination) {
-        16, 18 -> Color(0xFF55C8FF)
-        2, 7 -> Color(0xFFFFC46B)
-        13, 19 -> Color(0xFF68E0AD)
-        25, 28 -> Color(0xFFD0A5FF)
-        23, 9, 14 -> Color(0xFFFF9FBD)
-        6, 17 -> Color(0xFF76DFE4)
-        26, 27, 32 -> Color(0xFFFFA66B)
-        else -> Color(0xFF91A8FF)
-    }
-    val subtitle = when (destination) {
-        16 -> "Orders & exposure"
-        14 -> "Trade reviews"
-        23 -> "Daily performance"
-        25 -> "Scanner analytics"
-        28 -> "Market research"
-        26 -> "Confirmed signals"
-        27 -> "Market notifications"
-        32 -> "Early pressure scanner"
-        2 -> "Position & leverage"
-        13 -> "Risk scenarios"
-        19 -> "Risk notifications"
-        6 -> "Exchange connection"
-        18 -> "Connection status"
-        17 -> "Statements & activity"
-        9 -> "Tax records"
-        7 -> "App preferences"
-        5 -> "App information"
-        else -> "Open tool"
-    }
+    val accent = if (destination == 16) Color(0xFF2874DC) else Color(0xFFDB8730)
+    val subtitle = if (destination == 16) "Orders & exposure" else "Position & leverage"
     Card(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 104.dp),
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.heightIn(min = 76.dp),
+        shape = RoundedCornerShape(13.dp),
         colors = CardDefaults.cardColors(
-            containerColor = accent.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.20f else 0.13f)
+            containerColor = accent.copy(
+                alpha = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) 0.18f else 0.10f
+            )
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.34f))
+        border = androidx.compose.foundation.BorderStroke(0.8.dp, accent.copy(alpha = 0.28f))
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
                 imageVector = pageIcon(destination),
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(25.dp)
+                modifier = Modifier.size(23.dp)
             )
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                minLines = 2
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
