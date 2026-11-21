@@ -110,7 +110,7 @@ object ScannerCalculationCore {
             averageGain = (averageGain * (period - 1) + max(delta, 0.0)) / period
             averageLoss = (averageLoss * (period - 1) + max(-delta, 0.0)) / period
         }
-        if (averageLoss == 0.0) return 100.0
+        if (averageLoss == 0.0) return if (averageGain == 0.0) 50.0 else 100.0
         return (100.0 - 100.0 / (1.0 + averageGain / averageLoss)).takeIf { it.isFinite() }
     }
 
