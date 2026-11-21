@@ -242,7 +242,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("One shared market snapshot · Trade Ideas + Core + Advanced SMC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("All active Binance USDT-M perpetuals · Core + Advanced SMC · liquidity checks remain separate", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Button(
@@ -277,7 +277,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         if (loading || total > 0) {
             Text(progress, style = MaterialTheme.typography.bodySmall)
             LinearProgressIndicator(progress = { if (total > 0) (scanned.toFloat() / total).coerceIn(0f,1f) else 0f }, modifier = Modifier.fillMaxWidth())
-            Text("$scanned / $total eligible SMC markets checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$scanned / $total active USDT-M perpetual markets checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (scanState.error != null) Text("Last refresh failed: ${scanState.error}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         Text("Core SMC: ${coreAgeMs.unifiedFreshnessLabel()} · Advanced SMC: ${advancedAgeMs.unifiedFreshnessLabel()}",
