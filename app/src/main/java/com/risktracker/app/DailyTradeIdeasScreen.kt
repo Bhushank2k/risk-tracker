@@ -1199,11 +1199,6 @@ private fun DailyTradeIdeasFeedScreen() {
     LaunchedEffect(ideas) { trackedPlanKeys = readTrackedPlanKeys(ideas) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
-    fun updateRiskSettings(next: EntryRiskSettings) {
-        riskSettings = next
-        EntryRiskSettingsStore.save(context, next)
-        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = next.riskPercent)
-    }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
     fun enableReadyAlerts() {
@@ -1858,24 +1853,6 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     }
 }
 
-/**
- * High-quality Daily Trade Ideas gate. Keeps Scalp, Intraday and Swing eligible,
- * while requiring a strong score, valid risk geometry, a fresh actionable stage,
- * and the key trend, liquidity and entry-confirmation checks.
- */
-internal fun isHighQualityDailyTradeIdea(idea: TradeIdea, snapshotAgeMs: Long = 0L): Boolean {
-    if (idea.score < 80 || idea.side !in setOf("LONG", "SHORT")) return false
-    if (!tradeIdeaRiskValid(idea)) return false
-    val stage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-    if (stage !in setOf(TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION)) return false
-
-    val requiredLabels = listOf("trend structure", "5-level depth", "confirmation candle", "stop-loss", "target 1")
-    val requiredChecks = requiredLabels.map { fragment ->
-        idea.strategyChecks.firstOrNull { (label, _) -> label.contains(fragment, ignoreCase = true) }?.second
-    }
-    // Missing checks (including legacy cached ideas) are not silently treated as passes.
-    return requiredChecks.size == requiredLabels.size && requiredChecks.all { it == true }
-}
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
 
