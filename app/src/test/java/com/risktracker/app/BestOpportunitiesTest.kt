@@ -116,6 +116,12 @@ class BestOpportunitiesTest {
         assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
     }
 
+    @Test fun staleDailySnapshotWaitsForRefreshInsteadOfBeingRejected() {
+        val rows = buildBestOpportunities(listOf(idea()), listOf(smc()), 61L * 60L * 1000L, 1_050_000L)
+        assertEquals(BestOpportunityStatus.WAITING, rows.single().status)
+        assertTrue(rows.single().explanation.contains("snapshot has expired"))
+    }
+
     @Test fun hardRiskFailureIsRejectedRatherThanConfirmed() {
         val rows = buildBestOpportunities(listOf(idea(spread = 15.0)), listOf(smc()), 60_000L, 1_050_000L)
         assertEquals(BestOpportunityStatus.REJECTED, rows.single().status)
