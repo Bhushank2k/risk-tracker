@@ -1,56 +1,61 @@
 # Risk Tracker — Information Architecture
 
-Use one authoritative screen for each kind of information. Other screens may show a small summary, but should link to the owner screen for full detail.
+Use one authoritative screen for each kind of information. Summary cards may appear elsewhere, but full records and diagnostics belong to one owner.
 
-## Screen ownership
+## Current navigation
 
-| Screen | Owns | May summarize | Avoid repeating |
-|---|---|---|---|
-| Overview | Current account equity, today's P&L, daily loss budget, open exposure | Net recorded P&L, win rate, recent activity | Full trade history, detailed analytics, import diagnostics |
-| Journal | Individual Binance executions and grouped position cycles | Realized result per trade, entry/exit and fees | Portfolio totals and aggregate performance charts |
-| Analytics | Period-based performance, win/loss, profit factor, drawdown, volume and fees | Net P&L and execution count | Connection setup and sync controls |
-| Ideas | Market setups, entry/stop/target, validation and tracking | Current scan freshness and tracked ideas | Portfolio balance and journal history |
-| Binance Sync | Credentials, connection tests, sync controls and import workflows | Current sync state | Full statement ledger and tax summaries |
-| Account Activity | Deposits, withdrawals, transfers and statement records | Net external cash flow by asset | Trade journal and tax calculations |
-| Tax Report | Financial-year trade dataset, tax review and exports | Imported transaction counts and data quality | General portfolio analytics |
-| Ledger Audit | Historical import coverage, duplicate counts and source reconciliation | Imported totals | Daily P&L and journal estimates |
-| Market Activity Lab | Public futures candle research, indicator scoring and historical replay | Market activity observations and source freshness | Existing account sync and trade journal records |
-| Risk tools | User inputs, limits, scenarios and calculated risk | Relevant account equity where available | Duplicated portfolio dashboards |
+The four persistent destinations are:
 
-## Navigation structure
+- **Market** — portfolio snapshot and current account context.
+- **Ideas** — daily Trade Ideas, validation and tracking.
+- **History** — Binance execution journal and grouped position cycles.
+- **Explore** — secondary tools and account services.
 
-Bottom navigation contains four destinations:
-- Market Overview
-- Daily Trade Ideas
-- Trade History
-- Explore
+Explore groups the current destinations by task:
 
-Explore is a dedicated bottom-navigation screen, not a top-app-bar action. It contains only retained specialist tools and account services:
-- Trading: Live positions/orders.
-- Performance: P&L Calendar.
-- Ideas & Risk Tools: Position calculator and Trade Risk Gate functionality is removed from the screen layer; automated scanner risk validation remains in the scanner.
-- Connections & Account: Binance Sync/imports, sync health and account activity/statements.
-- Records & Reports: Crypto Tax Report.
-- App: Settings and About.
+| Group | Destinations |
+|---|---|
+| Trading & Tools | Live positions & orders; Position & leverage calculator |
+| Market Intelligence | Unified SMC Signals; Coin Explosion Radar |
+| Performance & Reports | P&L Calendar; Crypto Tax Report |
+| Exchange & Account | Binance Sync & imports; Sync health; Account activity & statements |
+| App | Settings; About |
 
-Risk Monitor, Trade Reviews, Scanner Performance Lab, Market Activity Lab, Confirmed Reversal Signals, Cloud Alerts, Risk Alerts and Risk Scenario Lab screens are removed from navigation. The app retains scanner generation, confirmation and risk-gating logic, background sync/notification processing where used, risk calculations, and all stored trade/account records. Workspace and Quick Access panels remain removed. The top app bar contains the current screen title and date/time only.
+Unified SMC Signals combines Core and Advanced SMC result sets from one scan. It is now grouped beside Coin Explosion Radar in Explore; Daily Trade Ideas remains a primary destination because it has its own setup lifecycle, validation and tracking workflow.
 
-## Duplication rules
+## Screen ownership and non-duplication
 
-1. Overview is the compact portfolio snapshot; Journal owns execution history and its Performance section owns detailed analytics.
-2. Journal is the record-level source for executions. Performance aggregates those records; it does not create a second trade ledger.
-3. Binance Sync owns connection and sync diagnostics. Other pages show only a small freshness/status indicator when it changes the user's decision.
-4. Account Activity owns external cash flows. Those values must not be silently combined with trading P&L.
-5. Tax Report and Ledger Audit retain source and completeness caveats because those affect interpretation; keep them concise and adjacent to the relevant figures.
-6. Use links or Explore destinations to navigate to full details instead of copying full tables or diagnostic paragraphs across pages.
-7. Never remove source distinctions, reconciliation warnings, risk warnings or legal/tax qualifications merely to reduce text.
+| Screen / domain | Owns | Avoid duplicating |
+|---|---|---|
+| Market Overview | Current account snapshot, today's reconciled P&L, daily loss budget and exposure summary | Full trade history, tax details, import diagnostics |
+| Trade Ideas | Setups, entry/stop/target, validation and idea tracking | Portfolio balance and execution ledger |
+| Unified SMC Signals | Core + Advanced SMC candidates, scan freshness and SMC status | Trade Idea tracking records |
+| Coin Explosion Radar | Market-wide volatility/expansion scan and its own replay/configuration | SMC candidate calculations or Trade Idea records |
+| History / Journal | Binance executions and grouped position cycles | Portfolio-wide performance totals |
+| P&L Calendar | Date-level realized P&L, with Manual and Binance sources displayed separately | A merged or inferred single ledger |
+| Binance Sync | Credentials, connection tests, sync controls and import workflows | Statement history and tax calculations |
+| Sync Health | Sync diagnostics and freshness | Connection setup controls |
+| Account Activity & Statements | Deposits, withdrawals, transfers and statement records | Trading P&L |
+| Crypto Tax Report | Financial-year dataset, tax review and exports | General portfolio analytics |
+| Position & leverage calculator | User inputs, sizing and liquidation scenarios | Portfolio dashboards |
+| Cloud / risk / research tools | Their own alert, research and risk workflows where surfaced | Duplicate account or execution records |
+
+Market Activity Lab, Confirmed Reversal Signals, Scanner Performance Lab and other specialist screens remain in source. Their absence from the current Explore list is not proof that their engines, stored preferences, replay formats or supporting tests are dead. Revisit their placement only after product-owner review and call-site/worker checks.
+
+## Consolidation rules
+
+1. Overview is the compact portfolio snapshot; Journal owns execution history; analytics views aggregate records without creating a second ledger.
+2. Keep external cash flows separate from trading P&L.
+3. Keep Binance Sync separate from Sync Health: connection actions and diagnostic history are different tasks.
+4. Keep Tax Report separate from import/ledger reconciliation: tax exports and source completeness have different purposes.
+5. Keep Trade Ideas, SMC and Coin Explosion Radar distinct as products until evidence demonstrates their signals, controls and data contracts are interchangeable. Group related tools in navigation before attempting engine deletion.
+6. Preserve source labels, reconciliation warnings, risk gates and legal/tax qualifications.
+7. Preserve persisted preference keys, backup/restore formats and historical records during UI cleanup.
 
 ## Layout rules
 
 - The app bar supplies the page title; screen content should not repeat the same large title.
-- Use 16dp horizontal page gutters, 8–10dp vertical section gaps and 14dp card padding.
-- Prefer one hero panel plus compact metric groups on overview.
-- Prefer dense rows with dividers for histories and breakdowns.
-- Place filters directly above the data they control.
-- Use expandable sections for advanced diagnostics, methodology and historical detail.
-- Keep labels concise; show explanations only where the user needs them to interpret a value or safely act.
+- Use compact summary cards and dense rows for histories.
+- Place filters beside the data they control.
+- Put advanced diagnostics, methodology and historical detail behind expandable sections.
+- Keep labels concise and explanations adjacent to values that require interpretation.
