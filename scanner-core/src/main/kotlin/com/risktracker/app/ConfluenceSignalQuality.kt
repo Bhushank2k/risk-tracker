@@ -71,7 +71,8 @@ package com.risktracker.app
     liquidityConfirmed: Boolean,
     btcAgainst: Boolean,
     stopGeometryConfirmed: Boolean,
-    adxConfirmed: Boolean = true
+    adxConfirmed: Boolean = true,
+    btcContextAvailable: Boolean = true
 ): Int {
     val volumePoints = when {
         !relativeVolume.isFinite() -> 0
@@ -87,7 +88,7 @@ package com.risktracker.app
         volumePoints +
         (if (momentumConfirmed) 10 else 0) +
         (if (liquidityConfirmed) 10 else 0) +
-        (if (btcAgainst) 2 else 5) +
+        (if (!btcContextAvailable) 0 else if (btcAgainst) 2 else 5) +
         (if (stopGeometryConfirmed) 5 else 0) +
         (if (adxConfirmed) 5 else 0)
 }
