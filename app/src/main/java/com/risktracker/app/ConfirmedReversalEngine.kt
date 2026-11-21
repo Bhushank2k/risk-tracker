@@ -21,13 +21,6 @@ internal fun isConfirmedPivotLow(rows:List<ReversalCandle>,pivotIndex:Int,leftBa
   rows.map { it.high }, rows.map { it.low }, leftBars, rightBars
  ).any { !it.isHigh && it.index == pivotIndex }
 }
-internal fun isConfirmedPivotHigh(rows:List<ReversalCandle>,pivotIndex:Int,leftBars:Int=3,rightBars:Int=3,asOfIndex:Int=rows.lastIndex):Boolean {
- if (pivotIndex < 0 || pivotIndex >= rows.size || asOfIndex >= rows.size ||
-     pivotIndex + rightBars > asOfIndex) return false
- return ScannerCalculationCore.confirmedPivots(
-  rows.map { it.high }, rows.map { it.low }, leftBars, rightBars
- ).any { it.isHigh && it.index == pivotIndex }
-}
 internal fun resolveReversalBar(isLong:Boolean,entry:Double,stop:Double,target:Double,c:ReversalCandle):ReversalBarOutcome {
  if(!listOf(entry,stop,target,c.high,c.low).all{it.isFinite()}||entry<=0||stop<=0||target<=0||c.high<c.low)return ReversalBarOutcome(-1.0)
  val stopped=if(isLong)c.low<=stop else c.high>=stop
@@ -35,7 +28,7 @@ internal fun resolveReversalBar(isLong:Boolean,entry:Double,stop:Double,target:D
  return when { stopped->ReversalBarOutcome(-1.0);targeted->ReversalBarOutcome(if(isLong)(target-entry)/abs(entry-stop) else (entry-target)/abs(entry-stop));else->ReversalBarOutcome(null) }
 }
 internal object ConfirmedReversalEngine {
- const val INTERVAL="15m";const val MIN_SCORE=65;const val TARGET_R=2.0
+ const val MIN_SCORE=65;const val TARGET_R=2.0
  fun detect(symbol:String,rows:List<ReversalCandle>,leftBars:Int=3,rightBars:Int=3,minimumScore:Int=MIN_SCORE):List<ConfirmedReversalSignal> {
   if(!validReversalCandles(rows)||rows.size<40||leftBars<1||rightBars<1||minimumScore !in 1..100)return emptyList()
   val pivots=ScannerCalculationCore.confirmedPivots(rows.map{it.high},rows.map{it.low},leftBars,rightBars)

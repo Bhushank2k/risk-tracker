@@ -28,22 +28,10 @@ import androidx.compose.animation.animateContentSize
  */
 object RiskTrackerDesign {
     val pagePadding = 18.dp
-    val sectionGap = 18.dp
-    val cardGap = 12.dp
-    val cardPadding = 16.dp
-    val compactCardPadding = 12.dp
-    val pageTitleSize = 22.dp
-    val navigationIconSize = 24.dp
-    val cardRadius = 18.dp
 
-    val canvasDark = Color(0xFF111418)
-    val surfaceDark = Color(0xFF1B2026)
-    val raisedDark = Color(0xFF242B33)
-    val borderDark = Color(0xFF303841)
     val accent = Color(0xFF35B77A)
     val success = Color(0xFF35B77A)
     val warning = Color(0xFFE5AC52)
-    val danger = Color(0xFFE16B70)
     val info = Color(0xFF929DAA)
 
     // Profit and loss: one palette for every screen, chosen by theme for contrast on its surfaces.

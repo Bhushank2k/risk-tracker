@@ -20,7 +20,6 @@ internal data class PaperRiskStatus(
     val openPositions: Int,
     val manualTrackedPositions: Int = 0
 ) {
-    val dailyStopReached: Boolean get() = dailyLossPercent >= 1.5 || consecutiveLosses >= 2
 }
 
 internal object TradeIdeaPaperJournal {
