@@ -30,6 +30,8 @@ package com.risktracker.app
 }
 
 /**
+ * Legacy MACD + RSI confirmation retained for compatibility with existing callers.
+ * The current Confluence V4 scanner uses confluenceRsiMomentumConfirmed instead.
  * Applies momentum confirmation appropriate to the setup family.
  *
  * Trend continuation requires MACD on the side of zero and moving with the trade.
@@ -55,9 +57,9 @@ package com.risktracker.app
 
 /**
  * A transparent 100-point confluence score. Each decision family earns points once:
- * regime, confirmed swing structure, execution, volume, momentum, liquidity, BTC context
- * and stop geometry. Correlated raw indicators are combined within their family (for
- * example RSI + MACD as momentum and spread + depth + imbalance as liquidity), never
+ * regime, confirmed swing structure, execution, volume, momentum, liquidity, BTC context,
+ * stop geometry and ADX/DI. Correlated raw indicators are combined within their family
+ * (for example +DI/-DI with ADX and spread + depth + imbalance for liquidity), never
  * awarded separate points. Mandatory safety gates remain independent of this score.
  */
  fun confluenceScore(
