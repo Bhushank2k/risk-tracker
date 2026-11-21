@@ -23,6 +23,8 @@ object UnifiedBackgroundScanScheduler {
     private const val UNIQUE_WORK = "unified_market_background_scan"
     private const val TRADE_IDEA_WORK = "trade_idea_market_monitor"
     private const val SMC_WORK = "smc_market_background_scan"
+    private const val PREFS = "unified_background_scan_scheduler_v1"
+    private const val INITIAL_SCAN_ENQUEUED = "initial_scan_enqueued"
 
     fun schedule(context: Context) {
         val app = context.applicationContext
@@ -49,14 +51,13 @@ object UnifiedBackgroundScanScheduler {
             periodic
         )
 
-        val now = System.currentTimeMillis()
-        val tradeIdeasStale = TradeIdeaScanHealthStore.load(app).lastSuccessAt.let {
-            it == 0L || now - it >= TimeUnit.MINUTES.toMillis(15)
-        }
-        val smcResultsStale = SMCScanStateStore.resultsUpdatedAt(app).let {
-            it == 0L || now - it >= TimeUnit.MINUTES.toMillis(15)
-        }
-        if (tradeIdeasStale || smcResultsStale) {
+        // Only kick off an automatic startup scan once, and only when there is
+        // no cached SMC result yet. Existing cached signals remain visible on
+        // subsequent launches; periodic work handles routine refreshes and the
+        // user can explicitly retry from the SMC Signals screen after a failure.
+        val startupPrefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val hasCachedSmcResults = SMCScanStateStore.resultsUpdatedAt(app) > 0L
+        if (!hasCachedSmcResults && !startupPrefs.getBoolean(INITIAL_SCAN_ENQUEUED, false)) {
             val startup = OneTimeWorkRequestBuilder<UnifiedBackgroundScanWorker>()
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
@@ -66,6 +67,7 @@ object UnifiedBackgroundScanScheduler {
                 ExistingWorkPolicy.KEEP,
                 startup
             )
+            startupPrefs.edit().putBoolean(INITIAL_SCAN_ENQUEUED, true).apply()
         }
     }
 }
