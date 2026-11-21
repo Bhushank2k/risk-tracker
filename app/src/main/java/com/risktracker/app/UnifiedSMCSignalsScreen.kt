@@ -193,7 +193,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 stop = x.stop, target = x.target, rewardRisk = x.rewardRisk,
                 source = "Core SMC", pattern = "BOS / liquidity sweep / displacement / OB-FVG",
                 status = x.status,
-                explanation = listOf(x.structure, x.sweep, x.displacement, x.zoneDescription, x.location).joinToString("\\n"),
+                explanation = listOf(x.structure, x.sweep, x.displacement, x.zoneDescription, x.location).joinToString("\n"),
                 detectedAt = scanState.coreUpdatedAt
             )
         }
@@ -205,7 +205,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 score = x.score, entryLow = x.entryLow, entryHigh = x.entryHigh,
                 stop = x.stop, target = x.target1, rewardRisk = x.rewardRisk,
                 source = "Advanced SMC", pattern = x.signalType, status = x.status,
-                explanation = x.explanation + "\\n" + x.confirmation,
+                explanation = x.explanation + "\n" + x.confirmation,
                 detectedAt = x.detectedAt
             )
         }
@@ -278,7 +278,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                     row.patterns.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(row.status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     Text("Levels: ${row.levelSource}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Signal candle: ${row.detectedAt.unifiedSignalAge(clockNow)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Source timestamp: ${row.detectedAt.unifiedSignalAge(clockNow)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column { Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${row.entryLow.unifiedPrice()} – ${row.entryHigh.unifiedPrice()}", fontWeight = FontWeight.SemiBold) }
                         Column { Text("Stop", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(row.stop.unifiedPrice(), fontWeight = FontWeight.SemiBold) }
