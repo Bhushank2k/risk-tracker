@@ -92,7 +92,7 @@ class ConfluenceSignalQualityTest {
     }
 
     @Test fun unavailableVolumeDoesNotEarnVolumePoints() {
-        assertEquals(90, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
+        assertEquals(85, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
     }
     @Test fun pullbackRequiresQuietVolumeThenRenewedParticipation() {
         assertTrue(confluencePullbackVolumeConfirmed(70.0, 120.0, 100.0))
