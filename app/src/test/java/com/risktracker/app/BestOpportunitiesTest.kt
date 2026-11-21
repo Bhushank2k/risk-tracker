@@ -104,8 +104,22 @@ class BestOpportunitiesTest {
     @Test fun nonOverlappingEntryAreasAreNotMerged() {
         val rows = buildBestOpportunities(listOf(idea()), listOf(smc(low = 105.0, high = 106.0)), 60_000L, 1_050_000L)
         assertEquals(2, rows.size)
-        assertTrue(rows.all { it.sources.size == 1 })
+        assertTrue(rows.all { it.idea == null || it.smc == null })
         assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
+    }
+
+    @Test fun differentHorizonsAreNotMerged() {
+        val swing = smc().copy(horizon = "Swing")
+        val rows = buildBestOpportunities(listOf(idea()), listOf(swing), 60_000L, 1_050_000L)
+        assertEquals(2, rows.size)
+        assertTrue(rows.all { it.idea == null || it.smc == null })
+        assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
+    }
+
+    @Test fun staleDailySnapshotWaitsForRefreshInsteadOfBeingRejected() {
+        val rows = buildBestOpportunities(listOf(idea()), listOf(smc()), 61L * 60L * 1000L, 1_050_000L)
+        assertEquals(BestOpportunityStatus.WAITING, rows.single().status)
+        assertEquals(TradeIdeaEligibilityState.AVOID, rows.single().eligibility?.state)
     }
 
     @Test fun hardRiskFailureIsRejectedRatherThanConfirmed() {
