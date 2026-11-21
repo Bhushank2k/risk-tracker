@@ -788,12 +788,14 @@ internal object BinanceMarketScanner {
         val coreSetups = mutableListOf<SMCTradeSetup>()
         val advancedSignals = mutableListOf<AdvancedSMCSignal>()
         var completed = 0
+        val failedSymbols = java.util.concurrent.atomic.AtomicInteger(0)
 
         for (batch in universe.chunked(4)) {
             coroutineContext.ensureActive()
             val batchResults = coroutineScope {
                 batch.map { (symbol, _, snapshotLast) ->
                     async {
+                        try {
                         // Keep the shared 24h universe snapshot reusable while preferring
                         // the live aggregate ticker for price-sensitive SMC evaluation.
                         val last = BinanceFuturesStream.latestTicker(symbol)?.first ?: snapshotLast
@@ -816,6 +818,24 @@ internal object BinanceMarketScanner {
                         val m15 = candleSets[3]
                         val m5 = candleSets[4]
                         val m1 = candleSets[5]
+                        // Reject cached snapshots when a newer exchange candle should exist.
+                        val now = System.currentTimeMillis()
+                        fun fresh(rows: List<ScanCandle>, maxAgeMs: Long): Boolean {
+                            val closeTime = rows.lastOrNull()?.closeTime ?: return false
+                            val age = now - closeTime
+                            return age in 0..maxAgeMs
+                        }
+                        val snapshotFresh =
+                            fresh(d1, 30L * 60L * 60L * 1000L) &&
+                            fresh(h4, 6L * 60L * 60L * 1000L) &&
+                            fresh(h1, 90L * 60L * 1000L) &&
+                            fresh(m15, 25L * 60L * 1000L) &&
+                            fresh(m5, 10L * 60L * 1000L) &&
+                            fresh(m1, 3L * 60L * 1000L)
+                        if (!snapshotFresh) {
+                            failedSymbols.incrementAndGet()
+                            return@async emptyList<SMCTradeSetup>() to emptyList<AdvancedSMCSignal>()
+                        }
 
                         // Use the same larger cached candle responses as Daily Trade Ideas,
                         // but preserve the exact history windows used by the SMC engines before
@@ -840,6 +860,12 @@ internal object BinanceMarketScanner {
                                 AdvancedSMCSignalEngine.evaluate(symbol, last, advancedM15, advancedM5, btcM15, "Scalp")
                         }
                         core to advanced
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            failedSymbols.incrementAndGet()
+                            emptyList<SMCTradeSetup>() to emptyList<AdvancedSMCSignal>()
+                        }
                     }
                 }.awaitAll()
             }
@@ -848,7 +874,7 @@ internal object BinanceMarketScanner {
                 advancedSignals.addAll(advanced)
             }
             completed += batch.size
-            report("Unified SMC · $completed/${universe.size} markets checked · ${coreSetups.size + advancedSignals.size} engine candidates…")
+            report("Unified SMC · $completed/${universe.size} markets checked · ${coreSetups.size + advancedSignals.size} engine candidates · ${failedSymbols.get()} stale/failed markets skipped…")
             withContext(Dispatchers.Main.immediate) { onProgress(completed, universe.size) }
         }
 
@@ -858,7 +884,7 @@ internal object BinanceMarketScanner {
         val coreResults = rankedCore.distinctBy { it.id }
         val advancedResults = advancedSignals.distinctBy { it.id }
             .sortedWith(compareByDescending<AdvancedSMCSignal> { it.score }.thenByDescending { it.rewardRisk })
-        report("Unified SMC complete · all ${universe.size} markets scanned · Core ${coreResults.size} · Advanced ${advancedResults.size} signals retained.")
+        report("Unified SMC complete · ${universe.size} markets checked · ${failedSymbols.get()} stale/failed markets skipped · Core ${coreResults.size} · Advanced ${advancedResults.size} signals retained.")
         UnifiedSMCScanResults(coreResults, advancedResults)
     } }
 
@@ -886,9 +912,11 @@ internal object BinanceMarketScanner {
         symbol: String, livePrice: Double, horizon: String,
         contextRows: List<ScanCandle>, setupRowsRaw: List<ScanCandle>, executionRows: List<ScanCandle>
     ): SMCTradeSetup? {
-        val context = contextRows.dropLast(1)
-        val rows = setupRowsRaw.dropLast(1)
-        val execution = executionRows.dropLast(1)
+        // cachedCandles() already excludes the still-forming Binance candle.
+        // Keep the latest completed candle for SMC context, setup and execution.
+        val context = contextRows
+        val rows = setupRowsRaw
+        val execution = executionRows
         if (context.size < 20 || rows.size < 35 || execution.size < 20 || livePrice <= 0.0) return null
         val bullish = hasHigherHighsAndLows(context)
         val bearish = hasLowerHighsAndLows(context)
@@ -980,7 +1008,7 @@ internal object BinanceMarketScanner {
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
             market, t.quoteVolume, btcBias, "Scalp", btcShock)?.let {
             buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,
-                trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H", runBacktest = true)
+                trendRows = m15, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "15M", runBacktest = true)
         }
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
             market, t.quoteVolume, btcBias, "Intraday", btcShock)?.let {
@@ -990,7 +1018,7 @@ internal object BinanceMarketScanner {
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
             market, t.quoteVolume, btcBias, "Swing", btcShock)?.let {
             buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true,
-                trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D", runBacktest = true)
+                trendRows = h4, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "4H", runBacktest = true)
         }
         return listOfNotNull(scalp, intraday, swing)
     }
