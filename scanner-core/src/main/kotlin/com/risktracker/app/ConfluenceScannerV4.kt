@@ -188,7 +188,7 @@ import kotlin.math.min
             // continuation setups prefer directional strength aligned with the trade.
             val adxConfirmed = directional?.let { strength ->
                 if (s.range) strength.adx < 25.0
-                else strength.adx >= 20.0 && if (long) strength.plusDi > strength.minusDi else strength.minusDi > strength.plusDi
+                else strength.adx >= 20.0 && (if (long) strength.plusDi > strength.minusDi else strength.minusDi > strength.plusDi)
             } ?: false
             val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)
             val volumeConfirmed = rv >= requiredRelativeVolume
