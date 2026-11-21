@@ -53,6 +53,14 @@ class ConfluenceSignalQualityTest {
         assertEquals(100, withAdx)
     }
 
+    @Test fun unknownBtcContextEarnsNoNeutralContextPoints() {
+        val unknown = confluenceScore(
+            true, true, true, 1.5, true, true, false, true,
+            adxConfirmed = true, btcContextAvailable = false
+        )
+        assertEquals(95, unknown)
+    }
+
     @Test fun fullConfluenceScoreTotalsOneHundred() {
         assertEquals(100, confluenceScore(true, true, true, 1.5, true, true, false, true))
     }
