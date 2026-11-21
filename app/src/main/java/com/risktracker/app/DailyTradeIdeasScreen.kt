@@ -1164,6 +1164,7 @@ private fun DailyTradeIdeasFeedScreen() {
     val loading = scanUi.loading
     val smcScanUi by UnifiedSMCScanManager.state.collectAsState()
     val combinedLoading = loading || smcScanUi.loading
+    val canStartCombined = !(loading && smcScanUi.loading)
     val status = scanUi.status
     val error = scanUi.error
     val updatedAt = scanUi.updatedAt
@@ -1358,7 +1359,7 @@ private fun DailyTradeIdeasFeedScreen() {
                         }
                         TextButton(onClick = { scanExpanded = !scanExpanded }) { Text(if (scanExpanded) "Less" else "Details") }
                     }
-                    Button(onClick = { refresh() }, enabled = !combinedLoading, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { refresh() }, enabled = canStartCombined, modifier = Modifier.fillMaxWidth()) {
                         if (combinedLoading) {
                             CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(9.dp))
