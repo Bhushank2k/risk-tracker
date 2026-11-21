@@ -1,5 +1,34 @@
 package com.risktracker.app
 
+/** RSI-only momentum confirmation; MACD is intentionally no longer a scored dependency. */
+ fun confluenceRsiMomentumConfirmed(side: String, rangeReversal: Boolean, rsi: Double): Boolean {
+    if (!rsi.isFinite()) return false
+    return when (side) {
+        "LONG" -> if (rangeReversal) rsi <= 42.0 else rsi in 38.0..72.0
+        "SHORT" -> if (rangeReversal) rsi >= 58.0 else rsi in 28.0..62.0
+        else -> false
+    }
+}
+
+/** Detect a large completed-candle BTC impulse; this is a warning, never a trade veto. */
+ fun detectDirectionalShock(
+    candles: List<V2Candle>, now: Long, maxAgeMillis: Long = 30 * 60_000L,
+    thresholdPct: Double = 1.0
+): String? {
+    if (candles.size < 2 || maxAgeMillis < 0L || !thresholdPct.isFinite() || thresholdPct <= 0.0) return null
+    val latest = candles.last()
+    val previous = candles[candles.lastIndex - 1]
+    if (!isTradeIdeaCandleClosed(latest.closeTime, now) ||
+        now - latest.closeTime > maxAgeMillis || previous.close <= 0.0 ||
+        !latest.close.isFinite() || !previous.close.isFinite()) return null
+    val movePct = (latest.close - previous.close) / previous.close * 100.0
+    return when {
+        !movePct.isFinite() || abs(movePct) < thresholdPct -> null
+        movePct > 0.0 -> "Bullish"
+        else -> "Bearish"
+    }
+}
+
 /**
  * Applies momentum confirmation appropriate to the setup family.
  *
@@ -39,7 +68,8 @@ package com.risktracker.app
     momentumConfirmed: Boolean,
     liquidityConfirmed: Boolean,
     btcAgainst: Boolean,
-    stopGeometryConfirmed: Boolean
+    stopGeometryConfirmed: Boolean,
+    adxConfirmed: Boolean = true
 ): Int {
     val volumePoints = when {
         !relativeVolume.isFinite() -> 0
@@ -49,14 +79,15 @@ package com.risktracker.app
         relativeVolume >= 0.9 -> 2
         else -> 0
     }
-    return (if (regimeConfirmed) 20 else 0) +
+    return (if (regimeConfirmed) 15 else 0) +
         (if (structureConfirmed) 25 else 0) +
         (if (entryConfirmed) 15 else 0) +
         volumePoints +
         (if (momentumConfirmed) 10 else 0) +
         (if (liquidityConfirmed) 10 else 0) +
         (if (btcAgainst) 2 else 5) +
-        (if (stopGeometryConfirmed) 5 else 0)
+        (if (stopGeometryConfirmed) 5 else 0) +
+        (if (adxConfirmed) 5 else 0)
 }
 
 /** Require quiet pullback volume followed by renewed participation on the reclaim candle. */
