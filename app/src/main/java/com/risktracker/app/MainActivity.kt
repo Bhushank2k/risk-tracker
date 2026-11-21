@@ -104,6 +104,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     30 -> Icons.Filled.ShowChart
     31 -> Icons.Filled.ShowChart
     32 -> Icons.Filled.ShowChart
+    33 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -253,7 +254,10 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
             "Live positions & orders" to 16,
             "Position & leverage calculator" to 2
         ),
-        "MARKET DISCOVERY" to listOf("Coin Explosion Radar" to 32),
+        "MARKET INTELLIGENCE" to listOf(
+            "Unified SMC Signals" to 33,
+            "Coin Explosion Radar" to 32
+        ),
         "PERFORMANCE & REPORTS" to listOf(
             "P&L Calendar" to 23,
             "Crypto tax report" to 9
@@ -289,6 +293,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> "P&L Calendar"
                 29 -> "Explore"
                 32 -> "Coin Explosion Radar"
+                33 -> "Unified SMC Signals"
             else -> "Explore"
             }
 
@@ -476,6 +481,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
                 32 -> CoinExplosionRadarScreen()
+                33 -> UnifiedSMCSignalsScreen(onOpenTradeIdeas = { tab = 21 })
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
@@ -497,7 +503,7 @@ private fun ExploreScreen(
 ) {
     val categoryAccents = mapOf(
         "TRADING & TOOLS" to Color(0xFF2874DC),
-        "MARKET DISCOVERY" to Color(0xFF159B68),
+        "MARKET INTELLIGENCE" to Color(0xFF159B68),
         "PERFORMANCE & REPORTS" to Color(0xFF9254D1),
         "EXCHANGE & ACCOUNT" to Color(0xFFDB8730),
         "APP" to Color(0xFFD45B83)
