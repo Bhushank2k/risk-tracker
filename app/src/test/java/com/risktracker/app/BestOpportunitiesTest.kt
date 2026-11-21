@@ -104,7 +104,7 @@ class BestOpportunitiesTest {
     @Test fun nonOverlappingEntryAreasAreNotMerged() {
         val rows = buildBestOpportunities(listOf(idea()), listOf(smc(low = 105.0, high = 106.0)), 60_000L, 1_050_000L)
         assertEquals(2, rows.size)
-        assertTrue(rows.all { it.sources.size == 1 })
+        assertTrue(rows.all { it.idea == null || it.smc == null })
         assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
     }
 
