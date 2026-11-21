@@ -1,7 +1,7 @@
 # Repository cleanup audit — balanced consolidation
 
 **Status:** Phase 1 audit complete; Phase 2 navigation consolidation implemented in PR #396  
-**Base reviewed:** `main` at `f199c8b3ea1962a11670c64b768d708d0034095b`  
+**Base reviewed:** `main` at `df60d5bfa74465c5a70874a22bae2a4a69457771`  
 **Policy:** No feature, worker, store, model, scanner, historical record or calculation is deleted in this change.
 
 ## Goals
