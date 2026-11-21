@@ -19,6 +19,35 @@ class ScannerCalculationCoreTest {
         assertNotEquals(simple!!, wilder!!)
     }
 
+    @Test fun adxAndDirectionalIndicatorsIdentifyStrongUptrend() {
+        val closes = (0 until 40).map { 100.0 + it }
+        val highs = closes.map { it + 1.0 }
+        val lows = closes.map { it - 1.0 }
+        val strength = ScannerCalculationCore.directionalStrength(highs, lows, closes)
+        val value = strength ?: error("Expected directional strength")
+        assertTrue(value.adx > 25.0)
+        assertTrue(value.plusDi > value.minusDi)
+    }
+
+    @Test fun adxAndDirectionalIndicatorsIdentifyStrongDowntrend() {
+        val closes = (0 until 40).map { 140.0 - it }
+        val highs = closes.map { it + 1.0 }
+        val lows = closes.map { it - 1.0 }
+        val strength = ScannerCalculationCore.directionalStrength(highs, lows, closes)
+        val value = strength ?: error("Expected directional strength")
+        assertTrue(value.adx > 25.0)
+        assertTrue(value.minusDi > value.plusDi)
+    }
+
+    @Test fun adxRejectsInsufficientOrInvalidCandleData() {
+        assertNull(ScannerCalculationCore.directionalStrength(
+            listOf(2.0, 3.0), listOf(1.0, 2.0), listOf(1.5, 2.5)
+        ))
+        assertNull(ScannerCalculationCore.directionalStrength(
+            listOf(2.0, Double.NaN), listOf(1.0, 2.0), listOf(1.5, 2.5)
+        ))
+    }
+
     @Test fun atrUsesSimpleMeanOfLastTrueRanges() {
         val highs = (0..14).map { 12.0 }
         val lows = (0..14).map { 10.0 }

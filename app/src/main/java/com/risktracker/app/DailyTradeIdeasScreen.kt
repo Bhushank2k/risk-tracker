@@ -498,15 +498,20 @@ internal object BinanceMarketScanner {
         }
     }
 
-    private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>): String {
+    private fun btcRegime(h4: List<ScanCandle>, h1: List<ScanCandle>, now: Long): String {
+        // Missing or stale benchmark data is explicitly unknown, never silently neutral.
+        if (h4.size < 200 || h1.size < 50) return "Unknown"
+        if (now - h4.last().closeTime !in 0..(8 * 60 * 60_000L) ||
+            now - h1.last().closeTime !in 0..(2 * 60 * 60_000L)) return "Unknown"
         val c4 = h4.map { it.close }; val c1 = h1.map { it.close }
         val e4_20 = ema(c4, 20); val e4_50 = ema(c4, 50); val e4_200 = ema(c4, 200)
-        val e1_20 = ema(c1, 20); val e1_50 = ema(c1, 50); val e1_200 = ema(c1, 200)
-        if (e4_20 == null || e4_50 == null || e4_200 == null || e1_20 == null || e1_50 == null || e1_200 == null) return "Neutral"
-        val bullish = h4.last().close > e4_200 && e4_20 > e4_50 && e4_50 > e4_200 &&
-            h1.last().close > e1_200 && e1_20 > e1_50 && e1_50 > e1_200
-        val bearish = h4.last().close < e4_200 && e4_20 < e4_50 && e4_50 < e4_200 &&
-            h1.last().close < e1_200 && e1_20 < e1_50 && e1_50 < e1_200
+        val e1_20 = ema(c1, 20); val e1_50 = ema(c1, 50)
+        if (e4_20 == null || e4_50 == null || e4_200 == null || e1_20 == null || e1_50 == null) return "Unknown"
+        // 4H establishes the broad regime; 1H confirms it without requiring a slow 1H EMA200 stack.
+        val bullish = h4.last().close > e4_200 && e4_20 > e4_50 &&
+            h1.last().close > e1_50 && e1_20 > e1_50
+        val bearish = h4.last().close < e4_200 && e4_20 < e4_50 &&
+            h1.last().close < e1_50 && e1_20 < e1_50
         return when { bullish -> "Bullish"; bearish -> "Bearish"; else -> "Neutral" }
     }
 
@@ -533,9 +538,25 @@ internal object BinanceMarketScanner {
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
         val btcH1Job = async { cachedCandles("BTCUSDT", "1h", 260) }
+        // Short-term shock detection is optional; a 15M feed failure must not abort the full scan.
+        val btcM15Job = async {
+            try {
+                cachedCandles("BTCUSDT", "15m", 80)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
         val btcH4 = btcH4Job.await()
         val btcH1 = btcH1Job.await()
-        val btcBias = btcRegime(btcH4, btcH1)
+        val btcM15 = btcM15Job.await()
+        val btcNow = System.currentTimeMillis()
+        val btcBias = btcRegime(btcH4, btcH1, btcNow)
+        val btcShock = detectDirectionalShock(
+            btcM15.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
+            btcNow
+        )
 
         // Aggregate ticker/book feeds cover all contracts. Subscribe to order-book
         // depth in supported batches, then evaluate each batch with bounded parallelism.
@@ -621,7 +642,7 @@ internal object BinanceMarketScanner {
                                     quoteVolume = liveTicker?.second ?: ticker.quoteVolume,
                                     changePct = liveTicker?.third ?: ticker.changePct
                                 )
-                                val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4)
+                                val coreIdeas = evaluateModes(live, d1, h4, h1, m15, m5, m1, micro, btcBias, btcH4, btcShock)
                                 // Fetch OI only for existing setups or markets with unusually crowded funding;
                                 // this keeps the optional futures-squeeze check from adding an OI request per coin.
                                 val fundingLooksCrowded = micro.fundingRate?.let { abs(it) >= 0.0005 } == true
@@ -936,22 +957,22 @@ internal object BinanceMarketScanner {
     private fun evaluateModes(
         t: ScanTicker, d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
         m15: List<ScanCandle>, m5: List<ScanCandle>, m1: List<ScanCandle>,
-        micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>
+        micro: MarketMicrostructure, btcBias: String, btcH4: List<ScanCandle>, btcShock: String?
     ): List<TradeIdea> {
         fun candles(rows: List<ScanCandle>) = rows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct, micro.bidDepthUsd, micro.askDepthUsd)
         val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
-            market, t.quoteVolume, btcBias, "Scalp")?.let {
+            market, t.quoteVolume, btcBias, "Scalp", btcShock)?.let {
             buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,
                 trendRows = h1, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "1H", runBacktest = true)
         }
         val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
-            market, t.quoteVolume, btcBias, "Intraday")?.let {
+            market, t.quoteVolume, btcBias, "Intraday", btcShock)?.let {
             buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false,
                 trendRows = h1, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "1H", runBacktest = true)
         }
         val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
-            market, t.quoteVolume, btcBias, "Swing")?.let {
+            market, t.quoteVolume, btcBias, "Swing", btcShock)?.let {
             buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true,
                 trendRows = d1, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "1D", runBacktest = true)
         }

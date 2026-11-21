@@ -27,6 +27,40 @@ class ConfluenceSignalQualityTest {
         assertFalse(confluenceMomentumConfirmed("LONG", true, 40.0, Double.POSITIVE_INFINITY, 0.0))
         assertFalse(confluenceMomentumConfirmed("OTHER", false, 50.0, 0.1, 0.0))
     }
+    @Test fun rsiMomentumCanConfirmWithoutMacdDependency() {
+        assertTrue(confluenceRsiMomentumConfirmed("LONG", false, 55.0))
+        assertTrue(confluenceRsiMomentumConfirmed("SHORT", false, 45.0))
+        assertTrue(confluenceRsiMomentumConfirmed("LONG", true, 40.0))
+        assertTrue(confluenceRsiMomentumConfirmed("SHORT", true, 60.0))
+        assertFalse(confluenceRsiMomentumConfirmed("LONG", false, Double.NaN))
+        assertFalse(confluenceRsiMomentumConfirmed("OTHER", false, 50.0))
+    }
+
+    @Test fun btcImpulseDetectionRequiresFreshCompletedDirectionalCandle() {
+        val candles = listOf(
+            V2Candle(100.5, 99.5, 100.0, 10.0, 60_000L),
+            V2Candle(101.5, 100.0, 101.2, 12.0, 90_000L)
+        )
+        assertEquals("Bullish", detectDirectionalShock(candles, 100_000L))
+        assertNull(detectDirectionalShock(candles, 2_000_000L))
+        assertNull(detectDirectionalShock(candles, 100_000L, thresholdPct = 1.5))
+    }
+
+    @Test fun adxContributionIsSupportingFivePointConfluenceOnly() {
+        val withoutAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = false)
+        val withAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = true)
+        assertEquals(95, withoutAdx)
+        assertEquals(100, withAdx)
+    }
+
+    @Test fun unknownBtcContextEarnsNoNeutralContextPoints() {
+        val unknown = confluenceScore(
+            true, true, true, 1.5, true, true, false, true,
+            adxConfirmed = true, btcContextAvailable = false
+        )
+        assertEquals(95, unknown)
+    }
+
     @Test fun fullConfluenceScoreTotalsOneHundred() {
         assertEquals(100, confluenceScore(true, true, true, 1.5, true, true, false, true))
     }
