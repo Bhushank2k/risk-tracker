@@ -86,20 +86,22 @@ class UnifiedBackgroundScanWorker(
 
             BinanceMarketScanner.initialize(app)
             SMCScanStateStore.update(app, 0, 0, true, "Loading liquid USDT perpetual markets…")
-            val smcResult = BinanceMarketScanner.scanUnifiedSmc(
-                progress = { message ->
-                    val old = SMCScanStateStore.status(app)
-                    SMCScanStateStore.update(
-                        app, old.optInt("scanned"), old.optInt("total"), true, message
-                    )
-                },
-                onProgress = { scanned, total ->
-                    val old = SMCScanStateStore.status(app)
-                    SMCScanStateStore.update(
-                        app, scanned, total, true, old.optString("message")
-                    )
-                }
-            )
+            val smcResult = withMarketDataRetry {
+                BinanceMarketScanner.scanUnifiedSmc(
+                    progress = { message ->
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(
+                            app, old.optInt("scanned"), old.optInt("total"), true, message
+                        )
+                    },
+                    onProgress = { scanned, total ->
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(
+                            app, scanned, total, true, old.optString("message")
+                        )
+                    }
+                )
+            }
 
             // One SMC pass populates both signal stores.
             AdvancedSMCSignalStore.save(app, smcResult.advanced)
@@ -122,7 +124,9 @@ class UnifiedBackgroundScanWorker(
                 old.optInt("scanned"),
                 old.optInt("total"),
                 false,
-                "Background scan failed: ${e.message ?: "network error"}"
+                if (e.isDnsResolutionFailure()) {
+                    "Background scan paused: Binance DNS lookup failed. WorkManager will retry when network is available; cached signals are preserved."
+                } else "Background scan failed: ${e.message ?: "network error"}"
             )
             TradeIdeaScanHealthStore.failed(app, e.message ?: "Unified background market scan failed")
             Result.retry()
