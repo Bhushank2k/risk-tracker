@@ -171,7 +171,11 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val progress = scanState.progress
     val scanned = scanState.scanned
     val total = scanState.total
-    val resultAgeMs = if (scanState.updatedAt > 0L) (System.currentTimeMillis() - scanState.updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+    var clockNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(60_000); clockNow = System.currentTimeMillis() }
+    }
+    val resultAgeMs = if (scanState.updatedAt > 0L) (clockNow - scanState.updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
     val resultsStale = resultAgeMs > 15L * 60L * 1000L
     var filter by remember { mutableStateOf("All") }
     var horizon by remember { mutableStateOf("All") }
