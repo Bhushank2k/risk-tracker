@@ -283,7 +283,7 @@ import kotlin.math.min
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (required ≥${requiredRelativeVolume}× for ${s.name})",
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+(if(momentum)" · momentum aligned" else " · momentum not aligned"),
-                "1H ADX/DI "+(directional?.let { "ADX %.1f · +DI %.1f · -DI %.1f".format(java.util.Locale.US,it.adx,it.plusDi,it.minusDi) } ?: "unavailable")+(if(adxConfirmed)" (supportive)" else " (not supportive; scoring only)"),
+                "${bias1Label} ADX/DI "+(directional?.let { "ADX %.1f · +DI %.1f · -DI %.1f".format(java.util.Locale.US,it.adx,it.plusDi,it.minusDi) } ?: "unavailable")+(if(adxConfirmed)" (supportive)" else " (not supportive; scoring only)"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
                 "BTC regime "+(btcBias?:"Unknown")+(if(btcRegimeAgainst)" (headwind, not veto)" else " (context only)"),
                 if (btcShock != null) "BTC 15M impulse "+btcShock+(if(btcShockAgainst)" against setup (risk warning, not veto)" else " (context warning)") else "No fresh BTC 15M impulse warning",
