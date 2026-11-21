@@ -24,16 +24,18 @@ internal class AdvancedSMCScanWorker(context: Context, params: WorkerParameters)
         return try {
             BinanceMarketScanner.initialize(app)
             AdvancedSMCSignalStore.update(app, 0, 0, true, "Loading advanced SMC markets…")
-            val signals = BinanceMarketScanner.scanAdvancedSmc(
-                progress = { message ->
-                    val old = AdvancedSMCSignalStore.status(app)
-                    AdvancedSMCSignalStore.update(app, old.optInt("scanned"), old.optInt("total"), true, message)
-                },
-                onProgress = { scanned, total ->
-                    val old = AdvancedSMCSignalStore.status(app)
-                    AdvancedSMCSignalStore.update(app, scanned, total, true, old.optString("message"))
-                }
-            )
+            val signals = withMarketDataRetry {
+                BinanceMarketScanner.scanAdvancedSmc(
+                    progress = { message ->
+                        val old = AdvancedSMCSignalStore.status(app)
+                        AdvancedSMCSignalStore.update(app, old.optInt("scanned"), old.optInt("total"), true, message)
+                    },
+                    onProgress = { scanned, total ->
+                        val old = AdvancedSMCSignalStore.status(app)
+                        AdvancedSMCSignalStore.update(app, scanned, total, true, old.optString("message"))
+                    }
+                )
+            }
             AdvancedSMCSignalStore.save(app, signals)
             val total = AdvancedSMCSignalStore.status(app).optInt("total")
             AdvancedSMCSignalStore.update(app, total, total, false, "Background scan complete · ${signals.size} advanced SMC ideas")
