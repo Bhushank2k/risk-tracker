@@ -1016,7 +1016,8 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
                 maxHoldingBars = when { plan.horizon.startsWith("Scalp", true) -> 48; plan.horizon.startsWith("Swing", true) -> 72; else -> 96 },
                 setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 },
-                executionBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 1; plan.horizon.startsWith("Swing", true) -> 15; else -> 5 }
+                executionBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 1; plan.horizon.startsWith("Swing", true) -> 15; else -> 5 },
+                horizon = plan.horizon.substringBefore(" ")
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)

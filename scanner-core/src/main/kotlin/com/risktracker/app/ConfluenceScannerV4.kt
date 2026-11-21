@@ -65,22 +65,31 @@ import kotlin.math.min
 /** Unified Confluence V4: trend pullback, breakout/retest and range reversal share one risk engine. */
  object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
-    fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
+    /**
+     * Scores one horizon at the end of the supplied candle lists.
+     * [contextCandles] = higher-timeframe context, [trendCandles] = directional filter, [setupCandles] = setup
+     * timeframe, [executionCandles] = entry-confirmation timeframe. Every list must end at the decision time.
+     * [nowMillis] is the decision clock; replay passes the decision bar's close time so that only
+     * candles closed by then count as fresh. [applyMarketFilters] = false skips the spread, order-book,
+     * funding and 24h-volume gates, which need live data that replay does not store.
+     */
+    fun evaluate(contextCandles: List<V2Candle>, trendCandles: List<V2Candle>, setupCandles: List<V2Candle>, executionCandles: List<V2Candle>,
         micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday",
-        btcShock: String? = null): V2TradePlan? {
+        btcShock: String? = null, nowMillis: Long = System.currentTimeMillis(),
+        applyMarketFilters: Boolean = true): V2TradePlan? {
         if (horizon !in setOf("Intraday", "Scalp", "Swing")) return null
-        if (h4.size < 50 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
-        if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
-        val now = System.currentTimeMillis()
+        if (contextCandles.size < 50 || trendCandles.size < 50 || setupCandles.size < 45 || executionCandles.size < 30 || (applyMarketFilters && !isTradeIdeaVolumeEligible(quoteVolume))) return null
+        if (!valid(contextCandles) || !valid(trendCandles) || !valid(setupCandles) || !valid(executionCandles)) return null
+        val now = nowMillis
         val freshness = when (horizon) {
             "Scalp" -> longArrayOf(2 * 3600000L, 30 * 60000L, 15 * 60000L, 5 * 60000L)
             "Swing" -> longArrayOf(48 * 3600000L, 8 * 3600000L, 2 * 3600000L, 30 * 60000L)
             else -> longArrayOf(8 * 3600000L, 2 * 3600000L, 30 * 60000L, 15 * 60000L)
         }
         // Only evaluate exchange candles whose close timestamps have passed.
-        if (!fresh(h4.last().closeTime,now,freshness[0]) || !fresh(h1.last().closeTime,now,freshness[1]) ||
-            !fresh(m15.last().closeTime,now,freshness[2]) || !fresh(m5.last().closeTime,now,freshness[3])) return null
-        val c4=h4.map{it.close}; val c1=h1.map{it.close}; val c15=m15.map{it.close}; val c5=m5.map{it.close}
+        if (!fresh(contextCandles.last().closeTime,now,freshness[0]) || !fresh(trendCandles.last().closeTime,now,freshness[1]) ||
+            !fresh(setupCandles.last().closeTime,now,freshness[2]) || !fresh(executionCandles.last().closeTime,now,freshness[3])) return null
+        val c4=contextCandles.map{it.close}; val c1=trendCandles.map{it.close}; val c15=setupCandles.map{it.close}; val c5=executionCandles.map{it.close}
         // Inputs are ordered by role (context, trend, setup, execution) and
         // evaluateModes supplies genuinely distinct exchange intervals per horizon.
         val bias1Label = when (horizon) { "Scalp" -> "15M"; "Swing" -> "4H"; else -> "1H" }
@@ -91,48 +100,48 @@ import kotlin.math.min
         val e420=ema(c4,20)?:return null; val e450=ema(c4,50)
         val e120=ema(c1,20)?:return null; val e150=ema(c1,50)?:return null
         val e1520=ema(c15,20)?:return null; val e59=ema(c5,9)?:return null; val e521=ema(c5,21)?:return null
-        val atr=atr(m15)?:return null
-        val baselineAtr=atr(m15.dropLast(14))?:return null
-        val cur=m15.last(); val prev=m15[m15.lastIndex-1]; val exec=m5.last()
-        val up4=e450?.let { h4.last().close>it&&e420>it } ?: false
-        val dn4=e450?.let { h4.last().close<it&&e420<it } ?: false
-        val up1=h1.last().close>e150&&e120>e150; val dn1=h1.last().close<e150&&e120<e150
+        val atr=atr(setupCandles)?:return null
+        val baselineAtr=atr(setupCandles.dropLast(14))?:return null
+        val cur=setupCandles.last(); val prev=setupCandles[setupCandles.lastIndex-1]; val exec=executionCandles.last()
+        val up4=e450?.let { contextCandles.last().close>it&&e420>it } ?: false
+        val dn4=e450?.let { contextCandles.last().close<it&&e420<it } ?: false
+        val up1=trendCandles.last().close>e150&&e120>e150; val dn1=trendCandles.last().close<e150&&e120<e150
         // 1H is the primary intraday directional filter; 4H remains contextual and may be neutral.
         val up=up1; val down=dn1
-        val h1Structure = classifyTradeIdeaStructure(h1)
-        val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/h4.last().close*100<=1.2&&abs(e120-e150)/h1.last().close*100<=.8
-        val avg=ScannerCalculationCore.averageVolume(m15.map { it.volume },20,excludeLast=true) ?: 0.0
+        val h1Structure = classifyTradeIdeaStructure(trendCandles)
+        val rangeMode=!up&&!down&&e450!=null&&abs(e420-e450)/contextCandles.last().close*100<=1.2&&abs(e120-e150)/trendCandles.last().close*100<=.8
+        val avg=ScannerCalculationCore.averageVolume(setupCandles.map { it.volume },20,excludeLast=true) ?: 0.0
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
         val directional = ScannerCalculationCore.directionalStrength(
-            h1.map { it.high }, h1.map { it.low }, h1.map { it.close }, 14
+            trendCandles.map { it.high }, trendCandles.map { it.low }, trendCandles.map { it.close }, 14
         )
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close&&confluencePullbackVolumeConfirmed(prev.volume,cur.volume,avg))
             setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 reclaim after quiet pullback volume and renewed participation"))
         if(down&&cur.high>=e1520-atr*.2&&cur.high<=e1520+atr*.7&&cur.close<e1520&&cur.close<prev.close&&confluencePullbackVolumeConfirmed(prev.volume,cur.volume,avg))
             setups.add(Setup("Trend pullback","SHORT",e1520,false,"${setupLabel} EMA20 rejection after quiet pullback volume and renewed participation"))
-        for(i in (m15.lastIndex-4).coerceAtLeast(20) until m15.lastIndex){
-            val hist=m15.subList(i-20,i); val av=hist.map{it.volume}.average()
-            if(av<=0||m15[i].volume/av<1.25)continue
+        for(i in (setupCandles.lastIndex-4).coerceAtLeast(20) until setupCandles.lastIndex){
+            val hist=setupCandles.subList(i-20,i); val av=hist.map{it.volume}.average()
+            if(av<=0||setupCandles[i].volume/av<1.25)continue
             val hi=hist.maxOf{it.high}; val lo=hist.minOf{it.low}
-            if(up&&m15[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
+            if(up&&setupCandles[i].close>hi&&cur.low<=hi+atr*.25&&cur.close>=hi&&cur.close>=prev.close)
                 setups.add(Setup("Breakout + retest","LONG",hi,false,"${setupLabel} 20-bar breakout on ≥1.25× volume, then retest and hold"))
-            if(down&&m15[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
+            if(down&&setupCandles[i].close<lo&&cur.high>=lo-atr*.25&&cur.close<=lo&&cur.close<=prev.close)
                 setups.add(Setup("Breakout + retest","SHORT",lo,false,"${setupLabel} 20-bar breakdown on ≥1.25× volume, then retest and hold"))
         }
         if(rangeMode){
-            val band=m15.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
+            val band=setupCandles.dropLast(1).takeLast(30); val hi=band.maxOf{it.high}; val lo=band.minOf{it.low}; val width=hi-lo
             if(width>atr*2){
                 val lw=min(cur.open,cur.close)-cur.low; val uw=cur.high-max(cur.open,cur.close)
-                if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42&&hasTradeIdeaLiquiditySweep(m15,"LONG"))
+                if(cur.low<=lo+width*.12&&cur.close>lo&&lw>=abs(cur.close-cur.open)*.8&&rsi<=42&&hasTradeIdeaLiquiditySweep(setupCandles,"LONG"))
                     setups.add(Setup("Range reversal","LONG",lo,true,"Neutral regime; lower-edge liquidity sweep, reclaim and RSI turn"))
-                if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58&&hasTradeIdeaLiquiditySweep(m15,"SHORT"))
+                if(cur.high>=hi-width*.12&&cur.close<hi&&uw>=abs(cur.close-cur.open)*.8&&rsi>=58&&hasTradeIdeaLiquiditySweep(setupCandles,"SHORT"))
                     setups.add(Setup("Range reversal","SHORT",hi,true,"Neutral regime; upper-edge liquidity sweep, reclaim and RSI turn"))
 
                 // Separate range-only Bollinger path. A touch alone is not a signal:
                 // the completed candle must close back inside the outer band.
-                val closes = m15.dropLast(1).takeLast(20).map { it.close }
+                val closes = setupCandles.dropLast(1).takeLast(20).map { it.close }
                 if (closes.size == 20) {
                     val mean = closes.average()
                     val variance = closes.sumOf { (it - mean) * (it - mean) } / closes.size
@@ -154,7 +163,7 @@ import kotlin.math.min
         }
         if(setups.isEmpty())return null
         // History contains both directions, so reconstruct it once per scan, not once per setup.
-        val sequentialHistory = buildSequentialSignalHistory(h4, h1, m15, m5, "LONG")
+        val sequentialHistory = buildSequentialSignalHistory(contextCandles, trendCandles, setupCandles, executionCandles, "LONG")
         val spread=micro.spreadBps; val depth=micro.bookImbalance; val funding=micro.fundingRate
         val bidDepth=micro.bidDepthUsd; val askDepth=micro.askDepthUsd
         return setups.mapNotNull{s->
@@ -164,7 +173,7 @@ import kotlin.math.min
                 else h1Structure == expectedStructure
             val fourHourNotOpposed = if (s.range) !up4 && !dn4 else if (long) !dn4 else !up4
             val structureConfirmed = structureAligned && fourHourNotOpposed
-            val liquiditySweep = hasTradeIdeaLiquiditySweep(m15, s.side)
+            val liquiditySweep = hasTradeIdeaLiquiditySweep(setupCandles, s.side)
             val entryOk=if(long)exec.close>e59&&e59>e521 else exec.close<e59&&e59<e521
             val sequentialDirection = if (long) SmcDirection.BULLISH else SmcDirection.BEARISH
             val signalHistory = sequentialHistory.toMutableList()
@@ -180,9 +189,9 @@ import kotlin.math.min
                 setupLabel = setupLabel,
                 entryLabel = executionLabel
             )
-            val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
-            val fundingOk=isFundingDataAcceptable(s.side, funding)
-            val fundingUnavailable=funding==null||!funding.isFinite()
+            val liquid=!applyMarketFilters||isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
+            val fundingOk=!applyMarketFilters||isFundingDataAcceptable(s.side, funding)
+            val fundingUnavailable=applyMarketFilters&&(funding==null||!funding.isFinite())
             val momentum=confluenceRsiMomentumConfirmed(s.side, s.range, rsi)
             // ADX/DI is supporting evidence, not a hard gate. Ranges prefer a weak trend;
             // continuation setups prefer directional strength aligned with the trade.
@@ -196,7 +205,7 @@ import kotlin.math.min
             val volatility=atrPct in .12..3.0 && confluenceVolatilityExpansionAcceptable(atr,baselineAtr)
             val entry=exec.close
             val extended=confluenceEntryWithinExtension(entry, s.level, atr)
-            val stop=if(long)m15.takeLast(3).minOf{it.low}-atr*.2 else m15.takeLast(3).maxOf{it.high}+atr*.2
+            val stop=if(long)setupCandles.takeLast(3).minOf{it.low}-atr*.2 else setupCandles.takeLast(3).maxOf{it.high}+atr*.2
             val risk=abs(entry-stop); val geometry=risk>=atr*.35&&risk<=atr*2.5&&(if(long)stop<entry else stop>entry)
             // Cost and holding assumptions use the actual setup candle interval.
             val setupBarMinutes = when (horizon) { "Scalp" -> 5; "Swing" -> 60; else -> 15 }
@@ -227,7 +236,7 @@ import kotlin.math.min
                 btcContextAvailable = btcContextAvailable
             )
             // SMC is additive supporting confluence only: it never bypasses a hard safety gate.
-            val smc = evaluateTradeIdeaSmc(m15, s.side, atr)
+            val smc = evaluateTradeIdeaSmc(setupCandles, s.side, atr)
             val score = (baseScore + smc.points).coerceAtMost(100)
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R net R:R")
@@ -258,7 +267,7 @@ import kotlin.math.min
                 !liquid->"BLOCK: Spread must be ≤10 bps, both 5-level book sides must each show ≥$15k depth, and directional imbalance must be acceptable."
                 !geometry->"BLOCK: Structural stop is invalid or outside 0.35–2.5 ATR."
                 !rr->"BLOCK: Target 1 estimated net reward/risk is below 2R after costs."
-                !horizonSupported->"BLOCK: This mode is not validated. Current scanner inputs are H4/H1/M15/M5; only Intraday is supported until dedicated timeframe data and execution confirmation are implemented."
+                !horizonSupported->"BLOCK: This mode is not validated. Current scanner inputs are H4/H1/M15/M5; the mode is not supported."
                 fundingUnavailable->"BLOCK: Funding data unavailable; READY requires verified funding data."
                 !fundingOk->"BLOCK: Funding is extremely adverse to this direction."
                 !volatility->"BLOCK: ATR% is outside 0.12–3.0% or volatility expanded over 1.8× versus the prior ATR window."
