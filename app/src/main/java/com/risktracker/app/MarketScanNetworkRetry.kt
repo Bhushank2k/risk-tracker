@@ -14,24 +14,20 @@ internal suspend fun <T> withMarketDataRetry(
     maxAttempts: Int = 3,
     operation: suspend () -> T
 ): T {
-    require(maxAttempts >= 1)
+    require(maxAttempts >= 1) { "maxAttempts must be at least 1" }
     var attempt = 0
     while (true) {
         attempt++
         try {
             return operation()
         } catch (error: Exception) {
-            if (!error.isTransientMarketDataFailure() || attempt >= maxAttempts) {
-                if (error.isDnsResolutionFailure()) {
-                    throw IllegalStateException(
-                        "Binance market data is temporarily unreachable (DNS lookup failed for fapi.binance.com). " +
-                            "Check your internet connection or DNS, then retry. Your last successful SMC signals are preserved.",
-                        error
-                    )
-                }
+            val transient = error.isTransientMarketDataFailure()
+            if (!transient || attempt >= maxAttempts) {
+                if (transient) throw error.asMarketDataFailure()
                 throw error
             }
-            delay(1_000L * attempt)
+            // Bounded exponential backoff: 1s, then 2s by default.
+            delay(1_000L shl (attempt - 1).coerceAtMost(4))
         }
     }
 }
@@ -46,3 +42,18 @@ private fun Throwable.isTransientMarketDataFailure(): Boolean =
             it is ConnectException ||
             it is SocketException
     }
+
+private fun Throwable.asMarketDataFailure(): IllegalStateException {
+    val causes = generateSequence(this) { it.cause }.toList()
+    val message = when {
+        causes.any { it is UnknownHostException } ->
+            "Binance DNS lookup failed for fapi.binance.com after 3 attempts. Check your internet connection or Private DNS, then tap Retry Scan. Saved signals are unchanged."
+        causes.any { it is SocketTimeoutException } ->
+            "Binance market-data request timed out after retries. Check your connection, then tap Retry Scan. Saved signals are unchanged."
+        causes.any { it is ConnectException || it is SocketException } ->
+            "Could not connect to Binance market data after retries. Check your network or VPN, then tap Retry Scan. Saved signals are unchanged."
+        else ->
+            "Binance market data is temporarily unavailable after retries. Please tap Retry Scan. Saved signals are unchanged."
+    }
+    return IllegalStateException(message, this)
+}
