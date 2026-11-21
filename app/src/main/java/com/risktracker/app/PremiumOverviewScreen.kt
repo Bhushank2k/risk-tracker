@@ -50,7 +50,8 @@ fun RiskOverviewScreen(
     trades: List<TradeEntry>,
     maxDailyLoss: Double,
     onNavigate: (Int) -> Unit,
-    onChange: (List<PnlEntry>) -> Unit
+    onChange: (List<PnlEntry>) -> Unit,
+    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit
 ) {
     val context = LocalContext.current
     val positionsStore = remember { BinanceLivePositionsStore(context) }
@@ -134,6 +135,7 @@ fun RiskOverviewScreen(
                 lastDailyPnlRefresh = refreshedAt
                 val latest = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
                 liveImportedPnl = latest
+                onImportedPnlChange(latest)
                 dailyPnlStatus = "Realized P&L updated from Binance"
             } catch (e: Exception) {
                 dailyPnlStatus = "P&L refresh unavailable · showing saved result" +
