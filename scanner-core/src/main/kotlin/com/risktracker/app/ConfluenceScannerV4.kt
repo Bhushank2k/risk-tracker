@@ -66,7 +66,8 @@ import kotlin.math.min
  object ConfluenceScannerV4 {
     private data class Setup(val name: String, val side: String, val level: Double, val range: Boolean, val detail: String)
     fun evaluate(h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
-        micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday"): V2TradePlan? {
+        micro: V2Microstructure, quoteVolume: Double, btcBias: String?, horizon: String = "Intraday",
+        btcShock: String? = null): V2TradePlan? {
         if (horizon !in setOf("Intraday", "Scalp", "Swing")) return null
         if (h4.size < 50 || h1.size < 50 || m15.size < 45 || m5.size < 30 || !isTradeIdeaVolumeEligible(quoteVolume)) return null
         if (!valid(h4) || !valid(h1) || !valid(m15) || !valid(m5)) return null
@@ -103,8 +104,9 @@ import kotlin.math.min
         val avg=ScannerCalculationCore.averageVolume(m15.map { it.volume },20,excludeLast=true) ?: 0.0
         val rv=if(avg>0)cur.volume/avg else 0.0
         val rsi=rsi(c15)?:return null
-        val macd=(ema(c15,12)?:return null)-(ema(c15,26)?:return null)
-        val prevMacd=(ema(c15.dropLast(1),12)?:macd)-(ema(c15.dropLast(1),26)?:0.0)
+        val directional = ScannerCalculationCore.directionalStrength(
+            h1.map { it.high }, h1.map { it.low }, h1.map { it.close }, 14
+        )
         val setups=mutableListOf<Setup>()
         if(up&&cur.low<=e1520+atr*.2&&cur.low>=e1520-atr*.7&&cur.close>e1520&&cur.close>prev.close&&confluencePullbackVolumeConfirmed(prev.volume,cur.volume,avg))
             setups.add(Setup("Trend pullback","LONG",e1520,false,"${setupLabel} EMA20 reclaim after quiet pullback volume and renewed participation"))
@@ -181,7 +183,13 @@ import kotlin.math.min
             val liquid=isTradeIdeaLiquidityAcceptable(s.side, spread, depth, bidDepth, askDepth)
             val fundingOk=isFundingDataAcceptable(s.side, funding)
             val fundingUnavailable=funding==null||!funding.isFinite()
-            val momentum=confluenceMomentumConfirmed(s.side, s.range, rsi, macd, prevMacd)
+            val momentum=confluenceRsiMomentumConfirmed(s.side, s.range, rsi)
+            // ADX/DI is supporting evidence, not a hard gate. Ranges prefer a weak trend;
+            // continuation setups prefer directional strength aligned with the trade.
+            val adxConfirmed = directional?.let { strength ->
+                if (s.range) strength.adx < 25.0
+                else strength.adx >= 20.0 && if (long) strength.plusDi > strength.minusDi else strength.minusDi > strength.plusDi
+            } ?: false
             val requiredRelativeVolume = confluenceExecutionVolumeThreshold(s.name)
             val volumeConfirmed = rv >= requiredRelativeVolume
             val atrPct=atr/cur.close*100
@@ -200,7 +208,9 @@ import kotlin.math.min
             val t1=entry+sign*risk*target1GrossR; val t2=entry+sign*risk*target2GrossR
             val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(target1GrossR,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
             val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=2.0
-            val btcAgainst=btcBias!=null&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
+            val btcRegimeAgainst=btcBias!=null&&btcBias!="Neutral"&&btcBias!="Unknown"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
+            val btcShockAgainst=btcShock!=null&&(if(long)btcShock=="Bearish" else btcShock=="Bullish")
+            val btcAgainst=btcRegimeAgainst||btcShockAgainst
             val baseScore=confluenceScore(
                 regimeConfirmed = up || down || rangeMode,
                 structureConfirmed = structureConfirmed,
@@ -209,7 +219,8 @@ import kotlin.math.min
                 momentumConfirmed = momentum,
                 liquidityConfirmed = liquid,
                 btcAgainst = btcAgainst,
-                stopGeometryConfirmed = geometry
+                stopGeometryConfirmed = geometry,
+                adxConfirmed = adxConfirmed
             )
             // SMC is additive supporting confluence only: it never bypasses a hard safety gate.
             val smc = evaluateTradeIdeaSmc(m15, s.side, atr)
@@ -262,7 +273,7 @@ import kotlin.math.min
                     if(liquiditySweep) "liquidity sweep and reclaim" else "",
                     if(entryOk) "${executionLabel} EMA9/21 entry confirmed" else "waiting for ${executionLabel} entry confirmation"
                 )),
-                "Confluence score "+score+"/100: regime 20 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · momentum 10 · liquidity 10 · BTC 5 · stop geometry 5",
+                "Confluence score "+score+"/100: regime 15 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · RSI momentum 10 · liquidity 10 · BTC 5 · stop geometry 5 · ADX/DI 5",
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
                 "Sequential signal lifecycle: "+sequential.reason,
                 "${bias1Label} swing structure: "+h1Structure+" · ${bias2Label}: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
@@ -270,9 +281,11 @@ import kotlin.math.min
                 if(s.range)"Range regime: compressed ${bias1Label}/${bias2Label}; reversal restricted to range edges" else "${bias1Label} EMA20/50 directional bias; ${bias2Label} "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral"),
                 if(entryOk)"${executionLabel} EMA9/21 confirms entry" else "Waiting for completed ${executionLabel} EMA9/21 confirmation",
                 "${setupLabel} relative volume "+"%.2f×".format(java.util.Locale.US,rv)+" (required ≥${requiredRelativeVolume}× for ${s.name})",
-                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+" · MACD "+(if(momentum)if(s.range)"turning toward setup" else "aligned" else "not aligned"),
+                "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+(if(momentum)" · momentum aligned" else " · momentum not aligned"),
+                "1H ADX/DI "+(directional?.let { "ADX %.1f · +DI %.1f · -DI %.1f".format(java.util.Locale.US,it.adx,it.plusDi,it.minusDi) } ?: "unavailable")+(if(adxConfirmed)" (supportive)" else " (not supportive; scoring only)"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
-                "BTC regime "+(btcBias?:"unavailable")+(if(btcAgainst)" (headwind, not veto)" else " (context only)"),
+                "BTC regime "+(btcBias?:"Unknown")+(if(btcRegimeAgainst)" (headwind, not veto)" else " (context only)"),
+                if (btcShock != null) "BTC 15M impulse "+btcShock+(if(btcShockAgainst)" against setup (risk warning, not veto)" else " (context warning)") else "No fresh BTC 15M impulse warning",
                 "Risk plan: structural stop + 0.2 ATR; Target 1 is sized for ≥2R net after estimated costs, with Target 2 at least 1R farther.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
                 "$horizon · ${setupLabel} setup / ${executionLabel} execution",
