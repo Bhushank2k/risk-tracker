@@ -259,7 +259,6 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 }
             )
         }
-        }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("All", "LONG", "SHORT").forEach {
                 FilterChip(selected = filter == it, onClick = { filter = it }, label = { Text(it) })
