@@ -516,8 +516,8 @@ private fun ExploreScreen(
             )
         }
         menuGroups.forEachIndexed { groupIndex, (group, destinations) ->
-            val accent = categoryAccents[group] ?: MaterialTheme.colorScheme.primary
             item(key = "explore-heading-$groupIndex") {
+                val accent = categoryAccents[group] ?: MaterialTheme.colorScheme.primary
                 Row(
                     modifier = Modifier.padding(top = 5.dp, bottom = 1.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -561,6 +561,7 @@ private fun ExploreScreen(
                     destinations,
                     key = { destination -> "explore-item-$groupIndex-${destination.second}" }
                 ) { (label, destination) ->
+                    val accent = categoryAccents[group] ?: MaterialTheme.colorScheme.primary
                     ExploreToolRow(
                         label = label,
                         destination = destination,
