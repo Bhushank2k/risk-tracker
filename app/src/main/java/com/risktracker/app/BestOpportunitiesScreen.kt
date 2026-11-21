@@ -36,8 +36,6 @@ internal fun BestOpportunitiesScreen(
             now = System.currentTimeMillis()
         }
     }
-
-    // Snapshot the delegated state property once so Kotlin can smart-cast the local value.
     val tradeUpdatedAt = tradeState.updatedAt
     val tradeAge = when {
         tradeState.partial -> 0L
@@ -149,7 +147,7 @@ internal fun BestOpportunitiesScreen(
             }
         }
         Text(
-            "${visible.size} candidates · ${opportunities.count { it.sources.size > 1 }} cross-scanner matches",
+            "${visible.size} candidates · ${opportunities.count { it.idea != null && it.smc != null }} cross-scanner matches",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold
         )

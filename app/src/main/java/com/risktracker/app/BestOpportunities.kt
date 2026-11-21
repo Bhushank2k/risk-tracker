@@ -59,10 +59,6 @@ internal fun buildBestOpportunities(
         val smcAge = match?.detectedAt?.takeIf { it > 0L }
             ?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
         val smcFresh = match != null && smcAge <= smcFreshnessMs
-
-        val status = when {
-            eligibility.state == TradeIdeaEligibilityState.AVOID -> BestOpportunityStatus.REJECTED
-            opposingSignal -> BestOpportunityStatus.CONFLICT
             !tradeIdeaSnapshotComplete -> BestOpportunityStatus.WAITING
             match != null && smcFresh && eligibility.state == TradeIdeaEligibilityState.READY ->
                 BestOpportunityStatus.CONFIRMED
@@ -113,6 +109,12 @@ private fun statusOrder(status: BestOpportunityStatus): Int = when (status) {
     BestOpportunityStatus.WAITING -> 1
     BestOpportunityStatus.CONFLICT -> 2
     BestOpportunityStatus.REJECTED -> 3
+}
+
+private fun tradeIdeaFreshnessLimit(idea: TradeIdea): Long = when {
+    idea.horizon.contains("scalp", ignoreCase = true) -> 15L * 60L * 1000L
+    idea.horizon.contains("swing", ignoreCase = true) -> 4L * 60L * 60L * 1000L
+    else -> 60L * 60L * 1000L
 }
 
 private fun sameHorizon(a: String, b: String): Boolean {
