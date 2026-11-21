@@ -853,9 +853,6 @@ internal object BinanceMarketScanner {
         }
 
         val rankedCore = coreSetups.sortedByDescending { it.score }
-        val onePerHorizon = listOf("Scalp", "Intraday", "Swing").mapNotNull { h ->
-            rankedCore.firstOrNull { it.horizon == h }
-        }
         // Return every detected signal. Ranking controls display order only; it must
         // never silently discard qualifying coins from the all-market scan results.
         val coreResults = rankedCore.distinctBy { it.id }
