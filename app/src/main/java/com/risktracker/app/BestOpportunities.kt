@@ -40,7 +40,7 @@ internal fun buildBestOpportunities(
 
     smcSignals.sortedByDescending { it.score }.forEach { signal ->
         val match = unmatchedIdeas
-            .filter { it.symbol.equals(signal.symbol, ignoreCase = true) && it.side == signal.side }
+            .filter { it.symbol.equals(signal.symbol, ignoreCase = true) && it.side == signal.side && sameHorizon(it.horizon, signal.horizon) }
             .mapNotNull { idea ->
                 val overlap = entryAgreement(idea, signal) ?: return@mapNotNull null
                 idea to overlap
@@ -119,6 +119,16 @@ private fun statusOrder(status: BestOpportunityStatus): Int = when (status) {
     BestOpportunityStatus.WAITING -> 1
     BestOpportunityStatus.CONFLICT -> 2
     BestOpportunityStatus.REJECTED -> 3
+}
+
+private fun sameHorizon(a: String, b: String): Boolean {
+    fun bucket(value: String): String = when {
+        value.contains("scalp", ignoreCase = true) -> "SCALP"
+        value.contains("intraday", ignoreCase = true) -> "INTRADAY"
+        value.contains("swing", ignoreCase = true) -> "SWING"
+        else -> value.trim().uppercase()
+    }
+    return bucket(a) == bucket(b)
 }
 
 private fun entryAgreement(idea: TradeIdea, smc: UnifiedSMCDisplaySignal): Double? {
