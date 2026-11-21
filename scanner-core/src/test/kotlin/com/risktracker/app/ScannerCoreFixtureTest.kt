@@ -22,7 +22,7 @@ class ScannerCoreFixtureTest {
             V2Candle(close + 1.0, close - 1.0, close, 100.0, i.toLong() + 1L, close)
         }
         val plan = ConfluenceScannerV4.evaluate(
-            h4 = series(50), h1 = series(50), m15 = series(45), m5 = series(30),
+            contextCandles = series(50), trendCandles = series(50), setupCandles = series(45), executionCandles = series(30),
             micro = V2Microstructure(2.0, 0.0, 0.0001, null, 20_000.0, 20_000.0),
             quoteVolume = 3_000_000.0, btcBias = "Neutral", horizon = "Intraday"
         )

@@ -202,9 +202,6 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     var syncedCount by remember { mutableIntStateOf(store.syncedCount) }
     var trades by remember { mutableStateOf(store.loadTrades()) }
     val todayPnlDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    val todayReconciledPnl = remember(entries, importedPnl, trades, todayPnlDate) {
-        reconcileDailyPnl(entries, importedPnl, trades).firstOrNull { it.date == todayPnlDate }
-    }
     var exchangeFills by remember { mutableStateOf(BinanceAutoJournalStore.load(context)) }
     var exchangeSyncStatus by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
     val appScope = rememberCoroutineScope()

@@ -343,9 +343,4 @@ internal object BinanceFuturesStream {
         )
     }
 
-    fun connectionStatus(): String = when {
-        marketSocket != null && publicSocket != null -> "connected"
-        marketSocket != null || publicSocket != null -> "partially connected"
-        else -> "connecting"
-    }
 }

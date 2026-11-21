@@ -21,9 +21,9 @@ internal data class BestOpportunity(
 )
 
 /**
- * Cross-scanner shortlist. A Daily Trade Idea is only paired with an SMC candidate
- * when the direction and entry area agree. Missing execution data never becomes a
- * confirmation: SMC-only and Daily-only rows remain WAITING until both engines agree.
+ * Daily Trade Ideas is the sole source of watchlist rows. SMC can confirm or
+ * conflict with a Daily idea, but SMC-only signals never become standalone
+ * opportunities. Missing or stale confirmation remains WAITING.
  */
 internal fun buildBestOpportunities(
     tradeIdeas: List<TradeIdea>,
@@ -33,82 +33,70 @@ internal fun buildBestOpportunities(
     smcFreshnessMs: Long = 15L * 60L * 1000L,
     tradeIdeaSnapshotComplete: Boolean = true
 ): List<BestOpportunity> {
-    data class Draft(val id: String, val idea: TradeIdea?, val smc: UnifiedSMCDisplaySignal?)
+    val unmatchedSmc = smcSignals.sortedByDescending { it.score }.toMutableList()
 
-    val unmatchedIdeas = tradeIdeas.toMutableList()
-    val drafts = mutableListOf<Draft>()
-
-    smcSignals.sortedByDescending { it.score }.forEach { signal ->
-        val match = unmatchedIdeas
-            .filter { it.symbol.equals(signal.symbol, ignoreCase = true) && it.side == signal.side && sameHorizon(it.horizon, signal.horizon) }
-            .mapNotNull { idea ->
-                val overlap = entryAgreement(idea, signal) ?: return@mapNotNull null
-                idea to overlap
+    val preliminary = tradeIdeas.map { idea ->
+        val match = unmatchedSmc
+            .filter {
+                it.symbol.equals(idea.symbol, ignoreCase = true) &&
+                    it.side == idea.side &&
+                    sameHorizon(it.horizon, idea.horizon)
+            }
+            .mapNotNull { signal ->
+                val agreement = entryAgreement(idea, signal) ?: return@mapNotNull null
+                signal to agreement
             }
             .maxByOrNull { it.second }
             ?.first
-        if (match != null) unmatchedIdeas.remove(match)
-        drafts += Draft(
-            id = "smc:${signal.id}" + (match?.let { "|idea:${ideaIdentity(it)}" } ?: ""),
-            idea = match,
-            smc = signal
-        )
-    }
-    unmatchedIdeas.forEach { idea -> drafts += Draft("idea:${ideaIdentity(idea)}", idea, null) }
+        if (match != null) unmatchedSmc.remove(match)
 
-    val preliminary = drafts.map { draft ->
-        val idea = draft.idea
-        val smc = draft.smc
-        val ideaEligibility = idea?.let { evaluateTradeIdeaEligibility(it, snapshotAgeMs = tradeIdeaSnapshotAgeMs) }
-        val smcAge = smc?.detectedAt?.takeIf { it > 0L }?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
-        val smcFresh = smc != null && smcAge <= smcFreshnessMs
-        val tradeIdeaStale = idea != null && tradeIdeaSnapshotAgeMs > tradeIdeaFreshnessLimit(idea)
-        val status = when {
-            tradeIdeaStale -> BestOpportunityStatus.WAITING
-            ideaEligibility?.state == TradeIdeaEligibilityState.AVOID -> BestOpportunityStatus.REJECTED
+        val opposingSignal = smcSignals.any {
+            it.symbol.equals(idea.symbol, ignoreCase = true) &&
+                it.side != idea.side &&
+                sameHorizon(it.horizon, idea.horizon)
+        }
+        val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs = tradeIdeaSnapshotAgeMs)
+        val smcAge = match?.detectedAt?.takeIf { it > 0L }
+            ?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
+        val smcFresh = match != null && smcAge <= smcFreshnessMs
             !tradeIdeaSnapshotComplete -> BestOpportunityStatus.WAITING
-            idea != null && smc != null && smcFresh &&
-                ideaEligibility?.state == TradeIdeaEligibilityState.READY -> BestOpportunityStatus.CONFIRMED
+            match != null && smcFresh && eligibility.state == TradeIdeaEligibilityState.READY ->
+                BestOpportunityStatus.CONFIRMED
             else -> BestOpportunityStatus.WAITING
         }
-        val sourceScores = listOfNotNull(idea?.score, smc?.score)
-        val priority = (sourceScores.maxOrNull() ?: 0) + if (idea != null && smc != null) 8 else 0
+        val priority = max(idea.score, match?.score ?: 0) + if (match != null) 8 else 0
         val explanation = buildList {
-            if (idea != null) add("Daily Trade Ideas: ${idea.setup} · ${ideaEligibility?.reason ?: "validation pending"}")
-            if (smc != null) add("SMC: ${smc.patterns.joinToString()}. ${if (smcFresh) "Fresh SMC snapshot" else "SMC snapshot is stale or unavailable"}")
-            if (idea == null) add("No matching Daily Trade Idea yet; live spread, depth, funding and execution gates are not confirmed.")
-            if (smc == null) add("No matching SMC structure confirmation yet.")
+            add("Daily Trade Ideas: ${idea.setup} · ${eligibility.reason}")
+            if (match != null) {
+                add("SMC: ${match.patterns.joinToString()}. ${if (smcFresh) "Fresh SMC snapshot" else "SMC snapshot is stale or unavailable"}")
+            } else {
+                add("No matching SMC structure confirmation yet.")
+            }
+            if (opposingSignal) {
+                add("SMC has an opposing ${if (idea.side.equals("LONG", true)) "SHORT" else "LONG"} signal for this symbol and horizon; wait for direction to resolve.")
+            }
         }.joinToString("\n")
+
         BestOpportunity(
-            id = draft.id,
-            symbol = idea?.symbol ?: smc!!.symbol,
-            side = idea?.side ?: smc!!.side,
-            horizon = idea?.horizon ?: smc!!.horizon,
+            id = "idea:${ideaIdentity(idea)}" + (match?.let { "|smc:${it.id}" } ?: ""),
+            symbol = idea.symbol,
+            side = idea.side,
+            horizon = idea.horizon,
             priorityScore = priority.coerceIn(0, 108),
             status = status,
             sources = buildSet {
-                if (idea != null) add("Daily Trade Ideas")
-                if (smc != null) addAll(smc.sources)
+                add("Daily Trade Ideas")
+                if (match != null) addAll(match.sources)
             },
             idea = idea,
-            smc = smc,
-            eligibility = ideaEligibility,
+            smc = match,
+            eligibility = eligibility,
             explanation = explanation,
-            detectedAt = max(idea?.let { now - tradeIdeaSnapshotAgeMs } ?: 0L, smc?.detectedAt ?: 0L)
+            detectedAt = max(now - tradeIdeaSnapshotAgeMs, match?.detectedAt ?: 0L)
         )
     }
 
-    // Opposing directions for one symbol are retained for diagnostics, but neither is promoted.
-    val conflictingSymbols = preliminary.groupBy { it.symbol.uppercase() }
-        .filterValues { rows -> rows.map { it.side }.distinct().size > 1 }
-        .keys
-
-    return preliminary.map { row ->
-        if (row.symbol.uppercase() in conflictingSymbols) row.copy(
-            status = BestOpportunityStatus.CONFLICT,
-            explanation = row.explanation + "\nOpposing LONG/SHORT candidates exist for this symbol across the scanners; wait for direction to resolve."
-        ) else row
-    }.sortedWith(
+    return preliminary.sortedWith(
         compareBy<BestOpportunity> { statusOrder(it.status) }
             .thenByDescending { it.priorityScore }
             .thenBy { it.symbol }

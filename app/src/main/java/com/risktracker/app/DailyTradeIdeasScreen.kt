@@ -541,17 +541,14 @@ internal object BinanceMarketScanner {
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
         val allowed = marketSnapshot.activeUsdtPerpetualCount
-        val prefiltered = marketSnapshot.tickers.filter { isTradeIdeaVolumeEligible(it.quoteVolume) }
-        report("24h filter: ${prefiltered.size} eligible markets from ${allowed} active pairs (minimum $2M), prioritized by quote volume; spread and two-sided depth remain hard gates.")
-        if (prefiltered.isEmpty()) throw IllegalStateException("No liquid USDT perpetual pairs were returned.")
-
-        // Keep every volume-eligible contract in the scan. Use only bulk 24h ticker
-        // fields to prioritize evaluation; expensive candle history is fetched only
-        // when a symbol reaches the bounded deep-validation queue.
-        val candidates = prefiltered.sortedByDescending {
+        // Discover and evaluate every active USDT-M perpetual returned by exchangeInfo.
+        // Liquidity is enforced inside the strategy/risk engine, not as a universe filter,
+        // so lower-volume coins are still scanned and can be diagnosed consistently.
+        val candidates = marketSnapshot.tickers.sortedByDescending {
             quickScanMarketPriority(it.volatilityPct, it.changePct, it.quoteVolume)
         }
-        report("Quick filter complete: ${candidates.size}/${allowed} active USDT perpetuals queued for full confirmation. Loading BTC context…")
+        if (candidates.isEmpty()) throw IllegalStateException("Binance returned no active USDT-M perpetual tickers.")
+        report("Full-universe scan: ${candidates.size}/${allowed} active USDT-M perpetuals queued. Strategy liquidity gates remain enabled; loading BTC context…")
 
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
@@ -746,9 +743,9 @@ internal object BinanceMarketScanner {
             val detail = lastMarketFailure?.let { " Last market error: $it" }
                 ?: " Candle history was fetched, but every strategy rejected the available series."
             throw IllegalStateException(
-                "Scan found no technical setups in ${candidates.size} evaluated pairs (${prefiltered.size} passed the 24h liquidity filter). " +
+                "Scan found no technical setups in ${candidates.size} evaluated pairs. " +
                     "Pairs with setups: $marketsWithPlans; no setup: $marketsWithoutPlans; data errors: $marketDataFailures; " +
-                    "candidate universe: all active USDT perpetuals passing the $2M quote-volume prefilter.$detail"
+                    "candidate universe: all active USDT-M perpetuals; strategy liquidity gates remain enabled.$detail"
             )
         }
         report(
@@ -772,9 +769,12 @@ internal object BinanceMarketScanner {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
-        val universe = marketSnapshot.tickers.filter { it.quoteVolume >= 5_000_000.0 }
+        // SMC evaluates the same full active USDT-M perpetual universe as Daily Trade Ideas.
+        // SMC patterns remain candidates, not approved entries; execution/liquidity gates
+        // are still communicated separately in the signal workspace.
+        val universe = marketSnapshot.tickers
             .map { Triple(it.symbol, it.quoteVolume, it.last) }
-        if (universe.isEmpty()) throw IllegalStateException("No liquid USDT perpetual markets were returned.")
+        if (universe.isEmpty()) throw IllegalStateException("Binance returned no active USDT-M perpetual markets.")
 
         report("Unified SMC · loading shared multi-timeframe candles for ${universe.size} markets…")
         withContext(Dispatchers.Main.immediate) { onProgress(0, universe.size) }
@@ -853,14 +853,12 @@ internal object BinanceMarketScanner {
         }
 
         val rankedCore = coreSetups.sortedByDescending { it.score }
-        val onePerHorizon = listOf("Scalp", "Intraday", "Swing").mapNotNull { h ->
-            rankedCore.firstOrNull { it.horizon == h }
-        }
-        val coreResults = (onePerHorizon + rankedCore).distinctBy { it.id }.take(5)
+        // Return every detected signal. Ranking controls display order only; it must
+        // never silently discard qualifying coins from the all-market scan results.
+        val coreResults = rankedCore.distinctBy { it.id }
         val advancedResults = advancedSignals.distinctBy { it.id }
             .sortedWith(compareByDescending<AdvancedSMCSignal> { it.score }.thenByDescending { it.rewardRisk })
-            .take(30)
-        report("Unified SMC complete · ${universe.size} markets scanned once · Core ${coreResults.size} · Advanced ${advancedResults.size}.")
+        report("Unified SMC complete · all ${universe.size} markets scanned · Core ${coreResults.size} · Advanced ${advancedResults.size} signals retained.")
         UnifiedSMCScanResults(coreResults, advancedResults)
     } }
 
@@ -1018,7 +1016,8 @@ internal object BinanceMarketScanner {
                 executionRows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) },
                 maxHoldingBars = when { plan.horizon.startsWith("Scalp", true) -> 48; plan.horizon.startsWith("Swing", true) -> 72; else -> 96 },
                 setupBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 5; plan.horizon.startsWith("Swing", true) -> 60; else -> 15 },
-                executionBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 1; plan.horizon.startsWith("Swing", true) -> 15; else -> 5 }
+                executionBarMinutes = when { plan.horizon.startsWith("Scalp", true) -> 1; plan.horizon.startsWith("Swing", true) -> 15; else -> 5 },
+                horizon = plan.horizon.substringBefore(" ")
             )
         }.getOrDefault(TradeIdeaBacktestStats())
         val strategyChecks = buildStrategyChecks(plan, setupRows, executionRows, trendRows, vwapBars, setupInterval, executionInterval, trendInterval)
@@ -1200,11 +1199,6 @@ private fun DailyTradeIdeasFeedScreen() {
     LaunchedEffect(ideas) { trackedPlanKeys = readTrackedPlanKeys(ideas) }
     var livePrices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var paperRiskStatus by remember { mutableStateOf(TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = riskSettings.riskPercent)) }
-    fun updateRiskSettings(next: EntryRiskSettings) {
-        riskSettings = next
-        EntryRiskSettingsStore.save(context, next)
-        paperRiskStatus = TradeIdeaPaperJournal.riskStatus(context, riskPerTradePercent = next.riskPercent)
-    }
     var readyAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isReadyEnabled(context)) }
     var entryAlertsEnabled by remember { mutableStateOf(TradeIdeaNotifications.isEntryEnabled(context)) }
     fun enableReadyAlerts() {
@@ -1859,24 +1853,6 @@ private fun tradeIdeaStage(idea: TradeIdea, tracked: Boolean, snapshotAgeMs: Lon
     }
 }
 
-/**
- * High-quality Daily Trade Ideas gate. Keeps Scalp, Intraday and Swing eligible,
- * while requiring a strong score, valid risk geometry, a fresh actionable stage,
- * and the key trend, liquidity and entry-confirmation checks.
- */
-internal fun isHighQualityDailyTradeIdea(idea: TradeIdea, snapshotAgeMs: Long = 0L): Boolean {
-    if (idea.score < 80 || idea.side !in setOf("LONG", "SHORT")) return false
-    if (!tradeIdeaRiskValid(idea)) return false
-    val stage = tradeIdeaStage(idea, tracked = false, snapshotAgeMs = snapshotAgeMs)
-    if (stage !in setOf(TradeIdeaStage.ENTRY_CONFIRMED, TradeIdeaStage.MONITOR, TradeIdeaStage.WAIT_CONFIRMATION)) return false
-
-    val requiredLabels = listOf("trend structure", "5-level depth", "confirmation candle", "stop-loss", "target 1")
-    val requiredChecks = requiredLabels.map { fragment ->
-        idea.strategyChecks.firstOrNull { (label, _) -> label.contains(fragment, ignoreCase = true) }?.second
-    }
-    // Missing checks (including legacy cached ideas) are not silently treated as passes.
-    return requiredChecks.size == requiredLabels.size && requiredChecks.all { it == true }
-}
 
 private fun displayIdeaHorizon(horizon: String): String = horizon
 

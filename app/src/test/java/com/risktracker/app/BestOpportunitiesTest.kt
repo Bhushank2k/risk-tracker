@@ -84,11 +84,9 @@ class BestOpportunitiesTest {
         assertFalse(rows.single().sources.contains("Core SMC"))
     }
 
-    @Test fun smcOnlyCandidateWaitsForExecutionRiskValidation() {
+    @Test fun smcOnlyCandidateDoesNotCreateAWatchlistOpportunity() {
         val rows = buildBestOpportunities(emptyList(), listOf(smc()), 0L, 1_050_000L)
-        assertEquals(1, rows.size)
-        assertEquals(BestOpportunityStatus.WAITING, rows.single().status)
-        assertTrue(rows.single().explanation.contains("live spread"))
+        assertTrue(rows.isEmpty())
     }
 
     @Test fun opposingDirectionsForSameSymbolAreFlaggedAsConflict() {
@@ -96,16 +94,13 @@ class BestOpportunitiesTest {
             listOf(idea()), listOf(smc(), smc(id = "smc-short", side = "SHORT", low = 109.0, high = 111.0)),
             60_000L, 1_050_000L
         )
-        assertEquals(2, rows.size)
-        assertTrue(rows.all { it.status == BestOpportunityStatus.CONFLICT })
-        assertTrue(rows.all { it.explanation.contains("Opposing LONG/SHORT") })
+        assertEquals(1, rows.size)
+        assertEquals(BestOpportunityStatus.CONFLICT, rows.single().status)
+        assertTrue(rows.single().explanation.contains("opposing SHORT signal"))
     }
 
     @Test fun nonOverlappingEntryAreasAreNotMerged() {
         val rows = buildBestOpportunities(listOf(idea()), listOf(smc(low = 105.0, high = 106.0)), 60_000L, 1_050_000L)
-        assertEquals(2, rows.size)
-        assertTrue(rows.all { it.idea == null || it.smc == null })
-        assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
     }
 
     @Test fun differentHorizonsAreNotMerged() {

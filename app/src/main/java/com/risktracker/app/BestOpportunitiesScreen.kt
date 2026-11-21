@@ -36,7 +36,6 @@ internal fun BestOpportunitiesScreen(
             now = System.currentTimeMillis()
         }
     }
-
     val tradeUpdatedAt = tradeState.updatedAt
     val tradeAge = when {
         tradeState.partial -> 0L
@@ -99,7 +98,7 @@ internal fun BestOpportunitiesScreen(
     ) {
         Text("Best Opportunities", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "Daily Trade Ideas discovery + Core/Advanced SMC structure + mandatory execution checks",
+            "Daily Trade Ideas watchlist · Core/Advanced SMC confirmation · mandatory execution checks",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -224,13 +223,13 @@ internal fun BestOpportunitiesScreen(
                 }
             }
         }
-        if (visible.isEmpty() && !isLoading) Text("No candidates match these filters. Refresh both scanners or widen the filters.")
+        if (visible.isEmpty() && !isLoading) Text("No Daily Trade Ideas match these filters yet. Refresh both scanners or widen the filters.")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onOpenTradeIdeas, modifier = Modifier.weight(1f)) { Text("Daily Trade Ideas") }
             OutlinedButton(onClick = onOpenSmc, modifier = Modifier.weight(1f)) { Text("SMC Signals") }
         }
         Text(
-            "Confirmed means a fresh SMC match and every mandatory Daily Trade Ideas gate passed. WAITING includes missing data or pending entry confirmation. CONFLICT means opposing directions exist for the same symbol. Priority is a ranking aid, not a win probability. No orders are placed.",
+            "Only Daily Trade Ideas create watchlist rows. CONFIRMED requires a fresh, aligned SMC match and every mandatory execution gate to pass. WAITING means SMC confirmation, fresh data, or execution validation is still pending. CONFLICT means SMC points in the opposite direction. Priority is a ranking aid, not a win probability. SMC-only signals are not listed as opportunities. No orders are placed.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
