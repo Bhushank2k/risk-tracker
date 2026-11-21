@@ -329,6 +329,9 @@ internal object BinanceMarketScanner {
             }
         }
     private const val BASE = "https://fapi.binance.com"
+    // Serialize duplicate runs within each engine, but never block Trade Ideas on SMC or vice versa.
+    private val tradeIdeaScanMutex = Mutex()
+    private val smcScanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
     private data class CachedCandles(val fetchedAt: Long, val rows: List<ScanCandle>)
@@ -533,7 +536,7 @@ internal object BinanceMarketScanner {
     suspend fun scan(
         progress: (String) -> Unit,
         onPartialResults: (List<TradeIdea>) -> Unit = {},
-        ): List<TradeIdea> = withContext(Dispatchers.IO) {
+        ): List<TradeIdea> = tradeIdeaScanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
@@ -756,7 +759,7 @@ internal object BinanceMarketScanner {
                 " · top gate hits: ${gateDiagnostics.topGateSummary()}. Counts are per returned mode plan, not unique symbols."
         )
         results.sortedWith(compareByDescending<TradeIdea> { it.score }.thenByDescending { it.volatilityPct })
-    }
+    } }
 
     /**
      * Runs both SMC detectors over one market universe and one candle snapshot per symbol.
@@ -765,7 +768,7 @@ internal object BinanceMarketScanner {
     suspend fun scanUnifiedSmc(
         progress: (String) -> Unit,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): UnifiedSMCScanResults = withContext(Dispatchers.IO) {
+    ): UnifiedSMCScanResults = smcScanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
@@ -859,7 +862,7 @@ internal object BinanceMarketScanner {
             .take(30)
         report("Unified SMC complete · ${universe.size} markets scanned once · Core ${coreResults.size} · Advanced ${advancedResults.size}.")
         UnifiedSMCScanResults(coreResults, advancedResults)
-    }
+    } }
 
     /**
      * Compatibility wrapper. The unified scanner owns market discovery and candle loading
