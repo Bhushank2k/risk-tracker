@@ -112,20 +112,22 @@ class SMCBackgroundScanWorker(context: Context, params: WorkerParameters) : Coro
         return try {
             BinanceMarketScanner.initialize(app)
             SMCScanStateStore.update(app, 0, 0, true, "Loading liquid USDT perpetual markets…")
-            val result = BinanceMarketScanner.scanUnifiedSmc(
-                progress = { message ->
-                    val old = SMCScanStateStore.status(app)
-                    SMCScanStateStore.update(
-                        app, old.optInt("scanned"), old.optInt("total"), true, message
-                    )
-                },
-                onProgress = { scanned, total ->
-                    val old = SMCScanStateStore.status(app)
-                    SMCScanStateStore.update(
-                        app, scanned, total, true, old.optString("message")
-                    )
-                }
-            )
+            val result = withMarketDataRetry {
+                BinanceMarketScanner.scanUnifiedSmc(
+                    progress = { message ->
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(
+                            app, old.optInt("scanned"), old.optInt("total"), true, message
+                        )
+                    },
+                    onProgress = { scanned, total ->
+                        val old = SMCScanStateStore.status(app)
+                        SMCScanStateStore.update(
+                            app, scanned, total, true, old.optString("message")
+                        )
+                    }
+                )
+            }
             // One background pass populates both SMC result stores.
             AdvancedSMCSignalStore.save(app, result.advanced)
             SMCScanStateStore.saveResults(app, result.core)
