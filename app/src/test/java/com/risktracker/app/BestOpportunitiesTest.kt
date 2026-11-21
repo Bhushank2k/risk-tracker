@@ -108,6 +108,14 @@ class BestOpportunitiesTest {
         assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
     }
 
+    @Test fun differentHorizonsAreNotMerged() {
+        val swing = smc().copy(horizon = "Swing")
+        val rows = buildBestOpportunities(listOf(idea()), listOf(swing), 60_000L, 1_050_000L)
+        assertEquals(2, rows.size)
+        assertTrue(rows.all { it.sources.size == 1 })
+        assertTrue(rows.all { it.status == BestOpportunityStatus.WAITING })
+    }
+
     @Test fun hardRiskFailureIsRejectedRatherThanConfirmed() {
         val rows = buildBestOpportunities(listOf(idea(spread = 15.0)), listOf(smc()), 60_000L, 1_050_000L)
         assertEquals(BestOpportunityStatus.REJECTED, rows.single().status)
