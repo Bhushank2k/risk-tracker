@@ -28,4 +28,23 @@ class PrimaryNavigationTest {
             org.junit.Assert.assertFalse(isPrimaryNavigationDestination(destination))
         }
     }
+    @Test fun exploreMenuGroupsHaveUniqueStableDestinations() {
+        val groups = exploreMenuGroups()
+        val destinations = groups.flatMap { it.second }
+
+        assertEquals(destinations.size, destinations.map { it.second }.distinct().size)
+        assertEquals(
+            listOf("TRADING & TOOLS", "MARKET INTELLIGENCE", "PERFORMANCE & REPORTS", "EXCHANGE & ACCOUNT", "APP"),
+            groups.map { it.first }
+        )
+        assertEquals("Coin Explosion Radar" to 32, groups.first { it.first == "MARKET INTELLIGENCE" }.second.single())
+    }
+
+    @Test fun exploreDoesNotDuplicatePrimaryNavigationRoutes() {
+        val routes = exploreMenuGroups().flatMap { it.second }.map { it.second }
+        listOf(0, 1, 21, 29).forEach { primaryRoute ->
+            org.junit.Assert.assertFalse(primaryRoute in routes)
+        }
+    }
+
 }
