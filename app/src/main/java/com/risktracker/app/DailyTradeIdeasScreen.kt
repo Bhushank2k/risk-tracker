@@ -2184,10 +2184,10 @@ private fun TradeIdeaCard(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
+            HistoricalOutcomePanel(idea)
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.align(Alignment.End)) { Text(if (expanded) "Hide setup details" else "Setup details") }
             if (expanded) {
                 HorizontalDivider()
-                HistoricalOutcomePanel(idea)
                 Text("WHY THIS SETUP?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
                     idea.setup + " · " + idea.side + " setup details",
