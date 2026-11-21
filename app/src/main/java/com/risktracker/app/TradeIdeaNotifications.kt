@@ -180,7 +180,7 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): androidx.work.Li
             val readyAlertsEnabled = TradeIdeaNotifications.isReadyEnabled(context)
             val entryAlertsEnabled = TradeIdeaNotifications.isEntryEnabled(context)
             if (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled)) {
-                return androidx.work.ListenableWorker.androidx.work.ListenableWorker.Result.success()
+                return androidx.work.ListenableWorker.Result.success()
             }
 
             if (readyAlertsEnabled) {
@@ -204,7 +204,7 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): androidx.work.Li
                 TradeIdeaReadyAlertStore.clear(context)
             }
 
-            if (!entryAlertsEnabled) return androidx.work.ListenableWorker.androidx.work.ListenableWorker.Result.success()
+            if (!entryAlertsEnabled) return androidx.work.ListenableWorker.Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
             val dailyRiskAllowsNewEntries =
