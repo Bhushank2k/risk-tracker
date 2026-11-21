@@ -37,10 +37,11 @@ internal fun BestOpportunitiesScreen(
         }
     }
 
+    val tradeUpdatedAt = tradeState.updatedAt
     val tradeAge = when {
         tradeState.partial -> 0L
-        tradeState.updatedAt == null || tradeState.updatedAt <= 0L -> Long.MAX_VALUE
-        else -> (now - tradeState.updatedAt).coerceAtLeast(0L)
+        tradeUpdatedAt == null || tradeUpdatedAt <= 0L -> Long.MAX_VALUE
+        else -> (now - tradeUpdatedAt).coerceAtLeast(0L)
     }
     val coreCandidates = remember(smcState.core, smcState.coreUpdatedAt) {
         smcState.core.map { x ->
@@ -192,6 +193,9 @@ internal fun BestOpportunitiesScreen(
                     } else if (item.smc != null) {
                         Text("SMC entry zone · ${item.smc.entryLow.bestPrice()} – ${item.smc.entryHigh.bestPrice()}")
                         Text("Stop ${item.smc.stop.bestPrice()} · Target ${item.smc.target.bestPrice()}")
+                    }
+                    if (item.idea != null && item.smc != null) {
+                        Text("SMC entry zone · ${item.smc.entryLow.bestPrice()} – ${item.smc.entryHigh.bestPrice()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (item.idea != null) {
                         Text("Daily score ${item.idea.score}/100 · SMC score ${item.smc?.score?.toString() ?: "—"}",
