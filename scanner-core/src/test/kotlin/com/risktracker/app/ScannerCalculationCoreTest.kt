@@ -24,9 +24,9 @@ class ScannerCalculationCoreTest {
         val highs = closes.map { it + 1.0 }
         val lows = closes.map { it - 1.0 }
         val strength = ScannerCalculationCore.directionalStrength(highs, lows, closes)
-        assertNotNull(strength)
-        assertTrue(strength!!.adx > 25.0)
-        assertTrue(strength.plusDi > strength.minusDi)
+        val value = strength ?: error("Expected directional strength")
+        assertTrue(value.adx > 25.0)
+        assertTrue(value.plusDi > value.minusDi)
     }
 
     @Test fun adxAndDirectionalIndicatorsIdentifyStrongDowntrend() {
@@ -34,9 +34,9 @@ class ScannerCalculationCoreTest {
         val highs = closes.map { it + 1.0 }
         val lows = closes.map { it - 1.0 }
         val strength = ScannerCalculationCore.directionalStrength(highs, lows, closes)
-        assertNotNull(strength)
-        assertTrue(strength!!.adx > 25.0)
-        assertTrue(strength.minusDi > strength.plusDi)
+        val value = strength ?: error("Expected directional strength")
+        assertTrue(value.adx > 25.0)
+        assertTrue(value.minusDi > value.plusDi)
     }
 
     @Test fun adxRejectsInsufficientOrInvalidCandleData() {
