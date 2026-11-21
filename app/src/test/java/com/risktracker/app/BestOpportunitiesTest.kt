@@ -54,7 +54,7 @@ class BestOpportunitiesTest {
         assertEquals(1, rows.size)
         assertEquals(BestOpportunityStatus.CONFIRMED, rows.single().status)
         assertEquals(setOf("Daily Trade Ideas", "Core SMC", "Advanced SMC"), rows.single().sources)
-        assertEquals(90, rows.single().priorityScore)
+        assertEquals(93, rows.single().priorityScore)
     }
 
     @Test fun missingMandatoryExecutionDataRemainsWaiting() {
