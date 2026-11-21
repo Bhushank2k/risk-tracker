@@ -24,7 +24,7 @@ class PrimaryNavigationTest {
         listOf(0, 1, 21).forEach { destination ->
             org.junit.Assert.assertTrue(isPrimaryNavigationDestination(destination))
         }
-        listOf(2, 5, 6, 7, 9, 11, 13, 14, 16, 17, 18, 19, 23, 25, 26, 27, 28).forEach { destination ->
+        listOf(2, 5, 6, 7, 9, 11, 13, 14, 16, 17, 18, 19, 23, 25, 26, 27, 28, 32, 33).forEach { destination ->
             org.junit.Assert.assertFalse(isPrimaryNavigationDestination(destination))
         }
     }
