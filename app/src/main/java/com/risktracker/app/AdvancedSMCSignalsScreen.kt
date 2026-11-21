@@ -113,11 +113,14 @@ fun AdvancedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     }
 
     LaunchedEffect(Unit) {
-        if (signals.isEmpty()) refresh()
+        // Keep cached signals visible on screen entry; scanning is user-triggered.
         while (true) {
             val snapshot = AdvancedSMCSignalStore.status(context)
             scanned = snapshot.optInt("scanned"); total = snapshot.optInt("total")
             backgroundRunning = snapshot.optBoolean("running"); backgroundMessage = snapshot.optString("message")
+            if (!backgroundRunning && backgroundMessage.contains("failed", ignoreCase = true)) {
+                error = backgroundMessage
+            }
             val updated = AdvancedSMCSignalStore.resultsUpdatedAt(context)
             if (!loading && updated > resultsAt) {
                 signals = AdvancedSMCSignalStore.load(context)
@@ -143,7 +146,7 @@ fun AdvancedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             if (loading) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
             else Icon(Icons.Filled.Refresh, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(if (loading) "Scanning advanced signals…" else "Scan advanced SMC signals")
+            Text(if (loading) "Scanning advanced signals…" else if (error != null) "Retry advanced SMC scan" else "Scan advanced SMC signals")
         }
         OutlinedButton(onClick = onOpenTradeIdeas, modifier = Modifier.fillMaxWidth()) {
             Text("Open Trade Ideas for execution checks")
