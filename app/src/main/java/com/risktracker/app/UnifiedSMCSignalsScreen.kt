@@ -124,18 +124,20 @@ internal object UnifiedSMCScanManager {
         SMCScanStateStore.update(app, 0, 0, true, "Loading shared SMC market data…")
         scanJob = managerScope.launch {
             try {
-                val result = BinanceMarketScanner.scanUnifiedSmc(
-                    progress = { message ->
-                        mutableState.value = mutableState.value.copy(progress = message)
-                        val old = SMCScanStateStore.status(app)
-                        SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), true, message)
-                    },
-                    onProgress = { done, count ->
-                        mutableState.value = mutableState.value.copy(scanned = done, total = count)
-                        val old = SMCScanStateStore.status(app)
-                        SMCScanStateStore.update(app, done, count, true, old.optString("message"))
-                    }
-                )
+                val result = withMarketDataRetry {
+                    BinanceMarketScanner.scanUnifiedSmc(
+                        progress = { message ->
+                            mutableState.value = mutableState.value.copy(progress = message)
+                            val old = SMCScanStateStore.status(app)
+                            SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), true, message)
+                        },
+                        onProgress = { done, count ->
+                            mutableState.value = mutableState.value.copy(scanned = done, total = count)
+                            val old = SMCScanStateStore.status(app)
+                            SMCScanStateStore.update(app, done, count, true, old.optString("message"))
+                        }
+                    )
+                }
                 withContext(Dispatchers.IO) {
                     AdvancedSMCSignalStore.save(app, result.advanced)
                     SMCScanStateStore.saveResults(app, result.core)
@@ -155,7 +157,9 @@ internal object UnifiedSMCScanManager {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val message = e.message ?: "SMC market scan failed."
+                val message = if (e.isDnsResolutionFailure()) {
+                    "Binance DNS lookup failed for fapi.binance.com. Check internet/DNS and tap Retry Scan. Saved signals are unchanged."
+                } else e.message ?: "SMC market scan failed."
                 mutableState.value = mutableState.value.copy(error = message, progress = "SMC scan incomplete: $message")
                 val old = SMCScanStateStore.status(app)
                 SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), false,
