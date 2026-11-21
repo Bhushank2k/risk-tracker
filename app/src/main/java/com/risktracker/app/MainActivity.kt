@@ -208,8 +208,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         BinanceMarketScanner.initialize(context)
-        TradeIdeaNotifications.schedule(context)
-        SMCBackgroundScanScheduler.schedule(context)
+        UnifiedBackgroundScanScheduler.schedule(context)
         AdvancedSMCScanScheduler.cancelLegacyWork(context)
         if (BinanceCredentialStore(context).read() != null) {
             BinanceJournalWorker.schedule(context)

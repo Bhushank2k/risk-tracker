@@ -153,9 +153,11 @@ private object TradeIdeaAlertPlanStore {
 }
 
 class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        val context = applicationContext
-        return try {
+    override suspend fun doWork(): Result = runTradeIdeaMonitorScan(applicationContext)
+}
+
+internal suspend fun runTradeIdeaMonitorScan(context: Context): Result {
+    return try {
             BinanceMarketScanner.initialize(context)
             TradeIdeaScanHealthStore.started(context)
 
@@ -294,7 +296,6 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
         } catch (e: Exception) {
             TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
             Result.retry()
-        }
     }
 }
 
