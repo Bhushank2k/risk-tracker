@@ -86,24 +86,29 @@ internal object UnifiedSMCScanManager {
                 val current = mutableState.value
                 val coreChanged = latestCoreAt > current.coreUpdatedAt
                 val advancedChanged = latestAdvancedAt > current.advancedUpdatedAt
+                val latestMessage = latestStatus.optString("message", current.progress)
+                val latestRunning = latestStatus.optBoolean("running") || scanJob?.isActive == true
+                val latestError = if (!latestRunning &&
+                    (latestMessage.contains("failed", ignoreCase = true) ||
+                     latestMessage.contains("incomplete", ignoreCase = true))) latestMessage else null
                 mutableState.value = current.copy(
                     core = if (coreChanged) SMCScanStateStore.loadResults(app) else current.core,
                     advanced = if (advancedChanged) AdvancedSMCSignalStore.load(app) else current.advanced,
                     coreUpdatedAt = maxOf(current.coreUpdatedAt, latestCoreAt),
                     advancedUpdatedAt = maxOf(current.advancedUpdatedAt, latestAdvancedAt),
-                    loading = latestStatus.optBoolean("running") || scanJob?.isActive == true,
-                    progress = latestStatus.optString("message", current.progress),
+                    loading = latestRunning,
+                    progress = latestMessage,
                     scanned = latestStatus.optInt("scanned"),
-                    total = latestStatus.optInt("total")
+                    total = latestStatus.optInt("total"),
+                    error = latestError
                 )
                 delay(1_000)
             }
         }
 
-        val now = System.currentTimeMillis()
-        val coreAge = if (coreUpdatedAt > 0L) now - coreUpdatedAt else Long.MAX_VALUE
-        val advancedAge = if (advancedUpdatedAt > 0L) now - advancedUpdatedAt else Long.MAX_VALUE
-        if (!running && (coreAge >= 15L * 60L * 1000L || advancedAge >= 15L * 60L * 1000L)) UnifiedMarketScanCoordinator.refresh(app)
+        // Do not launch a foreground scan merely because the user opened this
+        // screen. The scheduler owns routine background refreshes; manual retry
+        // is available from the Scan Now button below.
     }
 
     fun refresh(context: android.content.Context) {
@@ -171,7 +176,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val loading = scanState.loading
     val tradeScanState by TradeIdeaScanManager.state.collectAsState()
     val combinedLoading = loading || tradeScanState.loading
-    val canStartCombined = !(loading && tradeScanState.loading)
+    val canStartCombined = !combinedLoading
     val progress = scanState.progress
     val scanned = scanState.scanned
     val total = scanState.total
@@ -235,10 +240,24 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("One shared market snapshot · Trade Ideas + Core + Advanced SMC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { scan() }, enabled = canStartCombined) {
-                if (combinedLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified market scan")
-            }
+        }
+        Button(
+            onClick = { scan() },
+            enabled = canStartCombined,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (combinedLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Filled.Refresh, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                when {
+                    combinedLoading -> "Scanning…"
+                    scanState.error != null -> "Retry Scan"
+                    progress.contains("failed", ignoreCase = true) ||
+                        progress.contains("incomplete", ignoreCase = true) -> "Retry Scan"
+                    else -> "Scan Now"
+                }
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("All", "LONG", "SHORT").forEach {
