@@ -156,7 +156,7 @@ class TradeIdeaMonitorWorker(context: Context, params: WorkerParameters) : Corou
     override suspend fun doWork(): Result = runTradeIdeaMonitorScan(applicationContext)
 }
 
-internal suspend fun runTradeIdeaMonitorScan(context: Context): Result {
+internal suspend fun runTradeIdeaMonitorScan(context: Context): androidx.work.ListenableWorker.Result {
     return try {
             BinanceMarketScanner.initialize(context)
             TradeIdeaScanHealthStore.started(context)
@@ -180,7 +180,7 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): Result {
             val readyAlertsEnabled = TradeIdeaNotifications.isReadyEnabled(context)
             val entryAlertsEnabled = TradeIdeaNotifications.isEntryEnabled(context)
             if (!TradeIdeaNotifications.hasPermission(context) || (!readyAlertsEnabled && !entryAlertsEnabled)) {
-                return Result.success()
+                return androidx.work.ListenableWorker.androidx.work.ListenableWorker.Result.success()
             }
 
             if (readyAlertsEnabled) {
@@ -204,7 +204,7 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): Result {
                 TradeIdeaReadyAlertStore.clear(context)
             }
 
-            if (!entryAlertsEnabled) return Result.success()
+            if (!entryAlertsEnabled) return androidx.work.ListenableWorker.androidx.work.ListenableWorker.Result.success()
 
             val plans = TradeIdeaAlertPlanStore.load(context)
             val dailyRiskAllowsNewEntries =
@@ -290,12 +290,12 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): Result {
                 }
             }
             TradeIdeaAlertPlanStore.save(context, plans)
-            Result.success()
+            androidx.work.ListenableWorker.Result.success()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
-            Result.retry()
+            androidx.work.ListenableWorker.Result.retry()
     }
 }
 
