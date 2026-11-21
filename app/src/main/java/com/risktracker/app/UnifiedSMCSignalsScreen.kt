@@ -236,8 +236,8 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 Text("One shared market snapshot · Trade Ideas + Core + Advanced SMC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { scan() }, enabled = canStartCombined) {
-                if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified SMC scan")
+                if (combinedLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified market scan")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
