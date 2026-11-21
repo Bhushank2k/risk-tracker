@@ -1,8 +1,8 @@
 # Repository cleanup audit — balanced consolidation
 
-**Status:** Phase 1 audit complete; Phase 2 navigation consolidation implemented in PR #396  
-**Base reviewed:** `main` at `df60d5bfa74465c5a70874a22bae2a4a69457771`  
-**Policy:** No feature, worker, store, model, scanner, historical record or calculation is deleted in this change.
+**Status:** Navigation consolidation merged in PR #396; scanner reliability fixes and cloud-scanner retirement proposed in this PR  
+**Base reviewed:** `main` at `e9ce782c626e48c754726b5bde8522e4f1e93502`  
+**Policy:** Retire the standalone `cloud-scanner` deployment completely; retain Android scanner engines, shared `scanner-core`, cloud-alert relay, historical records and financial calculations.
 
 ## Goals
 
@@ -37,7 +37,7 @@ These route IDs are consumed by the app-shell router. Preserve them during UI gr
 | Binance Sync + import controls | Keep one Data & Sync owner; expose concise health summaries elsewhere | MainActivity routes Binance Sync (6) and Sync Health (18) separately today. A later UI pass may place health inside Sync, but retain a stable way to reach diagnostics. |
 | P&L summaries | Establish one shared accounting/portfolio data contract before removing any summary | Manual journal, Binance Futures fills, imported P&L and external cash flows have different provenance. Do not sum them without explicit reconciliation rules. |
 | Scan health | Present one market-data health summary with per-pipeline detail | Trade Ideas and SMC can fail independently; preserve independent status, freshness and retry behavior. |
-| Risk calculations | Reuse shared risk calculations; keep contextual entry points | Removing a screen must not remove a hard risk gate or calculation used by scanner/cloud modules. |
+| Risk calculations | Reuse shared risk calculations; keep contextual entry points | Removing a screen or deployment must not remove a hard risk gate or calculation used by the Android scanner or shared `scanner-core`. |
 | Alert history | One notifications/alerts entry point if the UI currently duplicates it | Cloud relay history is process-local; do not imply durable history or exactly-once delivery. |
 
 ## Usage/dependency audit: retirement candidates
@@ -57,7 +57,7 @@ These route IDs are consumed by the app-shell router. Preserve them during UI gr
 1. Search the entire repository for class names, composable names, route IDs, worker class names, unique-work names, preference keys and serialized model names.
 2. Inspect every enqueue, cancel, observe and periodic-work call site, including app startup and upgrade paths.
 3. Check Android manifest entries, notification intents, exported components, deep links and backup/restore behavior.
-4. Check app tests, scanner-core tests, cloud-scanner imports and shared strategy dependencies.
+4. Check app tests, scanner-core tests, and remaining shared strategy dependencies; verify no build or workflow reference to the retired cloud-scanner remains.
 5. Identify persisted keys/files and define a forward/backward-compatible migration or retention policy.
 6. Add tests for the replacement behavior and migration from a prior installed version.
 7. Remove only in a dedicated follow-up PR with a concise dependency audit attached.
@@ -85,10 +85,17 @@ These route IDs are consumed by the app-shell router. Preserve them during UI gr
 - Add regression coverage for scan independence, cached-signal retention, sync/import provenance, journal restore and navigation.
 - Review the PR diff and CI before any merge decision.
 
+### Phase 5 — scanner reliability and cloud-scanner retirement
+
+- Remove the standalone `cloud-scanner` module, Docker/Cloud Build assets and dedicated CI workflow; retain the separate `cloud-alerts` relay.
+- Reject unrecognized BTC regime/shock labels for scoring so invalid context cannot earn neutral-context points.
+- Run Trade Ideas and unified SMC independently within the background scan cycle and track their freshness separately.
+- Re-enqueue startup refresh when either successful snapshot is missing or stale, relying on WorkManager unique work rather than a permanent enqueued flag.
+
 ## Explicit non-goals
 
 - No order execution or exchange-write behavior.
 - No changes to accounting definitions, P&L source precedence, tax logic or risk gates.
 - No deletion of historical records, preferences, backup data or import audit data.
-- No removal of scanner engines simply because their standalone screen is consolidated.
+- No removal of Android scanner engines or shared `scanner-core` calculations. The standalone `cloud-scanner` deployment is explicitly retired; the separate `cloud-alerts` relay remains.
 - No merge as part of this work.

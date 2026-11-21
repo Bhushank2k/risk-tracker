@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RiskTracker"
-include(":app", ":scanner-core", ":cloud-scanner")
+include(":app", ":scanner-core")
