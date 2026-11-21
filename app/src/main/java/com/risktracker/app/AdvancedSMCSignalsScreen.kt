@@ -96,10 +96,12 @@ fun AdvancedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         scope.launch {
             try {
                 BinanceMarketScanner.initialize(context)
-                val result = BinanceMarketScanner.scanAdvancedSmc(
-                    progress = { message = it },
-                    onProgress = { done, count -> scanned = done; total = count }
-                )
+                val result = withMarketDataRetry {
+                    BinanceMarketScanner.scanAdvancedSmc(
+                        progress = { message = it },
+                        onProgress = { done, count -> scanned = done; total = count }
+                    )
+                }
                 signals = result
                 AdvancedSMCSignalStore.save(context, result)
                 resultsAt = AdvancedSMCSignalStore.resultsUpdatedAt(context)
