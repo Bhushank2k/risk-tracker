@@ -14,6 +14,19 @@ class AdvancedSMCSignalEngineTest {
     }
 
     @Test
+    fun nonFiniteLivePricesAreRejected() {
+        val candles = List(50) { i ->
+            AdvancedSMCCandle(100.0, 102.0, 98.0, 101.0, 10.0, 1_800_000L * i)
+        }
+        val execution = List(25) { i ->
+            AdvancedSMCCandle(100.0, 101.0, 99.0, 100.5, 5.0, 900_000L * i)
+        }
+        assertTrue(AdvancedSMCSignalEngine.evaluate("ETHUSDT", Double.NaN, candles, execution, candles, "Intraday").isEmpty())
+        assertTrue(AdvancedSMCSignalEngine.evaluate("ETHUSDT", Double.POSITIVE_INFINITY, candles, execution, candles, "Intraday").isEmpty())
+        assertTrue(AdvancedSMCSignalEngine.evaluate("ETHUSDT", Double.NEGATIVE_INFINITY, candles, execution, candles, "Intraday").isEmpty())
+    }
+
+    @Test
     fun smtSignalIncludesAValidGrossTwoRPlan() {
         val start = 2L * 86_400_000L + 10L * 3_600_000L
         val asset = MutableList(50) { i ->
