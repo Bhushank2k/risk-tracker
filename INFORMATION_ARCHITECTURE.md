@@ -16,14 +16,14 @@ Explore is a destination in the bottom navigation. Its current groups are:
 | Group | Destinations |
 |---|---|
 | Trading & Tools | Live positions & orders; Position & leverage calculator |
-| Market Discovery | Coin Explosion Radar |
+| Market Intelligence | Unified SMC Signals; Coin Explosion Radar |
 | Performance & Reports | P&L Calendar; Crypto Tax Report |
 | Exchange & Account | Binance Sync & imports; Sync health; Account activity & statements |
 | App | Settings; About Risk Tracker |
 
 Keep existing destination IDs stable while consolidating presentation. A navigation label or grouping change must not silently change a destination's meaning.
 
-## Screen and data ownership
+Unified SMC Signals is a secondary Explore destination (route 33) beside Coin Explosion Radar (route 32). It presents Core and Advanced SMC results from the unified scan workflow and can return users to Daily Trade Ideas (route 21). The four primary bottom-navigation destinations remain unchanged.\n\n## Screen and data ownership
 
 | Screen / capability | Owns | May summarize | Avoid repeating |
 |---|---|---|---|
