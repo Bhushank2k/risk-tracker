@@ -14,6 +14,7 @@ internal fun exploreMenuGroups(): List<Pair<String, List<Pair<String, Int>>>> =
             "Position & leverage calculator" to 2
         ),
         "MARKET INTELLIGENCE" to listOf(
+            "Best Opportunities" to 34,
             "Unified SMC Signals" to 33,
             "Coin Explosion Radar" to 32
         ),
