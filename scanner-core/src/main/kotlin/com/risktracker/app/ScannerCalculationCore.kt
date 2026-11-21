@@ -4,6 +4,8 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** Shared, formula-explicit calculations. Methods preserve each scanner's existing RSI mode. */
+data class DirectionalStrength(val adx: Double, val plusDi: Double, val minusDi: Double)
+
 data class ConfirmedPricePivot(
     val index: Int,
     val price: Double,
@@ -28,6 +30,58 @@ object ScannerCalculationCore {
 
     fun ema(values: List<Double>, period: Int): Double? =
         emaSeries(values, period).lastOrNull { it != null }
+
+    /** Wilder-smoothed ADX and directional indicators. Requires enough bars to seed ADX. */
+    fun directionalStrength(
+        highs: List<Double>, lows: List<Double>, closes: List<Double>, period: Int = 14
+    ): DirectionalStrength? {
+        if (period < 2 || highs.size != lows.size || highs.size != closes.size ||
+            highs.size < period * 2 || (highs + lows + closes).any { !it.isFinite() } ||
+            highs.indices.any { highs[it] < lows[it] || closes[it] <= 0.0 ||
+                closes[it] !in lows[it]..highs[it] }) return null
+
+        val trueRanges = mutableListOf<Double>()
+        val plusMoves = mutableListOf<Double>()
+        val minusMoves = mutableListOf<Double>()
+        for (i in 1 until highs.size) {
+            val upMove = highs[i] - highs[i - 1]
+            val downMove = lows[i - 1] - lows[i]
+            trueRanges += max(highs[i] - lows[i], max(
+                abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])
+            ))
+            plusMoves += if (upMove > downMove && upMove > 0.0) upMove else 0.0
+            minusMoves += if (downMove > upMove && downMove > 0.0) downMove else 0.0
+        }
+
+        var smoothTr = trueRanges.take(period).sum()
+        var smoothPlus = plusMoves.take(period).sum()
+        var smoothMinus = minusMoves.take(period).sum()
+        val dxValues = mutableListOf<Double>()
+        fun currentDx(): Double? {
+            if (smoothTr <= 0.0) return null
+            val plusDi = 100.0 * smoothPlus / smoothTr
+            val minusDi = 100.0 * smoothMinus / smoothTr
+            val denominator = plusDi + minusDi
+            return if (denominator <= 0.0) 0.0
+                else 100.0 * abs(plusDi - minusDi) / denominator
+        }
+        currentDx()?.let(dxValues::add)
+        for (i in period until trueRanges.size) {
+            smoothTr = smoothTr - smoothTr / period + trueRanges[i]
+            smoothPlus = smoothPlus - smoothPlus / period + plusMoves[i]
+            smoothMinus = smoothMinus - smoothMinus / period + minusMoves[i]
+            currentDx()?.let(dxValues::add)
+        }
+        if (dxValues.size < period || smoothTr <= 0.0) return null
+        var adx = dxValues.take(period).average()
+        for (i in period until dxValues.size)
+            adx = (adx * (period - 1) + dxValues[i]) / period
+        val plusDi = 100.0 * smoothPlus / smoothTr
+        val minusDi = 100.0 * smoothMinus / smoothTr
+        return DirectionalStrength(adx, plusDi, minusDi).takeIf {
+            it.adx.isFinite() && it.plusDi.isFinite() && it.minusDi.isFinite()
+        }
+    }
 
     /** Simple-window RSI, matching the existing Confluence/Reversal implementation. */
     fun rsiSimple(values: List<Double>, period: Int = 14): Double? {
