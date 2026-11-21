@@ -103,7 +103,7 @@ internal object UnifiedSMCScanManager {
         val now = System.currentTimeMillis()
         val coreAge = if (coreUpdatedAt > 0L) now - coreUpdatedAt else Long.MAX_VALUE
         val advancedAge = if (advancedUpdatedAt > 0L) now - advancedUpdatedAt else Long.MAX_VALUE
-        if (!running && (coreAge >= 15L * 60L * 1000L || advancedAge >= 15L * 60L * 1000L)) refresh(app)
+        if (!running && (coreAge >= 15L * 60L * 1000L || advancedAge >= 15L * 60L * 1000L)) UnifiedMarketScanCoordinator.refresh(app)
     }
 
     fun refresh(context: android.content.Context) {
@@ -169,6 +169,9 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val core = scanState.core
     val advanced = scanState.advanced
     val loading = scanState.loading
+    val tradeScanState by TradeIdeaScanManager.state.collectAsState()
+    val combinedLoading = loading || tradeScanState.loading
+    val canStartCombined = !(loading && tradeScanState.loading)
     val progress = scanState.progress
     val scanned = scanState.scanned
     val total = scanState.total
@@ -182,7 +185,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     var horizon by remember { mutableStateOf("All") }
     var expanded by remember { mutableStateOf<String?>(null) }
 
-    fun scan() = UnifiedSMCScanManager.refresh(context)
+    fun scan() = UnifiedMarketScanCoordinator.refresh(context)
     LaunchedEffect(Unit) { UnifiedSMCScanManager.initialize(context) }
 
     val coreCandidates = remember(core, scanState.coreUpdatedAt) {
@@ -230,11 +233,11 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Core + Advanced · shared Daily + SMC market data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("One shared market snapshot · Trade Ideas + Core + Advanced SMC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { scan() }, enabled = !loading) {
-                if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified SMC scan")
+            IconButton(onClick = { scan() }, enabled = canStartCombined) {
+                if (combinedLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Filled.Refresh, contentDescription = "Run unified market scan")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -247,6 +250,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 FilterChip(selected = horizon == it, onClick = { horizon = it }, label = { Text(it) })
             }
         }
+        if (tradeScanState.loading) Text("Trade Ideas · ${tradeScanState.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (loading || total > 0) {
             Text(progress, style = MaterialTheme.typography.bodySmall)
             LinearProgressIndicator(progress = { if (total > 0) (scanned.toFloat() / total).coerceIn(0f,1f) else 0f }, modifier = Modifier.fillMaxWidth())

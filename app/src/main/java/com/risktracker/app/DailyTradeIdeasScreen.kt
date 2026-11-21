@@ -236,7 +236,7 @@ internal object TradeIdeaScanManager {
                 else "Refresh to scan live Binance USDT-M perpetual markets."
         )
         val age = cached?.first?.let { (System.currentTimeMillis() - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
-        if (age > 10 * 60_000L) refresh(appContext)
+        if (age > 10 * 60_000L) UnifiedMarketScanCoordinator.refresh(appContext)
     }
 
     fun refresh(context: android.content.Context) {
@@ -284,6 +284,16 @@ internal object TradeIdeaScanManager {
     }
 }
 
+internal object UnifiedMarketScanCoordinator {
+    /** Starts both strategy engines as one user-visible scan cycle. */
+    fun refresh(context: android.content.Context) {
+        val app = context.applicationContext
+        BinanceMarketScanner.initialize(app)
+        TradeIdeaScanManager.refresh(app)
+        UnifiedSMCScanManager.refresh(app)
+    }
+}
+
 internal object BinanceMarketScanner {
     // A short-lived bootstrap shared by Daily Trade Ideas and Unified SMC. It contains
     // the full active USDT-M universe; strategy-specific liquidity thresholds are applied
@@ -319,11 +329,14 @@ internal object BinanceMarketScanner {
             }
         }
     private const val BASE = "https://fapi.binance.com"
-    private val scanMutex = Mutex()
+    // Serialize duplicate runs within each engine, but never block Trade Ideas on SMC or vice versa.
+    private val tradeIdeaScanMutex = Mutex()
+    private val smcScanMutex = Mutex()
     @Volatile private var restBlockedUntilMs = 0L
     @Volatile private var restLimitPrefs: android.content.SharedPreferences? = null
     private data class CachedCandles(val fetchedAt: Long, val rows: List<ScanCandle>)
     private val candleCache = ConcurrentHashMap<String, CachedCandles>()
+    private val candleKeyLocks = ConcurrentHashMap<String, Mutex>()
     private val candleFetchSlots = Semaphore(4)
     private val candleRequestPacer = Mutex()
     @Volatile private var nextCandleRequestAtMs = 0L
@@ -416,29 +429,34 @@ internal object BinanceMarketScanner {
         }.filter { it.closeTime < now && it.close > 0.0 }
     }
 
-    private suspend fun cachedCandles(symbol: String, interval: String, limit: Int): List<ScanCandle> =
-        candleFetchSlots.withPermit {
-            val key = "$symbol|$interval|$limit"
-            val ttlMs = when (interval) {
-                "5m" -> 90_000L
-                "15m" -> 4 * 60_000L
-                "1h" -> 20 * 60_000L
-                "4h" -> 90 * 60_000L
-                else -> 60_000L
+    private suspend fun cachedCandles(symbol: String, interval: String, limit: Int): List<ScanCandle> {
+        val key = "$symbol|$interval|$limit"
+        // Concurrent engines share one in-flight fetch for an identical symbol/timeframe/window.
+        val keyLock = candleKeyLocks.computeIfAbsent(key) { Mutex() }
+        return keyLock.withLock {
+            candleFetchSlots.withPermit {
+                val ttlMs = when (interval) {
+                    "5m" -> 90_000L
+                    "15m" -> 4 * 60_000L
+                    "1h" -> 20 * 60_000L
+                    "4h" -> 90 * 60_000L
+                    else -> 60_000L
+                }
+                val now = System.currentTimeMillis()
+                candleCache[key]?.takeIf { now - it.fetchedAt in 0..ttlMs && it.rows.isNotEmpty() }?.let {
+                    return@withPermit it.rows
+                }
+                candleRequestPacer.withLock {
+                    val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
+                    if (waitMs > 0L) delay(waitMs)
+                    nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+                }
+                val rows = withContext(Dispatchers.IO) { candles(symbol, interval, limit) }
+                if (rows.isNotEmpty()) candleCache[key] = CachedCandles(System.currentTimeMillis(), rows)
+                rows
             }
-            val now = System.currentTimeMillis()
-            candleCache[key]?.takeIf { now - it.fetchedAt in 0..ttlMs && it.rows.isNotEmpty() }?.let {
-                return@withPermit it.rows
-            }
-            candleRequestPacer.withLock {
-                val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
-                if (waitMs > 0L) delay(waitMs)
-                nextCandleRequestAtMs = System.currentTimeMillis() + 250L
-            }
-            val rows = withContext(Dispatchers.IO) { candles(symbol, interval, limit) }
-            if (rows.isNotEmpty()) candleCache[key] = CachedCandles(System.currentTimeMillis(), rows)
-            rows
         }
+    }
 
     private fun ema(v: List<Double>, p: Int): Double? {
         if (v.size < p) return null
@@ -518,7 +536,7 @@ internal object BinanceMarketScanner {
     suspend fun scan(
         progress: (String) -> Unit,
         onPartialResults: (List<TradeIdea>) -> Unit = {},
-        ): List<TradeIdea> = scanMutex.withLock { withContext(Dispatchers.IO) {
+        ): List<TradeIdea> = tradeIdeaScanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
@@ -750,7 +768,7 @@ internal object BinanceMarketScanner {
     suspend fun scanUnifiedSmc(
         progress: (String) -> Unit,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): UnifiedSMCScanResults = scanMutex.withLock { withContext(Dispatchers.IO) {
+    ): UnifiedSMCScanResults = smcScanMutex.withLock { withContext(Dispatchers.IO) {
         suspend fun report(message: String) = withContext(Dispatchers.Main.immediate) { progress(message) }
         report("Loading shared active USDT-M market universe…")
         val marketSnapshot = sharedMarketUniverseSnapshot()
@@ -1147,6 +1165,9 @@ private fun DailyTradeIdeasFeedScreen() {
     val scanUi by TradeIdeaScanManager.state.collectAsState()
     val ideas = scanUi.ideas
     val loading = scanUi.loading
+    val smcScanUi by UnifiedSMCScanManager.state.collectAsState()
+    val combinedLoading = loading || smcScanUi.loading
+    val canStartCombined = !(loading && smcScanUi.loading)
     val status = scanUi.status
     val error = scanUi.error
     val updatedAt = scanUi.updatedAt
@@ -1202,7 +1223,7 @@ private fun DailyTradeIdeasFeedScreen() {
     val entryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) enableEntryAlerts()
     }
-    fun refresh() = TradeIdeaScanManager.refresh(context)
+    fun refresh() = UnifiedMarketScanCoordinator.refresh(context)
     LaunchedEffect(Unit) {
         TradeIdeaScanManager.initialize(context)
         // Keep the shared market-scan worker scheduled even when notification alerts are disabled.
@@ -1341,13 +1362,14 @@ private fun DailyTradeIdeasFeedScreen() {
                         }
                         TextButton(onClick = { scanExpanded = !scanExpanded }) { Text(if (scanExpanded) "Less" else "Details") }
                     }
-                    Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                        if (loading) {
+                    Button(onClick = { refresh() }, enabled = canStartCombined, modifier = Modifier.fillMaxWidth()) {
+                        if (combinedLoading) {
                             CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                             Spacer(Modifier.width(9.dp))
                         }
-                        Text(if (loading) "Quick scanning all USDT perpetuals…" else "Quick Scan · All USDT Pairs")
+                        Text(if (combinedLoading) "Scanning Trade Ideas + SMC Signals…" else "Scan All · Trade Ideas + SMC")
                     }
+                    if (combinedLoading && smcScanUi.loading) Text("SMC: ${smcScanUi.progress}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (scanExpanded) {
                         Text("Binance Futures public data · READY requires all mandatory entry checks to pass.",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
