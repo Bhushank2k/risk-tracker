@@ -1,6 +1,7 @@
 package com.risktracker.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -126,7 +127,7 @@ internal fun BestOpportunitiesScreen(
             SummaryMetric("Rejected", rejected, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
         }
         Text("Status", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             listOf("All", "CONFIRMED", "WAITING", "CONFLICT", "REJECTED").forEach { value ->
                 FilterChip(
                     selected = statusFilter == value,
@@ -135,12 +136,12 @@ internal fun BestOpportunitiesScreen(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             listOf("All", "LONG", "SHORT").forEach { value ->
                 FilterChip(selected = sideFilter == value, onClick = { sideFilter = value }, label = { Text(value) })
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             listOf("All", "Scalp", "Intraday", "Swing").forEach { value ->
                 FilterChip(selected = horizonFilter == value, onClick = { horizonFilter = value }, label = { Text(value) })
             }
