@@ -24,8 +24,30 @@ class PrimaryNavigationTest {
         listOf(0, 1, 21).forEach { destination ->
             org.junit.Assert.assertTrue(isPrimaryNavigationDestination(destination))
         }
-        listOf(2, 5, 6, 7, 9, 11, 13, 14, 16, 17, 18, 19, 23, 25, 26, 27, 28).forEach { destination ->
+        listOf(2, 5, 6, 7, 9, 11, 13, 14, 16, 17, 18, 19, 23, 25, 26, 27, 28, 32, 33).forEach { destination ->
             org.junit.Assert.assertFalse(isPrimaryNavigationDestination(destination))
+        }
+    }
+    @Test fun exploreMenuGroupsHaveUniqueStableDestinations() {
+        val groups = exploreMenuGroups()
+        val destinations = groups.flatMap { it.second }
+
+        assertEquals(destinations.size, destinations.map { it.second }.distinct().size)
+        assertEquals(
+            listOf("TRADING & TOOLS", "MARKET INTELLIGENCE", "PERFORMANCE & REPORTS", "EXCHANGE & ACCOUNT", "APP"),
+            groups.map { it.first }
+        )
+        val marketIntelligence = groups.first { it.first == "MARKET INTELLIGENCE" }.second
+        assertEquals(
+            listOf("Unified SMC Signals" to 33, "Coin Explosion Radar" to 32),
+            marketIntelligence
+        )
+    }
+
+    @Test fun exploreDoesNotDuplicatePrimaryNavigationRoutes() {
+        val routes = exploreMenuGroups().flatMap { it.second }.map { it.second }
+        listOf(0, 1, 21, 29).forEach { primaryRoute ->
+            org.junit.Assert.assertFalse(primaryRoute in routes)
         }
     }
 }

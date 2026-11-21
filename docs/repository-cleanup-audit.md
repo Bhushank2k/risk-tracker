@@ -1,7 +1,7 @@
 # Repository cleanup audit — balanced consolidation
 
-**Status:** Phase 1 audit and documentation only  
-**Base reviewed:** `main` at `f199c8b3ea1962a11670c64b768d708d0034095b`  
+**Status:** Phase 1 audit complete; Phase 2 navigation consolidation implemented in PR #396  
+**Base reviewed:** `main` at `df60d5bfa74465c5a70874a22bae2a4a69457771`  
 **Policy:** No feature, worker, store, model, scanner, historical record or calculation is deleted in this change.
 
 ## Goals
@@ -21,7 +21,7 @@ The current `MainActivity.kt` routes four bottom-navigation destinations:
 
 Explore currently groups:
 - Trading & Tools: Live positions & orders (16), Position & leverage calculator (2)
-- Market Discovery: Coin Explosion Radar (32)
+- Market Intelligence: Unified SMC Signals (33), Coin Explosion Radar (32)
 - Performance & Reports: P&L Calendar (23), Crypto Tax Report (9)
 - Exchange & Account: Binance Sync & imports (6), Sync health (18), Account activity & statements (17)
 - App: Settings (7), About (5)
@@ -64,7 +64,7 @@ These route IDs are consumed by the app-shell router. Preserve them during UI gr
 
 ## Recommended implementation sequence
 
-### Phase 1 — navigation and ownership (this PR)
+### Phase 1 — navigation and ownership (completed)
 - Correct the information-architecture documentation to match the current four-destination app shell.
 - Record screen ownership and consolidation boundaries.
 - Establish an explicit no-delete retirement policy.
