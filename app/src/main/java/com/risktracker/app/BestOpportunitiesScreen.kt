@@ -193,6 +193,9 @@ internal fun BestOpportunitiesScreen(
                         Text("SMC entry zone · ${item.smc.entryLow.bestPrice()} – ${item.smc.entryHigh.bestPrice()}")
                         Text("Stop ${item.smc.stop.bestPrice()} · Target ${item.smc.target.bestPrice()}")
                     }
+                    if (item.idea != null && item.smc != null) {
+                        Text("SMC entry zone · ${item.smc.entryLow.bestPrice()} – ${item.smc.entryHigh.bestPrice()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (item.idea != null) {
                         Text("Daily score ${item.idea.score}/100 · SMC score ${item.smc?.score?.toString() ?: "—"}",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
