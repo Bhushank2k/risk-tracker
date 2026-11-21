@@ -28,7 +28,7 @@ private data class UnifiedSMCRow(
     val entryLow: Double, val entryHigh: Double, val stop: Double,
     val target: Double, val rr: Double, val sources: Set<String>,
     val patterns: Set<String>, val status: String, val explanation: String,
-    val levelSource: String, val id: String
+    val levelSource: String, val detectedAt: Long, val id: String
 )
 
 internal data class UnifiedSMCScanUiState(
@@ -39,7 +39,8 @@ internal data class UnifiedSMCScanUiState(
     val progress: String = "Preparing independent SMC scan…",
     val scanned: Int = 0,
     val total: Int = 0,
-    val updatedAt: Long = 0L,
+    val coreUpdatedAt: Long = 0L,
+    val advancedUpdatedAt: Long = 0L,
     val error: String? = null
 )
 
@@ -59,10 +60,8 @@ internal object UnifiedSMCScanManager {
 
         val core = SMCScanStateStore.loadResults(app)
         val advanced = AdvancedSMCSignalStore.load(app)
-        val updatedAt = maxOf(
-            SMCScanStateStore.resultsUpdatedAt(app),
-            AdvancedSMCSignalStore.resultsUpdatedAt(app)
-        )
+        val coreUpdatedAt = SMCScanStateStore.resultsUpdatedAt(app)
+        val advancedUpdatedAt = AdvancedSMCSignalStore.resultsUpdatedAt(app)
         val status = SMCScanStateStore.status(app)
         val running = status.optBoolean("running")
         mutableState.value = UnifiedSMCScanUiState(
@@ -73,7 +72,8 @@ internal object UnifiedSMCScanManager {
             progress = status.optString("message", "Ready · independent SMC scan"),
             scanned = status.optInt("scanned"),
             total = status.optInt("total"),
-            updatedAt = updatedAt
+            coreUpdatedAt = coreUpdatedAt,
+            advancedUpdatedAt = advancedUpdatedAt
         )
 
         // Observe WorkManager results too, so background refreshes appear without
@@ -81,16 +81,16 @@ internal object UnifiedSMCScanManager {
         managerScope.launch {
             while (true) {
                 val latestStatus = SMCScanStateStore.status(app)
-                val latestAt = maxOf(
-                    SMCScanStateStore.resultsUpdatedAt(app),
-                    AdvancedSMCSignalStore.resultsUpdatedAt(app)
-                )
+                val latestCoreAt = SMCScanStateStore.resultsUpdatedAt(app)
+                val latestAdvancedAt = AdvancedSMCSignalStore.resultsUpdatedAt(app)
                 val current = mutableState.value
-                val hasNewResults = latestAt > current.updatedAt
+                val coreChanged = latestCoreAt > current.coreUpdatedAt
+                val advancedChanged = latestAdvancedAt > current.advancedUpdatedAt
                 mutableState.value = current.copy(
-                    core = if (hasNewResults) SMCScanStateStore.loadResults(app) else current.core,
-                    advanced = if (hasNewResults) AdvancedSMCSignalStore.load(app) else current.advanced,
-                    updatedAt = maxOf(current.updatedAt, latestAt),
+                    core = if (coreChanged) SMCScanStateStore.loadResults(app) else current.core,
+                    advanced = if (advancedChanged) AdvancedSMCSignalStore.load(app) else current.advanced,
+                    coreUpdatedAt = maxOf(current.coreUpdatedAt, latestCoreAt),
+                    advancedUpdatedAt = maxOf(current.advancedUpdatedAt, latestAdvancedAt),
                     loading = latestStatus.optBoolean("running") || scanJob?.isActive == true,
                     progress = latestStatus.optString("message", current.progress),
                     scanned = latestStatus.optInt("scanned"),
@@ -100,8 +100,10 @@ internal object UnifiedSMCScanManager {
             }
         }
 
-        val age = if (updatedAt > 0L) (System.currentTimeMillis() - updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
-        if (!running && age >= 15L * 60L * 1000L) refresh(app)
+        val now = System.currentTimeMillis()
+        val coreAge = if (coreUpdatedAt > 0L) now - coreUpdatedAt else Long.MAX_VALUE
+        val advancedAge = if (advancedUpdatedAt > 0L) now - advancedUpdatedAt else Long.MAX_VALUE
+        if (!running && (coreAge >= 15L * 60L * 1000L || advancedAge >= 15L * 60L * 1000L)) refresh(app)
     }
 
     fun refresh(context: android.content.Context) {
@@ -133,14 +135,13 @@ internal object UnifiedSMCScanManager {
                     AdvancedSMCSignalStore.save(app, result.advanced)
                     SMCScanStateStore.saveResults(app, result.core)
                 }
-                val completedAt = maxOf(
-                    SMCScanStateStore.resultsUpdatedAt(app),
-                    AdvancedSMCSignalStore.resultsUpdatedAt(app)
-                )
+                val completedCoreAt = SMCScanStateStore.resultsUpdatedAt(app)
+                val completedAdvancedAt = AdvancedSMCSignalStore.resultsUpdatedAt(app)
                 mutableState.value = mutableState.value.copy(
                     core = result.core,
                     advanced = result.advanced,
-                    updatedAt = completedAt,
+                    coreUpdatedAt = completedCoreAt,
+                    advancedUpdatedAt = completedAdvancedAt,
                     error = null,
                     progress = "Unified SMC complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates."
                 )
@@ -175,8 +176,8 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     LaunchedEffect(Unit) {
         while (true) { kotlinx.coroutines.delay(60_000); clockNow = System.currentTimeMillis() }
     }
-    val resultAgeMs = if (scanState.updatedAt > 0L) (clockNow - scanState.updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
-    val resultsStale = resultAgeMs > 15L * 60L * 1000L
+    val coreAgeMs = if (scanState.coreUpdatedAt > 0L) (clockNow - scanState.coreUpdatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+    val advancedAgeMs = if (scanState.advancedUpdatedAt > 0L) (clockNow - scanState.advancedUpdatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
     var filter by remember { mutableStateOf("All") }
     var horizon by remember { mutableStateOf("All") }
     var expanded by remember { mutableStateOf<String?>(null) }
@@ -184,37 +185,40 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     fun scan() = UnifiedSMCScanManager.refresh(context)
     LaunchedEffect(Unit) { UnifiedSMCScanManager.initialize(context) }
 
-    val rows = remember(core, advanced) {
-        val merged = linkedMapOf<String, UnifiedSMCRow>()
-        core.forEach { x ->
-            val key = "${x.symbol}|${x.side}|${x.horizon}"
-            val row = UnifiedSMCRow(x.symbol, x.side, x.horizon, x.score, x.entryLow, x.entryHigh,
-                x.stop, x.target, x.rewardRisk, setOf("Core SMC"),
-                setOf("BOS / liquidity sweep / displacement / OB-FVG"),
-                x.status,
-                listOf(x.structure, x.sweep, x.displacement, x.zoneDescription, x.location).joinToString("\n"),
-                "Core SMC levels", key)
-            merged[key] = row
+    val coreCandidates = remember(core, scanState.coreUpdatedAt) {
+        core.map { x ->
+            UnifiedSMCCandidate(
+                id = x.id, symbol = x.symbol, side = x.side, horizon = x.horizon,
+                score = x.score, entryLow = x.entryLow, entryHigh = x.entryHigh,
+                stop = x.stop, target = x.target, rewardRisk = x.rewardRisk,
+                source = "Core SMC", pattern = "BOS / liquidity sweep / displacement / OB-FVG",
+                status = x.status,
+                explanation = listOf(x.structure, x.sweep, x.displacement, x.zoneDescription, x.location).joinToString("\\n"),
+                detectedAt = scanState.coreUpdatedAt
+            )
         }
-        advanced.forEach { x ->
-            val key = "${x.symbol}|${x.side}|${x.horizon}"
-            val previous = merged[key]
-            if (previous == null) {
-                merged[key] = UnifiedSMCRow(x.symbol, x.side, x.horizon, x.score, x.entryLow, x.entryHigh,
-                    x.stop, x.target1, x.rewardRisk, setOf("Advanced SMC"), setOf(x.signalType),
-                    x.status,
-                    x.explanation + "\n" + x.confirmation,
-                    "Advanced SMC levels", key)
-            } else {
-                merged[key] = previous.copy(score = maxOf(previous.score, x.score),
-                    sources = previous.sources + "Advanced SMC", patterns = previous.patterns + x.signalType,
-                    status = "${previous.status} · Advanced: ${x.status}",
-                    explanation = previous.explanation + "\n" + x.explanation + "\n" + x.confirmation +
-                        "\nConfluence note: Core entry, stop and target levels are retained; Advanced SMC adds pattern confirmation only.",
-                    levelSource = "Core SMC levels (Advanced is confirmation only)")
-            }
+    }
+    val advancedCandidates = remember(advanced) {
+        advanced.map { x ->
+            UnifiedSMCCandidate(
+                id = x.id, symbol = x.symbol, side = x.side, horizon = x.horizon,
+                score = x.score, entryLow = x.entryLow, entryHigh = x.entryHigh,
+                stop = x.stop, target = x.target1, rewardRisk = x.rewardRisk,
+                source = "Advanced SMC", pattern = x.signalType, status = x.status,
+                explanation = x.explanation + "\\n" + x.confirmation,
+                detectedAt = x.detectedAt
+            )
         }
-        merged.values.sortedWith(compareByDescending<UnifiedSMCRow> { it.score }.thenBy { it.symbol })
+    }
+    val rows = remember(coreCandidates, advancedCandidates) {
+        mergeUnifiedSMCCandidates(coreCandidates, advancedCandidates).map { signal ->
+            UnifiedSMCRow(
+                signal.symbol, signal.side, signal.horizon, signal.score,
+                signal.entryLow, signal.entryHigh, signal.stop, signal.target,
+                signal.rewardRisk, signal.sources, signal.patterns, signal.status,
+                signal.explanation, signal.levelSource, signal.detectedAt, signal.id
+            )
+        }
     }
     val visible = remember(rows, filter, horizon) {
         rows.filter { (filter == "All" || it.side == filter) && (horizon == "All" || it.horizon == horizon) }
@@ -249,9 +253,8 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             Text("$scanned / $total eligible SMC markets checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (scanState.error != null) Text("Last refresh failed: ${scanState.error}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        if (scanState.updatedAt == 0L) Text("No successful scan timestamp yet.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-        else Text(if (resultsStale) "STALE RESULTS · last successful scan ${resultAgeMs / 60000} min ago" else "Fresh results · updated ${resultAgeMs / 60000} min ago",
-            color = if (resultsStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        Text("Core SMC: ${coreAgeMs.unifiedFreshnessLabel()} · Advanced SMC: ${advancedAgeMs.unifiedFreshnessLabel()}",
+            color = if (coreAgeMs > 15L * 60L * 1000L || advancedAgeMs > 15L * 60L * 1000L) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
         Text("${visible.size} combined signals · ${rows.count { it.sources.size > 1 }} confluence matches",
             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -266,7 +269,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                                 color = if (row.side == "LONG") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                         }
                         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
-                            Text("${row.score}/100", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
+                            Text("Highest: ${row.score}/100", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -275,6 +278,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                     row.patterns.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(row.status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                     Text("Levels: ${row.levelSource}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Signal candle: ${row.detectedAt.unifiedSignalAge(clockNow)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column { Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${row.entryLow.unifiedPrice()} – ${row.entryHigh.unifiedPrice()}", fontWeight = FontWeight.SemiBold) }
                         Column { Text("Stop", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(row.stop.unifiedPrice(), fontWeight = FontWeight.SemiBold) }
@@ -298,6 +302,16 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+private fun Long.unifiedFreshnessLabel(): String =
+    if (this == Long.MAX_VALUE) "no successful scan" else if (this > 15L * 60L * 1000L) "STALE · ${this / 60000} min ago" else "updated ${this / 60000} min ago"
+
+private fun Long.unifiedSignalAge(now: Long): String =
+    if (this <= 0L) "timestamp unavailable"
+    else {
+        val age = (now - this).coerceAtLeast(0L)
+        if (age < 60_000L) "${age / 1000}s ago" else "${age / 60_000L} min ago"
+    }
 
 private fun Double.unifiedPrice(): String = when {
     this >= 1000 -> "%.2f".format(Locale.US, this)
