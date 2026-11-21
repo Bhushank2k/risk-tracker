@@ -2342,52 +2342,51 @@ private fun ScannerMetric(label: String, value: String) {
 @Composable
 private fun HistoricalOutcomePanel(idea: TradeIdea) {
     val stats = idea.backtest
-    var expanded by remember(idea.symbol, idea.horizon) { mutableStateOf(false) }
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     RiskCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
     ) {
-        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Historical performance", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 Text(stats.confidenceLabel, style = MaterialTheme.typography.labelSmall,
-                    color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = if (stats.hasUsableEstimate) MaterialTheme.colorScheme.primary else secondary)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(stats.trades.toString() + " samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(if (stats.hasUsableEstimate) "%.1f%% win · %+.2fR avg".format(Locale.US, stats.winRatePercent, stats.averageR)
-                    else "Insufficient sample · 30 needed",
-                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            if (stats.hasUsableEstimate) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("WIN RATE", style = MaterialTheme.typography.labelSmall, color = secondary)
+                        Text("%.1f%%".format(Locale.US, stats.winRatePercent),
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("AVERAGE RESULT", style = MaterialTheme.typography.labelSmall, color = secondary)
+                        Text("%+.2fR".format(Locale.US, stats.averageR),
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                            color = if (stats.averageR >= 0.0) Color(0xFF35C98B) else Color(0xFFFF6B75))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("SAMPLES", style = MaterialTheme.typography.labelSmall, color = secondary)
+                        Text(stats.trades.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Profit factor", style = MaterialTheme.typography.labelSmall, color = secondary)
+                    Text(stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a",
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Max drawdown", style = MaterialTheme.typography.labelSmall, color = secondary)
+                    Text("%.2fR".format(Locale.US, stats.maxDrawdownR),
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                Text(stats.trades.toString() + " historical samples",
+                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Text("Not enough data for a reliable estimate. At least 30 samples are required.",
+                    style = MaterialTheme.typography.labelSmall, color = secondary)
             }
-            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
-                Text(if (expanded) "Hide breakdown" else "View breakdown")
-            }
-            if (expanded) {
-                Text("LONG " + stats.longTrades + " · " + (stats.longAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                    "  |  SHORT " + stats.shortTrades + " · " + (stats.shortAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall)
-                Text("TREND " + stats.trendTrades + " · " + (stats.trendAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples") +
-                    "  |  RANGE " + stats.rangeTrades + " · " + (stats.rangeAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "no samples"),
-                    style = MaterialTheme.typography.labelSmall)
-                Text("BREAKOUT " + stats.breakoutTrades + " · " + setupFamilyWinRateLabel(stats.breakoutWins, stats.breakoutTrades) +
-                    " · " + (stats.breakoutAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall)
-                Text("PULLBACK " + stats.pullbackTrades + " · " + setupFamilyWinRateLabel(stats.pullbackWins, stats.pullbackTrades) +
-                    " · " + (stats.pullbackAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall)
-                Text("REVERSAL " + stats.reversalTrades + " · " + setupFamilyWinRateLabel(stats.reversalWins, stats.reversalTrades) +
-                    " · " + (stats.reversalAverageR?.let { "%+.2fR avg".format(Locale.US, it) } ?: "n/a"),
-                    style = MaterialTheme.typography.labelSmall)
-                val lower = stats.winRateLower95 ?: 0.0
-                val upper = stats.winRateUpper95 ?: 100.0
-                Text("Approx. 95% win-rate range: %.1f–%.1f%%".format(Locale.US, lower, upper),
-                    style = MaterialTheme.typography.labelSmall)
-                Text("Profit factor " + (stats.profitFactor?.let { "%.2f".format(Locale.US, it) } ?: "n/a") +
-                    " · max drawdown " + "%.2f".format(Locale.US, stats.maxDrawdownR) + "R",
-                    style = MaterialTheme.typography.labelSmall)
-                Text("Closed-candle replay, not live fills; fees, funding, spread and slippage can reduce results.",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Text("Based on closed-candle replay, not live fills. Fees, funding, spread and slippage may reduce real results.",
+                style = MaterialTheme.typography.labelSmall, color = secondary)
         }
     }
 }
