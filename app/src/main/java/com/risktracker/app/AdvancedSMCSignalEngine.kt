@@ -16,7 +16,7 @@ internal object AdvancedSMCSignalEngine {
                  executionRaw: List<AdvancedSMCCandle>, benchmarkRaw: List<AdvancedSMCCandle>,
                  horizon: String): List<AdvancedSMCSignal> {
         val rows = setupRaw.dropLast(1); val execution = executionRaw.dropLast(1); val benchmark = benchmarkRaw.dropLast(1)
-        if (livePrice <= 0.0 || rows.size < 45 || execution.size < 20) return emptyList()
+        if (!livePrice.isFinite() || livePrice <= 0.0 || rows.size < 45 || execution.size < 20) return emptyList()
         val atr = rows.zipWithNext { p, c -> maxOf(c.high-c.low, abs(c.high-p.close), abs(c.low-p.close)) }.takeLast(14).average()
         if (!atr.isFinite() || atr <= 0.0) return emptyList()
         return listOfNotNull(

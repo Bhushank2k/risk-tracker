@@ -28,7 +28,7 @@ private data class UnifiedSMCRow(
     val entryLow: Double, val entryHigh: Double, val stop: Double,
     val target: Double, val rr: Double, val sources: Set<String>,
     val patterns: Set<String>, val status: String, val explanation: String,
-    val id: String
+    val levelSource: String, val id: String
 )
 
 internal data class UnifiedSMCScanUiState(
@@ -171,6 +171,12 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val progress = scanState.progress
     val scanned = scanState.scanned
     val total = scanState.total
+    var clockNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(60_000); clockNow = System.currentTimeMillis() }
+    }
+    val resultAgeMs = if (scanState.updatedAt > 0L) (clockNow - scanState.updatedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+    val resultsStale = resultAgeMs > 15L * 60L * 1000L
     var filter by remember { mutableStateOf("All") }
     var horizon by remember { mutableStateOf("All") }
     var expanded by remember { mutableStateOf<String?>(null) }
@@ -185,9 +191,9 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             val row = UnifiedSMCRow(x.symbol, x.side, x.horizon, x.score, x.entryLow, x.entryHigh,
                 x.stop, x.target, x.rewardRisk, setOf("Core SMC"),
                 setOf("BOS / liquidity sweep / displacement / OB-FVG"),
-                "PATTERN DETECTED · EXECUTION CHECK REQUIRED",
+                x.status,
                 listOf(x.structure, x.sweep, x.displacement, x.zoneDescription, x.location).joinToString("\n"),
-                key)
+                "Core SMC levels", key)
             merged[key] = row
         }
         advanced.forEach { x ->
@@ -196,12 +202,16 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             if (previous == null) {
                 merged[key] = UnifiedSMCRow(x.symbol, x.side, x.horizon, x.score, x.entryLow, x.entryHigh,
                     x.stop, x.target1, x.rewardRisk, setOf("Advanced SMC"), setOf(x.signalType),
-                    "PATTERN DETECTED · EXECUTION CHECK REQUIRED",
-                    x.explanation + "\n" + x.confirmation, key)
+                    x.status,
+                    x.explanation + "\n" + x.confirmation,
+                    "Advanced SMC levels", key)
             } else {
                 merged[key] = previous.copy(score = maxOf(previous.score, x.score),
                     sources = previous.sources + "Advanced SMC", patterns = previous.patterns + x.signalType,
-                    explanation = previous.explanation + "\n" + x.explanation + "\n" + x.confirmation)
+                    status = "${previous.status} · Advanced: ${x.status}",
+                    explanation = previous.explanation + "\n" + x.explanation + "\n" + x.confirmation +
+                        "\nConfluence note: Core entry, stop and target levels are retained; Advanced SMC adds pattern confirmation only.",
+                    levelSource = "Core SMC levels (Advanced is confirmation only)")
             }
         }
         merged.values.sortedWith(compareByDescending<UnifiedSMCRow> { it.score }.thenBy { it.symbol })
@@ -238,6 +248,11 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
             LinearProgressIndicator(progress = { if (total > 0) (scanned.toFloat() / total).coerceIn(0f,1f) else 0f }, modifier = Modifier.fillMaxWidth())
             Text("$scanned / $total eligible SMC markets checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else Text(progress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (scanState.error != null) Text("Last refresh failed: ${scanState.error}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (scanState.updatedAt == 0L) Text("No successful scan timestamp yet.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        else Text(if (resultsStale) "STALE RESULTS · last successful scan ${resultAgeMs / 60000} min ago" else "Fresh results · updated ${resultAgeMs / 60000} min ago",
+            color = if (resultsStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
         Text("${visible.size} combined signals · ${rows.count { it.sources.size > 1 }} confluence matches",
             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         visible.forEach { row ->
@@ -259,6 +274,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                     }
                     row.patterns.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(row.status, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Levels: ${row.levelSource}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column { Text("Entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${row.entryLow.unifiedPrice()} – ${row.entryHigh.unifiedPrice()}", fontWeight = FontWeight.SemiBold) }
                         Column { Text("Stop", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(row.stop.unifiedPrice(), fontWeight = FontWeight.SemiBold) }
