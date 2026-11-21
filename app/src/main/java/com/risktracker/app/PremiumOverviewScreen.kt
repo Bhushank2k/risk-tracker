@@ -50,7 +50,8 @@ fun RiskOverviewScreen(
     trades: List<TradeEntry>,
     maxDailyLoss: Double,
     onNavigate: (Int) -> Unit,
-    onChange: (List<PnlEntry>) -> Unit
+    onChange: (List<PnlEntry>) -> Unit,
+    onImportedPnlChange: (List<BinanceDailyResult>) -> Unit
 ) {
     val context = LocalContext.current
     val positionsStore = remember { BinanceLivePositionsStore(context) }
@@ -65,6 +66,9 @@ fun RiskOverviewScreen(
         mutableStateOf(if (hasBinanceCredentials) "Showing saved positions; live prices connect over WebSocket." else "Connect read-only Binance credentials in Binance Sync to see account data.")
     }
     var markPriceStatus by remember { mutableStateOf("Starting mark-price stream…") }
+    var dailyPnlStatus by remember { mutableStateOf("") }
+    var dailyPnlRefreshing by remember { mutableStateOf(false) }
+    var lastDailyPnlRefresh by remember { mutableLongStateOf(BinanceSyncData.lastFastRefresh(context)) }
     var lastPositionRestAttempt by remember { mutableLongStateOf(0L) }
     var lastBalanceRestAttempt by remember { mutableLongStateOf(0L) }
     val positionsScope = rememberCoroutineScope()
@@ -111,6 +115,33 @@ fun RiskOverviewScreen(
                 }
             } finally {
                 positionsLoading = false
+            }
+        }
+    }
+
+    val dailyPnlScope = rememberCoroutineScope()
+    fun refreshRecentDailyPnl(force: Boolean = false) {
+        if (dailyPnlRefreshing) return
+        val now = System.currentTimeMillis()
+        if (!force && now - lastDailyPnlRefresh < 5L * 60L * 1000L) return
+        if (BinanceCredentialStore(context).read() == null) return
+        dailyPnlRefreshing = true
+        dailyPnlStatus = "Refreshing today's realized P&L…"
+        dailyPnlScope.launch {
+            try {
+                BinanceSyncRunner.refreshRecentFuturesPnl(context)
+                val refreshedAt = System.currentTimeMillis()
+                BinanceSyncData.markFastRefresh(context)
+                lastDailyPnlRefresh = refreshedAt
+                val latest = withContext(Dispatchers.IO) { BinanceSyncData.load(context) }
+                liveImportedPnl = latest
+                onImportedPnlChange(latest)
+                dailyPnlStatus = "Realized P&L updated from Binance"
+            } catch (e: Exception) {
+                dailyPnlStatus = "P&L refresh unavailable · showing saved result" +
+                    (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+            } finally {
+                dailyPnlRefreshing = false
             }
         }
     }
@@ -174,10 +205,16 @@ fun RiskOverviewScreen(
             BinanceDailyWorker.schedule(context)
             refreshLivePositions()
             refreshAccountBalance()
+            refreshRecentDailyPnl()
+            var lastFastAttempt = System.currentTimeMillis()
             while (true) {
                 delay(60_000L)
                 refreshLivePositions()
                 refreshAccountBalance()
+                if (System.currentTimeMillis() - lastFastAttempt >= 5L * 60L * 1000L) {
+                    lastFastAttempt = System.currentTimeMillis()
+                    refreshRecentDailyPnl()
+                }
             }
         }
     }
@@ -286,6 +323,32 @@ fun RiskOverviewScreen(
                             }
 
                         }
+                    }
+                    if (dailyPnlStatus.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                dailyPnlStatus,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (dailyPnlStatus.contains("unavailable")) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                            )
+                            TextButton(
+                                onClick = { refreshRecentDailyPnl(force = true) },
+                                enabled = !dailyPnlRefreshing
+                            ) {
+                                Text(if (dailyPnlRefreshing) "Updating…" else "Refresh P&L")
+                            }
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { refreshRecentDailyPnl(force = true) },
+                            enabled = !dailyPnlRefreshing
+                        ) { Text(if (dailyPnlRefreshing) "Updating P&L…" else "Refresh P&L") }
                     }
                     if (balanceStatus.isNotBlank()) {
                         val balanceFailed = balanceStatus.startsWith("Refresh failed") || balanceStatus.contains("418")

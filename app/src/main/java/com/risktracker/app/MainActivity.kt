@@ -949,7 +949,8 @@ fun PnlScreen(
         trades = trades,
         maxDailyLoss = maxDailyLoss,
         onNavigate = onNavigate,
-        onChange = onChange
+        onChange = onChange,
+        onImportedPnlChange = onImportedPnlChange
     )
 }
 

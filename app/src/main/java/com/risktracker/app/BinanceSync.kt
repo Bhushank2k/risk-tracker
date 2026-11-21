@@ -24,6 +24,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
@@ -579,12 +580,15 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
     }
 
     /** Fetches the official USDⓈ-M income ledger and retains each P&L component by UTC day. */
-    fun futuresDailyIncomeByType(): Map<String, Map<String, Double>> {
+    fun futuresDailyIncomeByType(
+        startTime: Long = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+    ): Map<String, Map<String, Double>> {
+        require(startTime > 0L) { "Income history start time must be positive." }
         val daily = mutableMapOf<String, MutableMap<String, Double>>()
         val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-        // Binance income history is retention-limited; keep the same rolling 90-day coverage.
-        var cursor = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+        // Callers may request a narrow recent window for fast foreground reconciliation.
+        var cursor = startTime
         var more = true
         var pages = 0
         while (more && pages < 100) {
@@ -741,6 +745,14 @@ object BinanceSyncData {
     } catch (_: Exception) { emptyList() }
 
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
+
+    fun lastFastRefresh(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_fast_refresh", 0L)
+
+    fun markFastRefresh(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("last_fast_refresh", System.currentTimeMillis()).apply()
+    }
 }
 
 object BinanceAccountSnapshotRunner {
@@ -757,7 +769,8 @@ object BinanceAccountSnapshotRunner {
     }
 }
 
-object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
+object BinanceSyncRunner {
+    suspend fun sync(context: Context) = withContext(Dispatchers.IO) {
         val credentials = BinanceCredentialStore(context).read() ?: error("Save Binance read-only API credentials first.")
         BinanceAccountSnapshotRunner.refresh(context)
         val api = BinanceApi(credentials.first, credentials.second)
@@ -765,6 +778,33 @@ object BinanceSyncRunner {    suspend fun sync(context: Context) = withContext(D
         val futuresIncome = api.futuresDailyIncomeByType()
         val futures = futuresIncome.mapValues { (_, values) -> values.values.sum() }
         BinanceSyncData.merge(context, spot, futures, futuresIncome)
+    }
+
+    /**
+     * Lightweight foreground reconciliation: refreshes the current and previous UTC income days
+     * without re-fetching Spot history or the account-balance endpoints.
+     */
+    suspend fun refreshRecentFuturesPnl(context: Context) = withContext(Dispatchers.IO) {
+        val credentials = BinanceCredentialStore(context).read()
+            ?: error("Save Binance read-only API credentials first.")
+        val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.DAY_OF_MONTH, -1)
+        }
+        val api = BinanceApi(credentials.first, credentials.second)
+        val fetched = api.futuresDailyIncomeByType(utc.timeInMillis).toMutableMap()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val yesterday = dateFormat.format(Date(utc.timeInMillis))
+        val today = dateFormat.format(Date())
+        fetched.putIfAbsent(yesterday, emptyMap())
+        fetched.putIfAbsent(today, emptyMap())
+        val totals = fetched.mapValues { (_, values) -> values.values.sum() }
+        BinanceSyncData.merge(context, emptyMap(), totals, fetched)
     }
 }
 
