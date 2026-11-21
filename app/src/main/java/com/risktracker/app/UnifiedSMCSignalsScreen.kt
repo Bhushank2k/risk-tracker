@@ -171,6 +171,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
     val loading = scanState.loading
     val tradeScanState by TradeIdeaScanManager.state.collectAsState()
     val combinedLoading = loading || tradeScanState.loading
+    val canStartCombined = !(loading && tradeScanState.loading)
     val progress = scanState.progress
     val scanned = scanState.scanned
     val total = scanState.total
@@ -234,7 +235,7 @@ internal fun UnifiedSMCSignalsScreen(onOpenTradeIdeas: () -> Unit = {}) {
                 Text("Unified SMC Signals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("One shared market snapshot · Trade Ideas + Core + Advanced SMC", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { scan() }, enabled = !combinedLoading) {
+            IconButton(onClick = { scan() }, enabled = canStartCombined) {
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Filled.Refresh, contentDescription = "Run unified SMC scan")
             }
