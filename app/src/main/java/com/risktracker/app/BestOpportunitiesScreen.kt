@@ -37,7 +37,7 @@ internal fun BestOpportunitiesScreen(
     }
 
     val tradeAge = when {
-        tradeState.partial -> Long.MAX_VALUE
+        tradeState.partial -> 0L
         tradeState.updatedAt == null || tradeState.updatedAt <= 0L -> Long.MAX_VALUE
         else -> (now - tradeState.updatedAt).coerceAtLeast(0L)
     }
