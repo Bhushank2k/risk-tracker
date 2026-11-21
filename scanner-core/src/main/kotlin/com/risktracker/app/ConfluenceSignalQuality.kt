@@ -23,7 +23,7 @@ package com.risktracker.app
         !latest.close.isFinite() || !previous.close.isFinite()) return null
     val movePct = (latest.close - previous.close) / previous.close * 100.0
     return when {
-        !movePct.isFinite() || abs(movePct) < thresholdPct -> null
+        !movePct.isFinite() || kotlin.math.abs(movePct) < thresholdPct -> null
         movePct > 0.0 -> "Bullish"
         else -> "Bearish"
     }
