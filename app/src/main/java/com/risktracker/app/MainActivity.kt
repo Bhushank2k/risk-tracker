@@ -248,28 +248,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
     // Destination indices map to the existing screen router below.
     // Secondary destinations stay available, but are grouped by the task they support.
     // Keep route IDs unchanged: these values are consumed by the screen router below.
-    val menuGroups = listOf(
-        "TRADING & TOOLS" to listOf(
-            "Live positions & orders" to 16,
-            "Position & leverage calculator" to 2
-        ),
-        "MARKET DISCOVERY" to listOf("Coin Explosion Radar" to 32),
-        "PERFORMANCE & REPORTS" to listOf(
-            "P&L Calendar" to 23,
-            "Crypto tax report" to 9
-        ),
-        "EXCHANGE & ACCOUNT" to listOf(
-            "Binance Sync & imports" to 6,
-            "Sync health" to 18,
-            "Account activity & statements" to 17
-        ),
-        "APP" to listOf(
-            "Settings" to 7,
-            "About Risk Tracker" to 5
-        )
-    ).map { (group, destinations) ->
-        group to destinations.filterNot { isPrimaryNavigationDestination(it.second) }
-    }.filter { it.second.isNotEmpty() }
+    val menuGroups = exploreMenuGroups()
 
     val activeNavIndex = when (tab) { 0 -> 0; 21 -> 1; 1 -> 2; 29 -> 3; else -> -1 }
     Scaffold(
