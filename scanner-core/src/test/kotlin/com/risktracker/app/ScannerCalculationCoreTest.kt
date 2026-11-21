@@ -19,6 +19,10 @@ class ScannerCalculationCoreTest {
         assertNotEquals(simple!!, wilder!!)
     }
 
+    @Test fun wilderRsiReturnsNeutralForACompletelyFlatSeries() {
+        assertEquals(50.0, ScannerCalculationCore.rsiWilder(List(20) { 100.0 })!!, 1e-9)
+    }
+
     @Test fun adxAndDirectionalIndicatorsIdentifyStrongUptrend() {
         val closes = (0 until 40).map { 100.0 + it }
         val highs = closes.map { it + 1.0 }

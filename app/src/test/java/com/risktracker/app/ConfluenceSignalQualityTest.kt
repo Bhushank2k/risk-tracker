@@ -48,8 +48,8 @@ class ConfluenceSignalQualityTest {
     }
 
     @Test fun adxContributionIsSupportingFivePointConfluenceOnly() {
-        val withoutAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = false)
-        val withAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = true)
+        val withoutAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = false, btcContextAvailable = true)
+        val withAdx = confluenceScore(true, true, true, 1.5, true, true, false, true, adxConfirmed = true, btcContextAvailable = true)
         assertEquals(95, withoutAdx)
         assertEquals(100, withAdx)
     }
@@ -62,11 +62,27 @@ class ConfluenceSignalQualityTest {
         assertEquals(95, unknown)
     }
 
-    @Test fun fullConfluenceScoreTotalsOneHundred() {
-        assertEquals(100, confluenceScore(true, true, true, 1.5, true, true, false, true))
+    @Test fun fullConfluenceScoreTotalsOneHundredWhenBtcContextIsKnown() {
+        assertEquals(100, confluenceScore(true, true, true, 1.5, true, true, false, true, btcContextAvailable = true))
     }
     @Test fun scoreReflectsPartialVolumeAndBtcHeadwind() {
-        assertEquals(79, confluenceScore(true, true, false, 1.3, true, true, true, true))
+        assertEquals(79, confluenceScore(true, true, false, 1.3, true, true, true, true, btcContextAvailable = true))
+    }
+
+    @Test fun onlyRecognizedBtcLabelsCanContributeContext() {
+        assertTrue(isRecognizedBtcRegime("Bullish"))
+        assertTrue(isRecognizedBtcRegime("Bearish"))
+        assertTrue(isRecognizedBtcRegime("Neutral"))
+        assertFalse(isRecognizedBtcRegime(null))
+        assertFalse(isRecognizedBtcRegime("Unknown"))
+        assertFalse(isRecognizedBtcRegime("bullish"))
+        assertTrue(isRecognizedBtcShock("Bullish"))
+        assertTrue(isRecognizedBtcShock("Bearish"))
+        assertFalse(isRecognizedBtcShock("Neutral"))
+        assertFalse(isRecognizedBtcShock("Unavailable"))
+        val invalidContext = isRecognizedBtcRegime("Unavailable") || isRecognizedBtcShock("Unknown")
+        assertEquals(95, confluenceScore(true, true, true, 1.5, true, true, false, true,
+            btcContextAvailable = invalidContext))
     }
     @Test fun extensionIsMeasuredFromActualExecutionPrice() {
         assertTrue(confluenceEntryWithinExtension(100.8, 100.0, 1.0))
@@ -76,7 +92,7 @@ class ConfluenceSignalQualityTest {
     }
 
     @Test fun unavailableVolumeDoesNotEarnVolumePoints() {
-        assertEquals(90, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
+        assertEquals(85, confluenceScore(true, true, true, Double.NaN, true, true, false, true))
     }
     @Test fun pullbackRequiresQuietVolumeThenRenewedParticipation() {
         assertTrue(confluencePullbackVolumeConfirmed(70.0, 120.0, 100.0))

@@ -208,8 +208,11 @@ import kotlin.math.min
             val t1=entry+sign*risk*target1GrossR; val t2=entry+sign*risk*target2GrossR
             val netTarget1R=if(geometry&&risk>0) tradeIdeaNetReturnR(target1GrossR,entry,risk,heldBars=8,setupBarMinutes=setupBarMinutes) else Double.NaN
             val rr=geometry&&netTarget1R.isFinite()&&netTarget1R>=2.0
-            val btcRegimeAgainst=btcBias!=null&&btcBias!="Neutral"&&btcBias!="Unknown"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
-            val btcShockAgainst=btcShock!=null&&(if(long)btcShock=="Bearish" else btcShock=="Bullish")
+            val btcRegimeKnown = isRecognizedBtcRegime(btcBias)
+            val btcShockKnown = isRecognizedBtcShock(btcShock)
+            val btcContextAvailable = btcRegimeKnown || btcShockKnown
+            val btcRegimeAgainst=btcRegimeKnown&&btcBias!="Neutral"&&(if(long)btcBias=="Bearish" else btcBias=="Bullish")
+            val btcShockAgainst=btcShockKnown&&(if(long)btcShock=="Bearish" else btcShock=="Bullish")
             val btcAgainst=btcRegimeAgainst||btcShockAgainst
             val baseScore=confluenceScore(
                 regimeConfirmed = up || down || rangeMode,
@@ -221,7 +224,7 @@ import kotlin.math.min
                 btcAgainst = btcAgainst,
                 stopGeometryConfirmed = geometry,
                 adxConfirmed = adxConfirmed,
-                btcContextAvailable = (btcBias != null && btcBias != "Unknown") || btcShock != null
+                btcContextAvailable = btcContextAvailable
             )
             // SMC is additive supporting confluence only: it never bypasses a hard safety gate.
             val smc = evaluateTradeIdeaSmc(m15, s.side, atr)
@@ -274,7 +277,7 @@ import kotlin.math.min
                     if(liquiditySweep) "liquidity sweep and reclaim" else "",
                     if(entryOk) "${executionLabel} EMA9/21 entry confirmed" else "waiting for ${executionLabel} entry confirmation"
                 )),
-                "Confluence score "+score+"/100: regime 15 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · RSI momentum 10 · liquidity 10 · BTC 5 · stop geometry 5 · ADX/DI 5",
+                "Confluence score "+score+"/100: regime 15 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · RSI momentum 10 · liquidity 10 · BTC ${if (btcContextAvailable) 5 else 0} · stop geometry 5 · ADX/DI 5",
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
                 "Sequential signal lifecycle: "+sequential.reason,
                 "${bias1Label} swing structure: "+h1Structure+" · ${bias2Label}: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
@@ -285,8 +288,8 @@ import kotlin.math.min
                 "${setupLabel} RSI "+"%.1f".format(java.util.Locale.US,rsi)+(if(momentum)" · momentum aligned" else " · momentum not aligned"),
                 "${bias1Label} ADX/DI "+(directional?.let { "ADX %.1f · +DI %.1f · -DI %.1f".format(java.util.Locale.US,it.adx,it.plusDi,it.minusDi) } ?: "unavailable")+(if(adxConfirmed)" (supportive)" else " (not supportive; scoring only)"),
                 "Spread "+(spread?.let{"%.1f bps".format(java.util.Locale.US,it)}?:"unavailable")+" · imbalance "+(depth?.let{"%+.2f".format(java.util.Locale.US,it)}?:"unavailable")+" · 5-level bid/ask depth "+(bidDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable")+"/"+(askDepth?.let{"$"+"%.0f".format(java.util.Locale.US,it)}?:"unavailable"),
-                "BTC regime "+(btcBias?:"Unknown")+(if(btcRegimeAgainst)" (headwind, not veto)" else " (context only)"),
-                if (btcShock != null) "BTC 15M impulse "+btcShock+(if(btcShockAgainst)" against setup (risk warning, not veto)" else " (context warning)") else "No fresh BTC 15M impulse warning",
+                "BTC regime "+(if (btcRegimeKnown) btcBias else "Unknown")+(if(btcRegimeAgainst)" (headwind, not veto)" else " (context only)"),
+                if (btcShockKnown) "BTC 15M impulse "+btcShock+(if(btcShockAgainst)" against setup (risk warning, not veto)" else " (context warning)") else "No fresh BTC 15M impulse warning",
                 "Risk plan: structural stop + 0.2 ATR; Target 1 is sized for ≥2R net after estimated costs, with Target 2 at least 1R farther.")
             V2TradePlan(s.side,score,entry,stop,if(geometry)t1 else 0.0,if(geometry)t2 else 0.0,ready,s.name,warning,
                 "$horizon · ${setupLabel} setup / ${executionLabel} execution",

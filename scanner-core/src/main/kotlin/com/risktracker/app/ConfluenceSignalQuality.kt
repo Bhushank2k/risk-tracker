@@ -1,5 +1,10 @@
 package com.risktracker.app
 
+/** Only recognized benchmark labels may contribute BTC context to a scanner score. */
+fun isRecognizedBtcRegime(value: String?): Boolean = value in setOf("Bullish", "Bearish", "Neutral")
+
+fun isRecognizedBtcShock(value: String?): Boolean = value in setOf("Bullish", "Bearish")
+
 /** RSI-only momentum confirmation; MACD is intentionally no longer a scored dependency. */
  fun confluenceRsiMomentumConfirmed(side: String, rangeReversal: Boolean, rsi: Double): Boolean {
     if (!rsi.isFinite()) return false
@@ -72,7 +77,7 @@ package com.risktracker.app
     btcAgainst: Boolean,
     stopGeometryConfirmed: Boolean,
     adxConfirmed: Boolean = true,
-    btcContextAvailable: Boolean = true
+    btcContextAvailable: Boolean = false
 ): Int {
     val volumePoints = when {
         !relativeVolume.isFinite() -> 0

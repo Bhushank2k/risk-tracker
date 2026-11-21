@@ -23,8 +23,6 @@ object UnifiedBackgroundScanScheduler {
     private const val UNIQUE_WORK = "unified_market_background_scan"
     private const val TRADE_IDEA_WORK = "trade_idea_market_monitor"
     private const val SMC_WORK = "smc_market_background_scan"
-    private const val PREFS = "unified_background_scan_scheduler_v1"
-    private const val INITIAL_SCAN_ENQUEUED = "initial_scan_enqueued"
 
     fun schedule(context: Context) {
         val app = context.applicationContext
@@ -51,13 +49,16 @@ object UnifiedBackgroundScanScheduler {
             periodic
         )
 
-        // Only kick off an automatic startup scan once, and only when there is
-        // no cached SMC result yet. Existing cached signals remain visible on
-        // subsequent launches; periodic work handles routine refreshes and the
-        // user can explicitly retry from the SMC Signals screen after a failure.
-        val startupPrefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val hasCachedSmcResults = SMCScanStateStore.resultsUpdatedAt(app) > 0L
-        if (!hasCachedSmcResults && !startupPrefs.getBoolean(INITIAL_SCAN_ENQUEUED, false)) {
+        // Refresh if either pipeline lacks a recent successful snapshot. WorkManager unique work
+        // prevents duplicate startup requests while one is pending and recovers after cancellation.
+        val now = System.currentTimeMillis()
+        val staleAfterMs = TimeUnit.MINUTES.toMillis(15)
+        val smcUpdatedAt = SMCScanStateStore.resultsUpdatedAt(app)
+        val tradeIdeasUpdatedAt = TradeIdeaScanHealthStore.load(app).lastSuccessAt
+        val smcIsFresh = smcUpdatedAt > 0L && now >= smcUpdatedAt && now - smcUpdatedAt < staleAfterMs
+        val tradeIdeasAreFresh = tradeIdeasUpdatedAt > 0L && now >= tradeIdeasUpdatedAt &&
+            now - tradeIdeasUpdatedAt < staleAfterMs
+        if (!smcIsFresh || !tradeIdeasAreFresh) {
             val startup = OneTimeWorkRequestBuilder<UnifiedBackgroundScanWorker>()
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
@@ -67,7 +68,6 @@ object UnifiedBackgroundScanScheduler {
                 ExistingWorkPolicy.KEEP,
                 startup
             )
-            startupPrefs.edit().putBoolean(INITIAL_SCAN_ENQUEUED, true).apply()
         }
     }
 }
@@ -78,12 +78,19 @@ class UnifiedBackgroundScanWorker(
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext
-        return try {
-            // Reuse the existing Trade Ideas pipeline, including persisted cache,
-            // scan-health reporting and optional notification/paper-plan updates.
-            val tradeIdeasResult = runTradeIdeaMonitorScan(app)
-            if (tradeIdeasResult !is Result.Success) return tradeIdeasResult
 
+        // The two pipelines are independent: a Trade Ideas failure must not
+        // prevent unified SMC from refreshing and persisting its own snapshot.
+        val tradeIdeasSucceeded = try {
+            runTradeIdeaMonitorScan(app) is Result.Success
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            TradeIdeaScanHealthStore.failed(app, e.message ?: "Trade Ideas background scan failed")
+            false
+        }
+
+        val smcSucceeded = try {
             BinanceMarketScanner.initialize(app)
             SMCScanStateStore.update(app, 0, 0, true, "Loading liquid USDT perpetual markets…")
             val smcResult = withMarketDataRetry {
@@ -112,9 +119,9 @@ class UnifiedBackgroundScanWorker(
                 total,
                 total,
                 false,
-                "Background unified scan complete · Trade Ideas + ${smcResult.core.size} Core + ${smcResult.advanced.size} Advanced candidates"
+                "Background unified SMC scan complete · ${smcResult.core.size} Core + ${smcResult.advanced.size} Advanced candidates"
             )
-            Result.success()
+            true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -125,11 +132,14 @@ class UnifiedBackgroundScanWorker(
                 old.optInt("total"),
                 false,
                 if (e.isDnsResolutionFailure()) {
-                    "Background scan paused: Binance DNS lookup failed. WorkManager will retry when network is available; cached signals are preserved."
-                } else "Background scan failed: ${e.message ?: "network error"}"
+                    "Background SMC scan paused: Binance DNS lookup failed. WorkManager will retry; cached SMC signals are preserved."
+                } else "Background SMC scan failed: ${e.message ?: "network error"}"
             )
-            TradeIdeaScanHealthStore.failed(app, e.message ?: "Unified background market scan failed")
-            Result.retry()
+            false
         }
+
+        // Retry if either pipeline failed; each pipeline has already recorded its
+        // own status and any successful pipeline has persisted its fresh results.
+        return if (tradeIdeasSucceeded && smcSucceeded) Result.success() else Result.retry()
     }
 }
