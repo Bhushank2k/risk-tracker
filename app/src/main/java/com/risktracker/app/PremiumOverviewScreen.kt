@@ -413,7 +413,7 @@ fun RiskOverviewScreen(
             }
         }
 
-        item { PortfolioPerformanceCard(daily = daily, entries = entries) }
+        item { PortfolioPerformanceCard(daily = daily, entries = entries, onOpenReport = { onNavigate(20) }) }
 
         if (recentTrades.isNotEmpty()) {
             item {
@@ -498,7 +498,7 @@ private enum class PortfolioRange(val label: String, val days: Int?) {
 }
 
 @Composable
-private fun PortfolioPerformanceCard(daily: List<ReconciledDailyPnl>, entries: List<PnlEntry>) {
+private fun PortfolioPerformanceCard(daily: List<ReconciledDailyPnl>, entries: List<PnlEntry>, onOpenReport: () -> Unit) {
     var selectedRange by remember { mutableStateOf(PortfolioRange.MONTH) }
     var selectedPoint by remember { mutableIntStateOf(-1) }
     var niftyCloses by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
@@ -641,6 +641,12 @@ private fun PortfolioPerformanceCard(daily: List<ReconciledDailyPnl>, entries: L
                 Text("Invested amount and current value need a recorded opening balance. The chart currently shows cumulative P&L from a neutral baseline.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                SimpleHeroStat("Winning days", daily.count { it.selectedPnl > 0.0 }.toString())
+                SimpleHeroStat("Losing days", daily.count { it.selectedPnl < 0.0 }.toString())
+                SimpleHeroStat("Days tracked", daily.size.toString())
+            }
+            TextButton(onClick = onOpenReport, modifier = Modifier.align(Alignment.End)) { Text("Open performance report") }
         }
     }
 }
