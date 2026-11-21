@@ -30,7 +30,8 @@ internal fun buildBestOpportunities(
     smcSignals: List<UnifiedSMCDisplaySignal>,
     tradeIdeaSnapshotAgeMs: Long,
     now: Long,
-    smcFreshnessMs: Long = 15L * 60L * 1000L
+    smcFreshnessMs: Long = 15L * 60L * 1000L,
+    tradeIdeaSnapshotComplete: Boolean = true
 ): List<BestOpportunity> {
     data class Draft(val id: String, val idea: TradeIdea?, val smc: UnifiedSMCDisplaySignal?)
 
@@ -63,6 +64,7 @@ internal fun buildBestOpportunities(
         val smcFresh = smc != null && smcAge <= smcFreshnessMs
         val status = when {
             ideaEligibility?.state == TradeIdeaEligibilityState.AVOID -> BestOpportunityStatus.REJECTED
+            !tradeIdeaSnapshotComplete -> BestOpportunityStatus.WAITING
             idea != null && smc != null && smcFresh &&
                 ideaEligibility?.state == TradeIdeaEligibilityState.READY -> BestOpportunityStatus.CONFIRMED
             else -> BestOpportunityStatus.WAITING
