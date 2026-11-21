@@ -78,12 +78,9 @@ internal fun closedReplayCandlesAtOrBefore(candles: List<V2Candle>, decisionClos
     candles.filter { it.closeTime <= decisionCloseTime }
 
 internal object TradeIdeasV2 {
-    const val RISK_PERCENT = 0.5
-    const val MAX_LEVERAGE = 3.0
-    const val MAX_SPREAD_BPS = 10.0
     const val MIN_SCORE = 70
-    private const val MIN_QUOTE_VOLUME = MIN_TRADE_QUOTE_VOLUME_USD
 
+    /** Live entry point: the same rules as the scanner, with live microstructure gates applied. */
     fun evaluate(
         h4: List<V2Candle>,
         h1: List<V2Candle>,
@@ -99,143 +96,118 @@ internal object TradeIdeasV2 {
         horizon = if (swingMode) "Swing" else "Intraday"
     )
 
-    /** Causal replay for trend pullback, breakout/retest and range reversal setups. */
+    /**
+     * Historical replay of the live scanner. At each closed setup-timeframe bar, [ConfluenceScannerV4.evaluate]
+     * runs on candles closed by that bar's close time. A READY plan is traded at its own entry, stop and
+     * targets. Microstructure gates are off because replay does not store historical spread, depth or funding,
+     * so these results measure the signal rules, not the live liquidity filters.
+     *
+     * Parameters: [h4]/[h1] are the context and trend series, [m15] the setup series and [m5] the execution
+     * series, for the given [horizon]. [maxHoldingBars] counts setup-timeframe bars.
+     */
     fun backtest(
         h4: List<V2Candle>, h1: List<V2Candle>, m15: List<V2Candle>, m5: List<V2Candle>,
         maxHoldingBars: Int = 96, setupBarMinutes: Int = 15, executionBarMinutes: Int = 5,
-        roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0
+        roundTripFeeBps: Double = 8.0, slippageBps: Double = 4.0, fundingBpsPer8h: Double = 1.0,
+        horizon: String = "Intraday"
     ): TradeIdeaBacktestStats {
-        if (m15.size < 80 || h4.size < 200 || h1.size < 50 || m5.size < 100 || maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
+        if (h4.size < 50 || h1.size < 50 || m15.size < 80 || m5.size < 30 ||
+            maxHoldingBars <= 0 || setupBarMinutes <= 0 || executionBarMinutes <= 0) return TradeIdeaBacktestStats()
         if (!validCandles(h4) || !validCandles(h1) || !validCandles(m15) || !validCandles(m5)) return TradeIdeaBacktestStats()
         if (listOf(roundTripFeeBps, slippageBps, fundingBpsPer8h).any { !it.isFinite() || it < 0.0 }) return TradeIdeaBacktestStats()
+        val neutralMicro = V2Microstructure(null, null, null, null, null, null)
         val outcomes = mutableListOf<TradeIdeaReplayOutcome>()
-        var i = 30
-        // Require a full forward window to avoid right-edge censoring and sample bias.
+        var i = 60
+        // Require a full forward window so no trade is censored at the edge of the data.
         while (hasCompleteTradeHorizon(i, m15.size, maxHoldingBars)) {
-            val time = m15[i].closeTime
-            val four = closedReplayCandlesAtOrBefore(h4, time)
-            val one = closedReplayCandlesAtOrBefore(h1, time)
-            if (four.size < 200 || one.size < 50) { i++; continue }
-            val f4 = four.map { it.close }
-            val f1 = one.map { it.close }
-            val e20 = ema(f4, 20); val e50 = ema(f4, 50); val e200 = ema(f4, 200)
-            val e1_20 = ema(f1, 20); val e1_50 = ema(f1, 50)
-            if (e20 == null || e50 == null || e200 == null || e1_20 == null || e1_50 == null) { i++; continue }
-            val long = four.last().close > e200 && e20 > e50 && e50 > e200 &&
-                one.last().close > e1_50 && e1_20 > e1_50
-            val short = four.last().close < e200 && e20 < e50 && e50 < e200 &&
-                one.last().close < e1_50 && e1_20 < e1_50
-            val rangeMode = !long && !short &&
-                abs(e20 - e50) / four.last().close * 100.0 <= 1.2 &&
-                abs(e1_20 - e1_50) / one.last().close * 100.0 <= 0.8
-            val history = m15.subList(i - 20, i)
-            val avgVolume = history.map { it.volume }.average()
-            val relativeVolume = if (avgVolume > 0.0) m15[i].volume / avgVolume else 0.0
-            val atrValue = atr(m15.subList(0, i + 1))
-            val setupEma = ema(m15.subList(0, i + 1).map { it.close }, 20)
-            val setupRsi = rsi(m15.subList(0, i + 1).map { it.close })
-            if (atrValue == null || setupEma == null || setupRsi == null) { i++; continue }
-            val atr = atrValue
-            val previous = m15[i - 1]
-            val current = m15[i]
-            val breakoutLevel = if (long) history.maxOf { it.high } else history.minOf { it.low }
-            val breakout = (long || short) && relativeVolume >= 1.25 &&
-                (if (long) current.close > breakoutLevel else current.close < breakoutLevel)
-            val retest = if (i + 1 < m15.size) m15[i + 1] else current
-            val breakoutTouched = if (long) retest.low <= breakoutLevel + atr * 0.25
-                else retest.high >= breakoutLevel - atr * 0.25
-            val breakoutHeld = if (long) retest.close >= breakoutLevel && retest.close >= current.close
-                else retest.close <= breakoutLevel && retest.close <= current.close
-
-            val pullback = (long && isReplayTrendPullback(true, current, previous, setupEma, atr)) ||
-                (short && isReplayTrendPullback(false, current, previous, setupEma, atr))
-
-            val rangeBars = m15.subList(i - 30, i)
-            val rangeHigh = rangeBars.maxOf { it.high }
-            val rangeLow = rangeBars.minOf { it.low }
-            val rangeLong = isReplayRangeReversal(true, rangeMode, current, rangeHigh, rangeLow, atr, setupRsi)
-            val rangeShort = isReplayRangeReversal(false, rangeMode, current, rangeHigh, rangeLow, atr, setupRsi)
-
-            val sideLong: Boolean
-            val signalIndex: Int
-            val stopReference: List<V2Candle>
-            val setupFamily: String
-            when {
-                breakout && breakoutTouched && breakoutHeld -> {
-                    sideLong = long
-                    signalIndex = i + 1 // retest candle must close before the decision is made
-                    stopReference = listOf(current, retest)
-                    setupFamily = "BREAKOUT"
-                }
-                pullback && relativeVolume >= 0.9 -> {
-                    sideLong = long
-                    signalIndex = i
-                    stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
-                    setupFamily = "PULLBACK"
-                }
-                (rangeLong || rangeShort) && relativeVolume >= 1.2 -> {
-                    sideLong = rangeLong
-                    signalIndex = i
-                    stopReference = m15.subList((i - 2).coerceAtLeast(0), i + 1)
-                    setupFamily = "REVERSAL"
-                }
-                else -> { i++; continue }
+            val decisionTime = m15[i].closeTime
+            val plan = ConfluenceScannerV4.evaluate(
+                replayPrefix(h4, decisionTime), replayPrefix(h1, decisionTime),
+                m15.subList(0, i + 1), replayPrefix(m5, decisionTime),
+                neutralMicro, quoteVolume = 0.0, btcBias = null, horizon = horizon, btcShock = null,
+                nowMillis = decisionTime + 1, applyMarketFilters = false
+            )
+            // V2TradePlan.entryTriggered carries the scanner's READY flag (see ConfluenceScannerV4's constructor call).
+            if (plan == null || !plan.entryTriggered) { i++; continue }
+            val risk = abs(plan.entry - plan.stop)
+            if (!risk.isFinite() || risk <= 0.0 || plan.target1 <= 0.0 || plan.target2 <= 0.0) { i++; continue }
+            val sign = if (plan.side == "LONG") 1.0 else -1.0
+            val exit = resolvePlanReplay(
+                m15, startIndex = i + 1, maxBars = maxHoldingBars, sign = sign, entry = plan.entry,
+                stop = plan.stop, risk = risk,
+                t1R = abs(plan.target1 - plan.entry) / risk, t2R = abs(plan.target2 - plan.entry) / risk
+            )
+            val heldBars = (exit.index - i).coerceAtLeast(1)
+            val netR = tradeIdeaNetReturnR(
+                exit.grossR, plan.entry, risk, heldBars, setupBarMinutes,
+                roundTripFeeBps, slippageBps, fundingBpsPer8h
+            )
+            if (netR.isFinite()) {
+                outcomes.add(TradeIdeaReplayOutcome(
+                    plan.side,
+                    if (plan.setup == "Range reversal" || plan.setup == "Bollinger Band Reversal") "RANGE" else "TREND",
+                    replaySetupFamily(plan.setup),
+                    netR
+                ))
             }
-            // A signal is only known after its candle closes. Fill at the following
-            // candle open instead of retroactively assuming a fill at the signal close.
-            val fill = nextReplayOpenFill(m15, signalIndex)
-            if (fill == null) { i++; continue }
-            val entryIndex = fill.candleIndex
-            if (entryIndex + maxHoldingBars >= m15.size) { i++; continue }
-            val decisionCloseTime = m15[signalIndex].closeTime
-            val executionBars = closedReplayCandlesAtOrBefore(m5, decisionCloseTime)
-            val executionCloses = executionBars.map { it.close }
-            val executionFast = ema(executionCloses, 9)
-            val executionSlow = ema(executionCloses, 21)
-            val executionConfirmed = executionBars.isNotEmpty() &&
-                decisionCloseTime - executionBars.last().closeTime <= maxOf(10, executionBarMinutes * 2) * 60_000L &&
-                executionFast != null && executionSlow != null &&
-                (if (sideLong) executionBars.last().close > executionFast && executionFast > executionSlow
-                else executionBars.last().close < executionFast && executionFast < executionSlow)
-            if (!executionConfirmed) { i++; continue }
-
-            val sign = if (sideLong) 1.0 else -1.0
-            val entry = fill.price
-            val stop = if (sideLong) stopReference.minOf { it.low } - atr * 0.20
-                else stopReference.maxOf { it.high } + atr * 0.20
-            // Reject gaps through the structural stop; never model a fill beyond invalidation.
-            if ((sideLong && stop >= entry) || (!sideLong && stop <= entry)) { i++; continue }
-            val risk = abs(entry - stop)
-            if (risk < atr * 0.35 || risk > atr * 2.5) { i++; continue }
-
-            var partial = false
-            var result = -1.0
-            var exitAt = -1
-            val maxExit = entryIndex + maxHoldingBars
-            // Include the fill candle: its post-open range can hit the stop or targets.
-            for (j in entryIndex until maxExit) {
-                val candle = m15[j]
-                val barResult = resolveTradeReplayBar(sideLong, entry, stop, risk, partial, candle)
-                if (barResult.exitR != null) { result = barResult.exitR; exitAt = j; break }
-                if (barResult.reachedTarget1) { partial = true; result = 1.0 }
-            }
-            if (exitAt >= 0) {
-                val heldBars = (exitAt - entryIndex + 1).coerceAtLeast(1)
-                outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
-                    tradeIdeaNetReturnR(result, entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
-                i = exitAt + 1
-            } else {
-                // The complete forward window is present; mark any open remainder at its time stop.
-                val finalIndex = maxExit - 1
-                val openR = (m15[finalIndex].close - entry) / risk * sign
-                val heldBars = (finalIndex - entryIndex + 1).coerceAtLeast(1)
-                outcomes.add(TradeIdeaReplayOutcome(if (sideLong) "LONG" else "SHORT", if (rangeMode) "RANGE" else "TREND", setupFamily,
-                    tradeIdeaNetReturnR(if (partial) 1.0 + openR * 0.5 else openR,
-                        entry, risk, heldBars, setupBarMinutes, roundTripFeeBps, slippageBps, fundingBpsPer8h)))
-                i = maxOf(entryIndex + 1, maxExit)
-            }
+            i = exit.index + 1
         }
         return TradeIdeaBacktestStats.fromOutcomes(outcomes)
+    }
+
+    private data class PlanReplayExit(val index: Int, val grossR: Double)
+
+    /**
+     * Exits a live plan on the setup-timeframe bars that follow entry. The stop is checked before the targets
+     * on each bar. Target 1 closes half the position and moves the stop to breakeven. Target 2 closes the rest.
+     * Otherwise the open half is closed at the last close in the holding window.
+     */
+    private fun resolvePlanReplay(
+        bars: List<V2Candle>, startIndex: Int, maxBars: Int, sign: Double,
+        entry: Double, stop: Double, risk: Double, t1R: Double, t2R: Double
+    ): PlanReplayExit {
+        val last = minOf(bars.size - 1, startIndex + maxBars - 1)
+        val t1Price = entry + sign * risk * t1R
+        val t2Price = entry + sign * risk * t2R
+        var partial = false
+        var partialR = 0.0
+        for (j in startIndex..last) {
+            val bar = bars[j]
+            val adverse = if (sign > 0) bar.low else bar.high
+            val favourable = if (sign > 0) bar.high else bar.low
+            val level = if (partial) entry else stop
+            if (sign * (adverse - level) <= 0.0) {
+                return PlanReplayExit(j, if (partial) partialR else -1.0)
+            }
+            if (partial) {
+                if (sign * (favourable - t2Price) >= 0.0) return PlanReplayExit(j, partialR + 0.5 * t2R)
+            } else if (sign * (favourable - t1Price) >= 0.0) {
+                // Target 2 is not checked on the same bar, so a single bar cannot close the position twice.
+                partial = true
+                partialR = 0.5 * t1R
+            }
+        }
+        val openR = sign * (bars[last].close - entry) / risk
+        return PlanReplayExit(last, if (partial) partialR + 0.5 * openR else openR)
+    }
+
+    private fun replaySetupFamily(setup: String): String = when (setup) {
+        "Trend pullback" -> "PULLBACK"
+        "Breakout + retest" -> "BREAKOUT"
+        "Range reversal" -> "REVERSAL"
+        "Bollinger Band Reversal" -> "BOLLINGER_REVERSAL"
+        else -> setup.uppercase()
+    }
+
+    /** Candles whose close is at or before [decisionCloseTime], found by binary search on sorted close times. */
+    private fun replayPrefix(candles: List<V2Candle>, decisionCloseTime: Long): List<V2Candle> {
+        var low = 0
+        var high = candles.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (candles[mid].closeTime <= decisionCloseTime) low = mid + 1 else high = mid
+        }
+        return candles.subList(0, low)
     }
 
     private fun validCandles(rows: List<V2Candle>): Boolean {
@@ -250,33 +222,5 @@ internal object TradeIdeasV2 {
             previousTime = candle.closeTime
             valid
         }
-    }
-
-    private fun isFresh(closeTime: Long, now: Long, maxAge: Long): Boolean =
-        closeTime <= now + 60_000L && now - closeTime <= maxAge
-
-    private fun rsi(values: List<Double>): Double? {
-        if (values.size < 15) return null
-        val changes = values.zipWithNext { a, b -> b - a }.takeLast(14)
-        val gain = changes.filter { it > 0.0 }.sum() / 14.0
-        val loss = -changes.filter { it < 0.0 }.sum() / 14.0
-        if (loss == 0.0) return if (gain == 0.0) 50.0 else 100.0
-        return (100.0 - 100.0 / (1.0 + gain / loss)).takeIf { it.isFinite() }
-    }
-
-    private fun ema(values: List<Double>, period: Int): Double? {
-        if (values.size < period) return null
-        val alpha = 2.0 / (period + 1.0)
-        var result = values.take(period).average()
-        values.drop(period).forEach { result = it * alpha + result * (1.0 - alpha) }
-        return result.takeIf { it.isFinite() && it > 0.0 }
-    }
-
-    private fun atr(rows: List<V2Candle>): Double? {
-        if (rows.size < 16) return null
-        val trueRanges = rows.zipWithNext { prev, current ->
-            max(current.high - current.low, max(abs(current.high - prev.close), abs(current.low - prev.close)))
-        }.takeLast(14)
-        return trueRanges.average().takeIf { it.isFinite() && it > 0.0 }
     }
 }
