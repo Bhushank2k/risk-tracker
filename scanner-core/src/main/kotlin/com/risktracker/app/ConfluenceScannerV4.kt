@@ -220,7 +220,8 @@ import kotlin.math.min
                 liquidityConfirmed = liquid,
                 btcAgainst = btcAgainst,
                 stopGeometryConfirmed = geometry,
-                adxConfirmed = adxConfirmed
+                adxConfirmed = adxConfirmed,
+                btcContextAvailable = (btcBias != null && btcBias != "Unknown") || btcShock != null
             )
             // SMC is additive supporting confluence only: it never bypasses a hard safety gate.
             val smc = evaluateTradeIdeaSmc(m15, s.side, atr)
