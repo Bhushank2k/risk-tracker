@@ -38,10 +38,12 @@ fun SMCTradeScreen() {
         status = "Loading Binance futures markets…"
         scope.launch {
             try {
-                val result = BinanceMarketScanner.scanSmc(
-                    progress = { message -> status = message },
-                    onProgress = { scanned, total -> scannedCoins = scanned; totalCoins = total }
-                )
+                val result = withMarketDataRetry {
+                    BinanceMarketScanner.scanSmc(
+                        progress = { message -> status = message },
+                        onProgress = { scanned, total -> scannedCoins = scanned; totalCoins = total }
+                    )
+                }
                 setups = result
                 SMCScanStateStore.saveResults(context, result)
                 SMCScanStateStore.update(context, totalCoins, totalCoins, false, "Foreground scan complete · ${result.size} qualified setups")
