@@ -74,7 +74,8 @@ internal fun BestOpportunitiesScreen(
             tradeIdeas = tradeState.ideas,
             smcSignals = smcSignals,
             tradeIdeaSnapshotAgeMs = tradeAge,
-            now = now
+            now = now,
+            tradeIdeaSnapshotComplete = !tradeState.partial && tradeState.updatedAt != null
         )
     }
     val visible = remember(opportunities, statusFilter, sideFilter, horizonFilter) {
