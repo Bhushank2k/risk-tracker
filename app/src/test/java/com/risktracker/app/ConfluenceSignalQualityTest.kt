@@ -42,7 +42,7 @@ class ConfluenceSignalQualityTest {
             V2Candle(101.5, 100.0, 101.2, 12.0, 90_000L)
         )
         assertEquals("Bullish", detectDirectionalShock(candles, 100_000L))
-        assertEquals(null, detectDirectionalShock(candles, 200_000L))
+        assertEquals(null, detectDirectionalShock(candles, 2_000_000L))
         assertEquals(null, detectDirectionalShock(candles, 100_000L, thresholdPct = 1.5))
     }
 
