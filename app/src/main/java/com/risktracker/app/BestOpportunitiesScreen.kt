@@ -37,10 +37,12 @@ internal fun BestOpportunitiesScreen(
         }
     }
 
+    // Snapshot the delegated state property once so Kotlin can smart-cast the local value.
+    val tradeUpdatedAt = tradeState.updatedAt
     val tradeAge = when {
         tradeState.partial -> 0L
-        tradeState.updatedAt == null || tradeState.updatedAt <= 0L -> Long.MAX_VALUE
-        else -> (now - tradeState.updatedAt).coerceAtLeast(0L)
+        tradeUpdatedAt == null || tradeUpdatedAt <= 0L -> Long.MAX_VALUE
+        else -> (now - tradeUpdatedAt).coerceAtLeast(0L)
     }
     val coreCandidates = remember(smcState.core, smcState.coreUpdatedAt) {
         smcState.core.map { x ->
