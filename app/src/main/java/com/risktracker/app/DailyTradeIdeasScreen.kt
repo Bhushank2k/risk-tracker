@@ -538,7 +538,16 @@ internal object BinanceMarketScanner {
         // BTC trend is a broad-market risk filter; neutral conditions do not impose a directional bias.
         val btcH4Job = async { cachedCandles("BTCUSDT", "4h", 260) }
         val btcH1Job = async { cachedCandles("BTCUSDT", "1h", 260) }
-        val btcM15Job = async { cachedCandles("BTCUSDT", "15m", 80) }
+        // Short-term shock detection is optional; a 15M feed failure must not abort the full scan.
+        val btcM15Job = async {
+            try {
+                cachedCandles("BTCUSDT", "15m", 80)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
         val btcH4 = btcH4Job.await()
         val btcH1 = btcH1Job.await()
         val btcM15 = btcM15Job.await()
