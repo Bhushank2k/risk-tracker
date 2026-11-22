@@ -122,7 +122,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = Store(applicationContext)
-        store.clearManualTradesOnce()
         inrRate = store.inr
         setContent {
             var themeMode by remember { mutableStateOf(store.themeMode) }
