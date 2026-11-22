@@ -59,6 +59,10 @@ internal fun buildBestOpportunities(
         val smcAge = match?.detectedAt?.takeIf { it > 0L }
             ?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
         val smcFresh = match != null && smcAge <= smcFreshnessMs
+
+        val status = when {
+            eligibility.state == TradeIdeaEligibilityState.AVOID -> BestOpportunityStatus.REJECTED
+            opposingSignal -> BestOpportunityStatus.CONFLICT
             !tradeIdeaSnapshotComplete -> BestOpportunityStatus.WAITING
             match != null && smcFresh && eligibility.state == TradeIdeaEligibilityState.READY ->
                 BestOpportunityStatus.CONFIRMED
