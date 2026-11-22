@@ -60,10 +60,11 @@ internal fun buildBestOpportunities(
             ?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
         val smcFresh = match != null && smcAge <= smcFreshnessMs
 
+        val dailySnapshotFresh = tradeIdeaSnapshotAgeMs <= tradeIdeaFreshnessLimit(idea)
         val status = when {
+            !tradeIdeaSnapshotComplete || !dailySnapshotFresh -> BestOpportunityStatus.WAITING
             eligibility.state == TradeIdeaEligibilityState.AVOID -> BestOpportunityStatus.REJECTED
             opposingSignal -> BestOpportunityStatus.CONFLICT
-            !tradeIdeaSnapshotComplete -> BestOpportunityStatus.WAITING
             match != null && smcFresh && eligibility.state == TradeIdeaEligibilityState.READY ->
                 BestOpportunityStatus.CONFIRMED
             else -> BestOpportunityStatus.WAITING
@@ -100,7 +101,33 @@ internal fun buildBestOpportunities(
         )
     }
 
-    return preliminary.sortedWith(
+    // Keep an SMC signal separate when the same symbol has a Daily idea
+    // for another horizon; it must not be merged across time horizons.
+    val otherHorizonSmc = unmatchedSmc
+        .filter { signal ->
+            tradeIdeas.any {
+                it.symbol.equals(signal.symbol, ignoreCase = true) &&
+                    !sameHorizon(it.horizon, signal.horizon)
+            }
+        }
+        .map { signal ->
+            BestOpportunity(
+                id = "smc:${signal.id}",
+                symbol = signal.symbol,
+                side = signal.side,
+                horizon = signal.horizon,
+                priorityScore = signal.score.coerceIn(0, 108),
+                status = BestOpportunityStatus.WAITING,
+                sources = signal.sources,
+                idea = null,
+                smc = signal,
+                eligibility = null,
+                explanation = "SMC signal belongs to a different horizon than the available Daily Trade Idea; kept separate and awaiting its own Daily Trade Idea.",
+                detectedAt = signal.detectedAt
+            )
+        }
+
+    return (preliminary + otherHorizonSmc).sortedWith(
         compareBy<BestOpportunity> { statusOrder(it.status) }
             .thenByDescending { it.priorityScore }
             .thenBy { it.symbol }
