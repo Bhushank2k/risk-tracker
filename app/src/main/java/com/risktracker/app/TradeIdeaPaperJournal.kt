@@ -30,11 +30,12 @@ internal object TradeIdeaPaperJournal {
     }.getOrElse { JSONArray() }
 
     private fun save(context: Context, rows: JSONArray) {
-        val trimmed = JSONArray()
-        val start = (rows.length() - 300).coerceAtLeast(0)
-        for (i in start until rows.length()) trimmed.put(rows.getJSONObject(i))
+        // Keep the complete paper journal. A fixed 300-row tail silently discarded older
+        // closed trades and, in edge cases, could discard an open position still used by
+        // duplicate-entry and risk checks. Add an explicit export/archive flow before
+        // introducing any retention policy.
         context.getSharedPreferences(TradeIdeaNotifications.PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, trimmed.toString()).apply()
+            .edit().putString(KEY, rows.toString()).apply()
     }
 
     fun hasOpenEntry(context: Context, symbol: String, strategyKey: String): Boolean {
