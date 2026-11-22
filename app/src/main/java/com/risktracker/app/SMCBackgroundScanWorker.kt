@@ -1,18 +1,8 @@
 package com.risktracker.app
 
 import android.content.Context
-import androidx.work.Constraints
-import androidx.work.CoroutineWorker
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.WorkerParameters
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /** Shared status/results bridge between WorkManager and the SMC screen. */
 object SMCScanStateStore {
@@ -74,78 +64,4 @@ object SMCScanStateStore {
 
     fun resultsUpdatedAt(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("resultsAt", 0L)
-}
-
-object SMCBackgroundScanScheduler {
-    private const val UNIQUE_WORK = "smc_market_background_scan"
-
-    fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<SMCBackgroundScanWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-            .build()
-        val workManager = WorkManager.getInstance(context.applicationContext)
-        workManager.enqueueUniquePeriodicWork(
-            UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request
-        )
-
-        // Periodic work is intentionally inexact and may be deferred by Android.
-        // Queue one immediate scan when the cached results are absent or stale so
-        // switching away from the UI does not depend on a screen-owned coroutine.
-        val staleAfterMs = TimeUnit.MINUTES.toMillis(15)
-        val resultsAt = SMCScanStateStore.resultsUpdatedAt(context)
-        if (resultsAt == 0L || System.currentTimeMillis() - resultsAt >= staleAfterMs) {
-            val initialRequest = OneTimeWorkRequestBuilder<SMCBackgroundScanWorker>()
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-                .build()
-            workManager.enqueueUniqueWork(
-                "${UNIQUE_WORK}_startup", ExistingWorkPolicy.KEEP, initialRequest
-            )
-        }
-    }
-}
-
-class SMCBackgroundScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        val app = applicationContext
-        return try {
-            BinanceMarketScanner.initialize(app)
-            SMCScanStateStore.update(app, 0, 0, true, "Loading liquid USDT perpetual markets…")
-            val result = withMarketDataRetry {
-                BinanceMarketScanner.scanUnifiedSmc(
-                    progress = { message ->
-                        val old = SMCScanStateStore.status(app)
-                        SMCScanStateStore.update(
-                            app, old.optInt("scanned"), old.optInt("total"), true, message
-                        )
-                    },
-                    onProgress = { scanned, total ->
-                        val old = SMCScanStateStore.status(app)
-                        SMCScanStateStore.update(
-                            app, scanned, total, true, old.optString("message")
-                        )
-                    }
-                )
-            }
-            // One background pass populates both SMC result stores.
-            AdvancedSMCSignalStore.save(app, result.advanced)
-            SMCScanStateStore.saveResults(app, result.core)
-            val total = SMCScanStateStore.status(app).optInt("total")
-            SMCScanStateStore.update(
-                app, total, total, false,
-                "Background unified SMC complete · ${result.core.size} Core + ${result.advanced.size} Advanced candidates"
-            )
-            Result.success()
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val old = SMCScanStateStore.status(app)
-            SMCScanStateStore.update(
-                app, old.optInt("scanned"), old.optInt("total"), false,
-                "Background scan failed: ${e.message ?: "network error"}"
-            )
-            Result.retry()
-        }
-    }
 }
