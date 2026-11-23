@@ -104,7 +104,7 @@ class BestOpportunitiesTest {
             listOf(idea()),
             listOf(
                 smc(detectedAt = 1_000_000L),
-                smc(id = "old-short", side = "SHORT", low = 109.0, high = 111.0, detectedAt = 900_000L)
+                smc(id = "old-short", side = "SHORT", low = 109.0, high = 111.0, detectedAt = 100_000L)
             ),
             60_000L, 1_050_000L, smcFreshnessMs = 15L * 60L * 1000L
         )
