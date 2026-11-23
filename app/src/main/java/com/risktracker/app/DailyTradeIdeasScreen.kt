@@ -327,6 +327,7 @@ internal object BinanceMarketScanner {
     // by each engine after discovery so SMC never inherits Daily's narrower candidate set.
     private val marketUniverseMutex = Mutex()
     @Volatile private var sharedMarketUniverse: Pair<Long, SharedMarketUniverseSnapshot>? = null
+    @Volatile private var marketLimit: Int? = QUICK_SETUP_TOP_MARKET_LIMIT
 
     private suspend fun sharedMarketUniverseSnapshot(forceRefresh: Boolean = false): SharedMarketUniverseSnapshot =
         marketUniverseMutex.withLock {
@@ -351,7 +352,8 @@ internal object BinanceMarketScanner {
                     ScanTicker(symbol, quote, change, last, ((high - low) / last * 100.0).coerceAtLeast(0.0))
                 }
             }.sortedByDescending { it.quoteVolume }
-            SharedMarketUniverseSnapshot(allowed.size, tickers).also {
+            val selectedTickers = marketLimit?.let { tickers.take(it) } ?: tickers
+            SharedMarketUniverseSnapshot(selectedTickers.size, selectedTickers).also {
                 sharedMarketUniverse = System.currentTimeMillis() to it
             }
         }
@@ -371,6 +373,12 @@ internal object BinanceMarketScanner {
     private class BinanceRateLimitException(message: String) : IllegalStateException(message)
 
     fun initialize(context: android.content.Context) {
+        QuickSetupProfileStore.applyInitial(context.applicationContext)
+        val nextMarketLimit = quickSetupMarketLimit(QuickSetupProfileStore.load(context.applicationContext).markets)
+        if (marketLimit != nextMarketLimit) {
+            marketLimit = nextMarketLimit
+            sharedMarketUniverse = null
+        }
         val prefs = context.applicationContext.getSharedPreferences("binance_rest_guard_v1", android.content.Context.MODE_PRIVATE)
         restLimitPrefs = prefs
         restBlockedUntilMs = maxOf(restBlockedUntilMs, prefs.getLong("blocked_until", 0L))
