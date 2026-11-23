@@ -54,10 +54,10 @@ class BinanceFillCsvImporterTest {
         assertThrows(IllegalStateException::class.java) {
             parse(noIdHeader + identicalRow.replace(",100,0.5,", ",100USDT,0.5,"))
         }
-        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\\n"
-        val badFee = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01oops,USDT\\n"
+        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\n"
+        val badFee = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01oops,USDT\n"
         assertThrows(IllegalStateException::class.java) { parse(header + badFee) }
-        val badQuote = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50xyz,0,USDT\\n"
+        val badQuote = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50xyz,0,USDT\n"
         assertThrows(IllegalStateException::class.java) { parse(header + badQuote) }
     }
 
