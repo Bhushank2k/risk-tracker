@@ -78,7 +78,7 @@ object BinanceIncomeCsvImporter {
             require(day.take(4).toIntOrNull() == selectedYear) {
                 "CSV contains a row outside $selectedYear ($day). Export only the selected year and retry."
             }
-            val amount = amountValue.replace(",", "").toDoubleOrNull()
+            val amount = amountValue.toDoubleOrNull()
             require(amount != null && amount.isFinite()) {
                 "Invalid or non-finite income amount on CSV row $rowNumber."
             }
