@@ -57,9 +57,21 @@ data class BinanceDailyResult(
     val total: Double get() = spotPnl + futuresPnl
 }
 
+/** Accepts only real calendar dates in the canonical UTC yyyy-MM-dd representation. */
+internal fun isValidBinanceCalendarDate(value: String): Boolean {
+    if (!value.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return false
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+    val position = java.text.ParsePosition(0)
+    val parsed = format.parse(value, position) ?: return false
+    return position.index == value.length && format.format(parsed) == value
+}
+
 /** Rejects incomplete or ambiguous daily history before any write can replace persisted records. */
 internal fun validateBinanceDailyHistory(rows: List<BinanceDailyResult>) {
-    require(rows.all { it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
+    require(rows.all { isValidBinanceCalendarDate(it.date) &&
         it.spotPnl.isFinite() && it.futuresPnl.isFinite() &&
         it.futuresIncomeByType.values.all(Double::isFinite) }) {
         "Binance daily history contains an invalid date or non-finite amount."
@@ -666,7 +678,7 @@ object BinanceSyncData {
         futuresIncomeByType: Map<String, Map<String, Double>> = emptyMap()
     ) {
         val incomingDates = spot.keys + futures.keys + futuresIncomeByType.keys
-        require(incomingDates.all { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } &&
+        require(incomingDates.all { isValidBinanceCalendarDate(it) } &&
             spot.values.all(Double::isFinite) && futures.values.all(Double::isFinite) &&
             futuresIncomeByType.values.all { components -> components.values.all(Double::isFinite) }) {
             "Binance sync returned invalid daily dates or non-finite income values."
@@ -691,7 +703,7 @@ object BinanceSyncData {
     /** Replaces the selected year's Futures totals from a complete export; component detail is not in this importer. */
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
-        require(daily.all { it.key.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && it.key.startsWith("$year-") && it.value.isFinite() }) {
+        require(daily.all { isValidBinanceCalendarDate(it.key) && it.key.startsWith("$year-") && it.value.isFinite() }) {
             "Imported Binance daily values must have valid dates and finite amounts in the selected year."
         }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -713,7 +725,7 @@ object BinanceSyncData {
     /** Restores a full pre-import year snapshot, including income-type detail, while retaining current Spot values. */
     fun replaceFuturesYearRecords(context: Context, year: Int, backup: List<BinanceDailyResult>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
-        require(backup.all { it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && it.date.startsWith("$year-") &&
+        require(backup.all { isValidBinanceCalendarDate(it.date) && it.date.startsWith("$year-") &&
             it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.futuresIncomeByType.values.all(Double::isFinite) }) {
             "Recovery snapshot contains invalid rows."
         }
@@ -765,7 +777,7 @@ object BinanceSyncData {
         val rows = (0 until array.length()).map { index ->
             val json = array.getJSONObject(index)
             val date = json.getString("date")
-            require(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "Saved Binance history contains an invalid date." }
+            require(isValidBinanceCalendarDate(date)) { "Saved Binance history contains an invalid date." }
             val spot = json.getDouble("spotPnl")
             val futures = json.getDouble("futuresPnl")
             require(spot.isFinite() && futures.isFinite()) { "Saved Binance history contains a non-finite P&L value." }
