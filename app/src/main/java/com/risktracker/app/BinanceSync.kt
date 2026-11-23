@@ -673,6 +673,9 @@ object BinanceSyncData {
     /** Replaces the selected year's Futures totals from a complete export; component detail is not in this importer. */
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
+        require(daily.all { it.key.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && it.key.startsWith("$year-") && it.value.isFinite() }) {
+            "Imported Binance daily values must have valid dates and finite amounts in the selected year."
+        }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         val yearPrefix = "$year-"
@@ -697,7 +700,7 @@ object BinanceSyncData {
             "Recovery snapshot contains invalid rows."
         }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         merged.keys.filter { it.startsWith("$year-") }.toList().forEach { day ->
             val previous = merged.getValue(day)
             merged[day] = previous.copy(futuresPnl = 0.0, futuresIncomeByType = emptyMap())
@@ -727,7 +730,7 @@ object BinanceSyncData {
     /** Backward-compatible save for callers that provide complete combined daily rows. */
     fun save(context: Context, data: List<BinanceDailyResult>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         data.forEach { merged[it.date] = it }
         val array = JSONArray()
         merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
