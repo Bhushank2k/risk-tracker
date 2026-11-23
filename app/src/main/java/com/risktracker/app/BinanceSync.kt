@@ -689,6 +689,30 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
+    /** Restores a full pre-import year snapshot, including income-type detail, while retaining current Spot values. */
+    fun replaceFuturesYearRecords(context: Context, year: Int, backup: List<BinanceDailyResult>) {
+        require(year in 2018..2026) { "Select a year from 2018 through 2026." }
+        require(backup.all { it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() &&
+            it.futuresPnl.isFinite() && it.futuresIncomeByType.values.all(Double::isFinite) }) {
+            "Recovery snapshot contains invalid rows."
+        }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val merged = load(context).associateBy { it.date }.toMutableMap()
+        merged.keys.filter { it.startsWith("$year-") }.toList().forEach { day ->
+            val previous = merged.getValue(day)
+            merged[day] = previous.copy(futuresPnl = 0.0, futuresIncomeByType = emptyMap())
+        }
+        backup.distinctBy { it.date }.forEach { saved ->
+            val current = merged[saved.date]
+            merged[saved.date] = saved.copy(spotPnl = current?.spotPnl ?: saved.spotPnl)
+        }
+        val array = JSONArray()
+        merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
+        check(prefs.edit().putString("daily", array.toString()).commit()) {
+            "Could not commit restored Binance Futures records."
+        }
+    }
+
     /** Replace the complete saved daily import during an explicit backup restore. */
     fun replaceAll(context: Context, data: List<BinanceDailyResult>) {
         require(data.all { it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.date.isNotBlank() }) {
