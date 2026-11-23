@@ -1098,6 +1098,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
+    val quickSetup = remember { QuickSetupProfileStore.load(context) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
@@ -1115,6 +1116,18 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Settings & data", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        RiskCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Quick Setup profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("All trading styles · Top 50 liquid USDT perpetual pairs · 1.0% risk per trade", style = MaterialTheme.typography.bodyMedium)
+                Text("Balanced confirmation keeps the existing strategy-specific entry and safety checks. Ready and entry alerts are enabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (TradeIdeaNotifications.hasPermission(context)) "Android notification permission is available." else "Allow Risk Tracker notifications in Android settings to receive alerts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = {
+                    QuickSetupProfileStore.apply(context, quickSetup)
+                    backupMessage = "Quick Setup applied. Existing journal, exchange imports and saved records were preserved."
+                }, modifier = Modifier.fillMaxWidth()) { Text("Apply Quick Setup profile") }
+            }
+        }
         Text("Risk limits", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(dailyLimit, { dailyLimit = it }, label = { Text("Maximum daily loss (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
         OutlinedTextField(tradeLimit, { tradeLimit = it }, label = { Text("Maximum planned risk per trade (USD)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
