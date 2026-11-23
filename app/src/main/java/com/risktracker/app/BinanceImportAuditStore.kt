@@ -14,19 +14,22 @@ class BinanceImportAuditStore(context: Context) {
         val existing = prefs.getString("year_$year", null)
         val payload = JSONObject().put("hadReport", existing != null)
         if (existing != null) payload.put("report", JSONObject(existing))
-        backupPrefs.edit().putString("year_$year", payload.toString()).apply()
+        check(backupPrefs.edit().putString("year_$year", payload.toString()).commit()) { "Could not commit the previous import audit snapshot." }
     }
 
     /** Restore the audit that matched the saved pre-import Futures values. */
     fun restoreBackup(year: Int): Boolean {
         if (year !in 2018..2026) return false
         return try {
-            val payload = backupPrefs.getString("year_$year", null)?.let { JSONObject(it) } ?: return false
-            if (payload.optBoolean("hadReport", false)) {
+            val raw = backupPrefs.getString("year_$year", null) ?: return false
+            val payload = JSONObject(raw)
+            require(payload.has("hadReport")) { "Audit snapshot is missing its presence marker." }
+            val hadReport = payload.getBoolean("hadReport")
+            if (hadReport) {
                 val previous = payload.getJSONObject("report").toString()
-                prefs.edit().putString("year_$year", previous).apply()
+                check(prefs.edit().putString("year_$year", previous).commit())
             } else {
-                prefs.edit().remove("year_$year").apply()
+                check(prefs.edit().remove("year_$year").commit())
             }
             true
         } catch (_: Exception) {
@@ -48,7 +51,7 @@ class BinanceImportAuditStore(context: Context) {
             .put("firstActivityDate", report.firstActivityDate)
             .put("lastActivityDate", report.lastActivityDate)
             .put("duplicateRows", report.duplicateRows)
-        prefs.edit().putString("year_$year", payload.toString()).apply()
+        check(prefs.edit().putString("year_$year", payload.toString()).commit()) { "Could not commit the import audit." }
     }
 
     fun load(year: Int): BinanceIncomeImportReport? {
