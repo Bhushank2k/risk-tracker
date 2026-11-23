@@ -24,3 +24,12 @@ internal fun quickScanMarketPriority(
         abs(changePct) * 0.5 +
         ln1p(quoteVolume / 5_000_000.0) * 0.15
 }
+
+/** Top-market Quick Setup scans the 50 highest 24h quote-volume active USDT-M perpetuals. */
+internal const val QUICK_SETUP_TOP_MARKET_LIMIT = 50
+
+internal fun quickSetupMarketLimit(markets: String): Int? = when (markets) {
+    "top" -> QUICK_SETUP_TOP_MARKET_LIMIT
+    "all" -> null
+    else -> QUICK_SETUP_TOP_MARKET_LIMIT
+}
