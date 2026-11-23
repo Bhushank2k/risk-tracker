@@ -64,28 +64,27 @@ internal data class ScanCandle(val high: Double, val low: Double, val close: Dou
  * Freshness is evaluated per strategy horizon. An unrelated stale feed must not
  * suppress a setup whose required timeframes are current.
  */
+internal fun scanCandleFresh(rows: List<ScanCandle>, maxAgeMs: Long, now: Long): Boolean {
+    val closeTime = rows.lastOrNull()?.closeTime ?: return false
+    val age = now - closeTime
+    return age in 0..maxAgeMs
+}
+
 internal fun scanTimeframesFresh(
     horizon: String,
     d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
     m15: List<ScanCandle>, m5: List<ScanCandle>, m1: List<ScanCandle>,
     now: Long
-): Boolean {
-    fun fresh(rows: List<ScanCandle>, maxAgeMs: Long): Boolean {
-        val closeTime = rows.lastOrNull()?.closeTime ?: return false
-        val age = now - closeTime
-        return age in 0..maxAgeMs
-    }
-    return when {
-        horizon.contains("scalp", ignoreCase = true) ->
-            fresh(h1, 90L * 60L * 1000L) && fresh(m15, 25L * 60L * 1000L) &&
-                fresh(m5, 10L * 60L * 1000L) && fresh(m1, 3L * 60L * 1000L)
-        horizon.contains("swing", ignoreCase = true) ->
-            fresh(d1, 30L * 60L * 60L * 1000L) && fresh(h4, 6L * 60L * 60L * 1000L) &&
-                fresh(h1, 90L * 60L * 1000L) && fresh(m15, 25L * 60L * 1000L)
-        else ->
-            fresh(h4, 6L * 60L * 60L * 1000L) && fresh(h1, 90L * 60L * 1000L) &&
-                fresh(m15, 25L * 60L * 1000L) && fresh(m5, 10L * 60L * 1000L)
-    }
+): Boolean = when {
+    horizon.contains("scalp", ignoreCase = true) ->
+        scanCandleFresh(h1, 90L * 60L * 1000L, now) && scanCandleFresh(m15, 25L * 60L * 1000L, now) &&
+            scanCandleFresh(m5, 10L * 60L * 1000L, now) && scanCandleFresh(m1, 3L * 60L * 1000L, now)
+    horizon.contains("swing", ignoreCase = true) ->
+        scanCandleFresh(d1, 30L * 60L * 60L * 1000L, now) && scanCandleFresh(h4, 6L * 60L * 60L * 1000L, now) &&
+            scanCandleFresh(h1, 90L * 60L * 1000L, now) && scanCandleFresh(m15, 25L * 60L * 1000L, now)
+    else ->
+        scanCandleFresh(h4, 6L * 60L * 60L * 1000L, now) && scanCandleFresh(h1, 90L * 60L * 1000L, now) &&
+            scanCandleFresh(m15, 25L * 60L * 1000L, now) && scanCandleFresh(m5, 10L * 60L * 1000L, now)
 }
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
@@ -692,9 +691,13 @@ internal object BinanceMarketScanner {
                                 val oiChange = if (micro.oiChangePct == null && (coreIdeas.isNotEmpty() || fundingLooksCrowded))
                                     openInterestChangePct(ticker.symbol) else micro.oiChangePct
                                 val strategyMicro = micro.copy(oiChangePct = oiChange)
-                                val supplementalIdeas = if (
-                                    scanTimeframesFresh("Intraday", d1, h4, h1, m15, m5, m1, System.currentTimeMillis())
-                                ) SupplementalTradeStrategies.evaluate(
+                                val supplementalNow = System.currentTimeMillis()
+                                val supplementalInputsFresh =
+                                    scanCandleFresh(h4, 6L * 60L * 60L * 1000L, supplementalNow) &&
+                                    scanCandleFresh(h1, 90L * 60L * 1000L, supplementalNow) &&
+                                    scanCandleFresh(m15, 25L * 60L * 1000L, supplementalNow) &&
+                                    scanCandleFresh(btcH1, 90L * 60L * 1000L, supplementalNow)
+                                val supplementalIdeas = if (supplementalInputsFresh) SupplementalTradeStrategies.evaluate(
                                     live, h4, h1, m15, btcH1, strategyMicro
                                 ) else emptyList()
                                 val detectedIdeas = coreIdeas + supplementalIdeas
