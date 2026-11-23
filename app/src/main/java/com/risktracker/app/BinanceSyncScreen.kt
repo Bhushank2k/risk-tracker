@@ -466,19 +466,21 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                             val report = preview
                                             val year = pendingImportYear
                                             withContext(Dispatchers.IO) {
-                                                val existing = BinanceSyncData.load(context)
+                                                val existingRows = BinanceSyncData.load(context)
                                                     .filter { it.date.take(4).toIntOrNull() == year }
-                                                    .associate { it.date to it.futuresPnl }
+                                                val existingDaily = existingRows.associate { it.date to it.futuresPnl }
                                                     .filterValues { it != 0.0 }
-                                                // Save both recovery snapshots before changing either live record.
+                                                // Both snapshots must be durably committed before live records are changed.
                                                 auditStore.backup(year)
-                                                importBackupStore.save(year, existing)
+                                                check(importBackupStore.save(year, existingRows)) {
+                                                    "Could not commit the pre-import Futures recovery snapshot."
+                                                }
                                                 try {
                                                     BinanceSyncData.replaceFuturesYear(context, year, report.daily)
                                                     auditStore.save(year, report)
                                                 } catch (failure: Exception) {
-                                                    // Keep daily P&L and its audit paired if either write fails.
-                                                    BinanceSyncData.replaceFuturesYear(context, year, existing)
+                                                    // Restore full daily rows (including income-type breakdowns) and the matching audit.
+                                                    BinanceSyncData.replaceFuturesYearRecords(context, year, existingRows)
                                                     check(auditStore.restoreBackup(year)) {
                                                         "P&L was rolled back, but the previous import audit could not be restored."
                                                     }
@@ -525,20 +527,18 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                         try {
                                             val backup = withContext(Dispatchers.IO) {
                                                 importBackupStore.load(year)
-                                            } ?: error("No recovery snapshot is available.")
+                                            } ?: error("No valid recovery snapshot is available.")
                                             withContext(Dispatchers.IO) {
                                                 val current = BinanceSyncData.load(context)
                                                     .filter { it.date.take(4).toIntOrNull() == year }
-                                                    .associate { it.date to it.futuresPnl }
-                                                    .filterValues { it != 0.0 }
                                                 try {
-                                                    BinanceSyncData.replaceFuturesYear(context, year, backup)
+                                                    BinanceSyncData.replaceFuturesYearRecords(context, year, backup)
                                                     check(auditStore.restoreBackup(year)) {
                                                         "The saved audit backup is missing or invalid."
                                                     }
                                                 } catch (failure: Exception) {
-                                                    // Restore the current values if restoring the audit fails.
-                                                    BinanceSyncData.replaceFuturesYear(context, year, current)
+                                                    // Restore the exact current year rows if audit restoration fails.
+                                                    BinanceSyncData.replaceFuturesYearRecords(context, year, current)
                                                     throw failure
                                                 }
                                             }
