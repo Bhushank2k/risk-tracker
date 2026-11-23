@@ -57,6 +57,18 @@ data class BinanceDailyResult(
     val total: Double get() = spotPnl + futuresPnl
 }
 
+/** Rejects incomplete or ambiguous daily history before any write can replace persisted records. */
+internal fun validateBinanceDailyHistory(rows: List<BinanceDailyResult>) {
+    require(rows.all { it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
+        it.spotPnl.isFinite() && it.futuresPnl.isFinite() &&
+        it.futuresIncomeByType.values.all(Double::isFinite) }) {
+        "Binance daily history contains an invalid date or non-finite amount."
+    }
+    require(rows.map { it.date }.distinct().size == rows.size) {
+        "Binance daily history contains duplicate dates."
+    }
+}
+
 data class BinanceAccountSnapshot(
     val spot: BinancePortfolioBalance,
     val futures: BinanceFuturesAccountBalance,
@@ -765,9 +777,7 @@ object BinanceSyncData {
             }
             BinanceDailyResult(date, spot, futures, breakdown)
         }
-        require(rows.map { it.date }.distinct().size == rows.size) {
-            "Saved Binance history contains duplicate dates; refusing to overwrite it."
-        }
+        validateBinanceDailyHistory(rows)
         return rows
     }
 
