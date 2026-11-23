@@ -31,3 +31,16 @@ class QuickScanPolicyTest {
         assertTrue(QUICK_SCAN_DEEP_SCAN_CONCURRENCY <= QUICK_SCAN_DEPTH_BATCH_SIZE)
     }
 }
+
+    @Test fun quickSetupTopModeUsesFiftyMostLiquidMarkets() {
+        assertEquals(50, quickSetupMarketLimit("top"))
+        assertEquals(QUICK_SETUP_TOP_MARKET_LIMIT, quickSetupMarketLimit("top"))
+    }
+
+    @Test fun fullUniverseModeDoesNotLimitMarketCount() {
+        assertEquals(null, quickSetupMarketLimit("all"))
+    }
+
+    @Test fun unknownMarketModeFallsBackToSafeTopLimit() {
+        assertEquals(50, quickSetupMarketLimit("unknown"))
+    }
