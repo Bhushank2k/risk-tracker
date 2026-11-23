@@ -16,7 +16,7 @@ Explore is a destination in the bottom navigation. Its current groups are:
 | Group | Destinations |
 |---|---|
 | Trading & Tools | Live positions & orders; Position & leverage calculator |
-| Market Intelligence | Best Opportunities; Unified SMC Signals; Coin Explosion Radar |
+| Market Intelligence | Best Opportunities; Unified SMC Signals; Coin Explosion Radar; Market Activity Lab |
 | Performance & Reports | P&L Calendar; Crypto Tax Report |
 | Exchange & Account | Binance Sync & imports; Sync health; Account activity & statements |
 | App | Settings; About Risk Tracker |
@@ -40,7 +40,7 @@ Best Opportunities is a secondary Explore destination (route 34) that combines D
 | Account Activity & Statements | Deposits, withdrawals, transfers and statement records | External cash flow by asset | Trading P&L |
 | Crypto Tax Report | Financial-year tax dataset, review and exports | Imported transaction counts and data quality | General portfolio analytics |
 | Coin Explosion Radar | Its own discovery signals and filters | Market observations | Portfolio or account records |
-| Market Activity Lab | Public futures candle research, indicator scoring and historical replay | Market activity observations and source freshness | Account sync and trade journal records |
+| Market Activity Lab (route 35) | Public futures candle research, indicator scoring and historical replay | Market activity observations and source freshness | Account sync and trade journal records |
 | Risk tools | User inputs, limits, scenarios and calculated risk | Relevant account equity where available | Duplicated portfolio dashboards |
 
 ## Consolidation rules
