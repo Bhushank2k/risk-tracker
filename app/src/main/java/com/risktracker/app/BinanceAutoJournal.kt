@@ -114,7 +114,7 @@ object BinanceAutoJournalStore {
         val all = merged.first
         val inserted = merged.second
         val array = JSONArray()
-        all.values.sortedBy { it.time }.forEach { fill ->
+        all.sortedBy { it.time }.forEach { fill ->
             array.put(JSONObject()
                 .put("id", fill.id).put("exchange", fill.exchange).put("market", fill.market)
                 .put("symbol", fill.symbol).put("side", fill.side).put("quantity", fill.quantity)
