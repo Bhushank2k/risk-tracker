@@ -695,10 +695,11 @@ object BinanceSyncData {
     /** Restores a full pre-import year snapshot, including income-type detail, while retaining current Spot values. */
     fun replaceFuturesYearRecords(context: Context, year: Int, backup: List<BinanceDailyResult>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
-        require(backup.all { it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() &&
-            it.futuresPnl.isFinite() && it.futuresIncomeByType.values.all(Double::isFinite) }) {
+        require(backup.all { it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && it.date.startsWith("$year-") &&
+            it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.futuresIncomeByType.values.all(Double::isFinite) }) {
             "Recovery snapshot contains invalid rows."
         }
+        require(backup.map { it.date }.distinct().size == backup.size) { "Recovery snapshot contains duplicate dates." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         merged.keys.filter { it.startsWith("$year-") }.toList().forEach { day ->
