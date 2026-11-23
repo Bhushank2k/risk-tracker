@@ -30,7 +30,6 @@ class QuickScanPolicyTest {
         assertEquals(150, QUICK_SCAN_DEPTH_BATCH_SIZE)
         assertTrue(QUICK_SCAN_DEEP_SCAN_CONCURRENCY <= QUICK_SCAN_DEPTH_BATCH_SIZE)
     }
-}
 
     @Test fun quickSetupTopModeUsesFiftyMostLiquidMarkets() {
         assertEquals(50, quickSetupMarketLimit("top"))
@@ -44,3 +43,4 @@ class QuickScanPolicyTest {
     @Test fun unknownMarketModeFallsBackToSafeTopLimit() {
         assertEquals(50, quickSetupMarketLimit("unknown"))
     }
+}
