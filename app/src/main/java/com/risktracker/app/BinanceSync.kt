@@ -758,12 +758,17 @@ object BinanceSyncData {
 
     /** Backward-compatible save for callers that provide complete combined daily rows. */
     fun save(context: Context, data: List<BinanceDailyResult>) {
+        // Validate before merging so this compatibility write path cannot bypass strict history checks.
+        validateBinanceDailyHistory(data)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         data.forEach { merged[it.date] = it }
+        validateBinanceDailyHistory(merged.values.toList())
         val array = JSONArray()
         merged.values.sortedBy { it.date }.forEach { array.put(toJson(it)) }
-        prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
+        check(prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).commit()) {
+            "Could not commit Binance daily history."
+        }
     }
 
     /**
