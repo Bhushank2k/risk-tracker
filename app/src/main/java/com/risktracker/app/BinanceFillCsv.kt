@@ -61,11 +61,12 @@ object BinanceFillCsvImporter {
                 "SELL", "SHORT" -> "SELL"
                 else -> { ignored++; return@forEachIndexed }
             }
-            fun number(value: String): Double? {
+            fun number(value: String, allowAssetSuffix: Boolean = false): Double? {
                 val raw = value.trim()
                 if (raw.isEmpty()) return null
-                val match = Regex("^([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\\s*(?:[A-Za-z]{2,10})?$")
-                    .matchEntire(raw) ?: return null
+                val numeric = "[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+                val pattern = if (allowAssetSuffix) Regex("^($numeric)(?:\\s+[A-Za-z]{2,10})?$") else Regex("^($numeric)$")
+                val match = pattern.matchEntire(raw) ?: return null
                 return match.groupValues[1].toDoubleOrNull()?.takeIf { it.isFinite() }
             }
             val price = number(cell(priceIndex)) ?: error("Invalid price on CSV row $rowNo.")
@@ -73,12 +74,13 @@ object BinanceFillCsvImporter {
             require(price > 0 && qty > 0) { "Price and quantity must be positive on CSV row $rowNo." }
             val quoteRaw = cell(quoteIndex)
             val quote = if (quoteRaw.isBlank()) qty * price else
-                (number(quoteRaw) ?: error("Invalid quote amount on CSV row $rowNo.")).also {
-                    require(it > 0) { "Quote amount must be positive on CSV row $rowNo." }
-                }
+                (number(quoteRaw) ?: error("Invalid quote amount on CSV row $rowNo."))
+            require(quote > 0 && quote.isFinite()) {
+                "Quote amount must be positive and finite on CSV row $rowNo."
+            }
             val feeRaw = cell(feeIndex)
             val fee = if (feeRaw.isBlank()) 0.0 else
-                number(feeRaw) ?: error("Invalid fee on CSV row $rowNo.")
+                number(feeRaw, allowAssetSuffix = true) ?: error("Invalid fee on CSV row $rowNo.")
             val feeAsset = cell(feeAssetIndex).ifBlank {
                 Regex("[A-Za-z]{2,10}\\s*$").find(feeRaw)?.value?.trim()?.uppercase(Locale.ROOT) ?: ""
             }
