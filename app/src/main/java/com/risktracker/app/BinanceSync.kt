@@ -654,7 +654,7 @@ object BinanceSyncData {
         futuresIncomeByType: Map<String, Map<String, Double>> = emptyMap()
     ) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         (spot.keys + futures.keys + futuresIncomeByType.keys).forEach { day ->
             val previous = merged[day]
             merged[day] = BinanceDailyResult(
@@ -674,7 +674,7 @@ object BinanceSyncData {
     fun replaceFuturesYear(context: Context, year: Int, daily: Map<String, Double>) {
         require(year in 2018..2026) { "Select a year from 2018 through 2026." }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val merged = load(context).associateBy { it.date }.toMutableMap()
+        val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         val yearPrefix = "$year-"
         merged.keys.filter { it.startsWith(yearPrefix) }.toList().forEach { day ->
             val previous = merged.getValue(day)
@@ -734,10 +734,45 @@ object BinanceSyncData {
         prefs.edit().putString("daily", array.toString()).putLong("last_sync", System.currentTimeMillis()).apply()
     }
 
+    /**
+     * Strict reader for write paths. Unlike the display-oriented load(), this never turns
+     * corrupt or partially invalid persisted history into an empty list.
+     */
+    fun loadStrict(context: Context): List<BinanceDailyResult> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]")
+            ?: "[]"
+        val array = JSONArray(raw)
+        val rows = (0 until array.length()).map { index ->
+            val json = array.getJSONObject(index)
+            val date = json.getString("date")
+            require(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "Saved Binance history contains an invalid date." }
+            val spot = json.getDouble("spotPnl")
+            val futures = json.getDouble("futuresPnl")
+            require(spot.isFinite() && futures.isFinite()) { "Saved Binance history contains a non-finite P&L value." }
+            val breakdownJson = json.optJSONObject("futuresIncomeByType") ?: JSONObject()
+            val breakdown = buildMap {
+                val keys = breakdownJson.keys()
+                while (keys.hasNext()) {
+                    val type = keys.next()
+                    val amount = breakdownJson.getDouble(type)
+                    require(amount.isFinite()) { "Saved Binance history contains an invalid income component." }
+                    put(type, amount)
+                }
+            }
+            BinanceDailyResult(date, spot, futures, breakdown)
+        }
+        require(rows.map { it.date }.distinct().size == rows.size) {
+            "Saved Binance history contains duplicate dates; refusing to overwrite it."
+        }
+        return rows
+    }
+
+    /** Read-only UI fallback. Mutation paths must use loadStrict(). */
     fun load(context: Context): List<BinanceDailyResult> = try {
-        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("daily", "[]"))
-        (0 until a.length()).map { i -> fromJson(a.getJSONObject(i)) }
-    } catch (_: Exception) { emptyList() }
+        loadStrict(context)
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
