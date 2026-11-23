@@ -28,9 +28,9 @@ class CryptoTaxHistoryTest {
     }
 
     @Test fun identicalNoIdExecutionsWithinOneExportArePreservedAndReimportsAreIdempotent() {
-        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\\n" +
-            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n" +
-            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n"
         val parsed = CryptoTaxHistory.parseCsv(csv, "spot-export.csv")
         assertEquals(2, parsed.size)
         assertEquals(parsed[0].id, parsed[1].id)
@@ -45,10 +45,10 @@ class CryptoTaxHistoryTest {
     }
 
     @Test fun laterExportCanAddAnotherIdenticalExecutionWithoutTradeId() {
-        val oneRow = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\\n" +
-            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+        val oneRow = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n"
         val twoRows = oneRow +
-            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\n"
         val first = CryptoTaxHistory.parseCsv(oneRow, "part-a.csv")
         val later = CryptoTaxHistory.parseCsv(twoRows, "part-b.csv")
         val (merged, added) = CryptoTaxHistory.deduplicate(first, later)
