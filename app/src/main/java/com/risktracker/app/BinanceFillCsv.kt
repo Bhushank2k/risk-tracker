@@ -54,23 +54,37 @@ object BinanceFillCsvImporter {
             val rawSymbol = cell(symbolIndex).uppercase(Locale.ROOT).replace("/", "").replace("-", "").replace("_", "")
             val symbol = rawSymbol.removeSuffix("PERP")
             require(symbol.matches(Regex("[A-Z0-9]{4,30}"))) { "Invalid symbol on CSV row $rowNo." }
-            val side = when (cell(sideIndex).uppercase(Locale.ROOT)) {
+            val rawSide = cell(sideIndex).uppercase(Locale.ROOT)
+            require(rawSide.isNotBlank()) { "Missing side on CSV row $rowNo." }
+            val side = when (rawSide) {
                 "BUY", "LONG" -> "BUY"
                 "SELL", "SHORT" -> "SELL"
                 else -> { ignored++; return@forEachIndexed }
             }
-            fun number(value: String): Double? = Regex("^[+-]?[0-9,]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
-                .find(value.trim())?.value?.replace(",", "")?.toDoubleOrNull()
+            fun number(value: String): Double? {
+                val raw = value.trim()
+                if (raw.isEmpty()) return null
+                val match = Regex("^([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\\s*(?:[A-Za-z]{2,10})?$")
+                    .matchEntire(raw) ?: return null
+                return match.groupValues[1].toDoubleOrNull()?.takeIf { it.isFinite() }
+            }
             val price = number(cell(priceIndex)) ?: error("Invalid price on CSV row $rowNo.")
             val qty = number(cell(qtyIndex)) ?: error("Invalid quantity on CSV row $rowNo.")
-            require(price > 0 && qty > 0 && price.isFinite() && qty.isFinite()) { "Price and quantity must be positive on CSV row $rowNo." }
-            val quote = number(cell(quoteIndex))?.takeIf { it > 0 } ?: qty * price
+            require(price > 0 && qty > 0) { "Price and quantity must be positive on CSV row $rowNo." }
+            val quoteRaw = cell(quoteIndex)
+            val quote = if (quoteRaw.isBlank()) qty * price else
+                (number(quoteRaw) ?: error("Invalid quote amount on CSV row $rowNo.")).also {
+                    require(it > 0) { "Quote amount must be positive on CSV row $rowNo." }
+                }
             val feeRaw = cell(feeIndex)
-            val fee = number(feeRaw) ?: 0.0
+            val fee = if (feeRaw.isBlank()) 0.0 else
+                number(feeRaw) ?: error("Invalid fee on CSV row $rowNo.")
             val feeAsset = cell(feeAssetIndex).ifBlank {
                 Regex("[A-Za-z]{2,10}\\s*$").find(feeRaw)?.value?.trim()?.uppercase(Locale.ROOT) ?: ""
             }
-            val realized = number(cell(realizedIndex))
+            val realizedRaw = cell(realizedIndex)
+            val realized = if (realizedRaw.isBlank()) null else
+                number(realizedRaw) ?: error("Invalid realized P&L on CSV row $rowNo.")
             val exchangeTradeId = cell(tradeIdIndex)
             val fingerprintInput = if (exchangeTradeId.isNotBlank()) {
                 listOf(market, symbol, exchangeTradeId).joinToString("|")
