@@ -327,7 +327,7 @@ internal object BinanceMarketScanner {
     // by each engine after discovery so SMC never inherits Daily's narrower candidate set.
     private val marketUniverseMutex = Mutex()
     @Volatile private var sharedMarketUniverse: Pair<Long, SharedMarketUniverseSnapshot>? = null
-    @Volatile private var marketLimit: Int? = QUICK_SETUP_TOP_MARKET_LIMIT
+    @Volatile private var marketLimit: Int? = null
 
     private suspend fun sharedMarketUniverseSnapshot(forceRefresh: Boolean = false): SharedMarketUniverseSnapshot =
         marketUniverseMutex.withLock {
@@ -373,8 +373,13 @@ internal object BinanceMarketScanner {
     private class BinanceRateLimitException(message: String) : IllegalStateException(message)
 
     fun initialize(context: android.content.Context) {
-        QuickSetupProfileStore.applyInitial(context.applicationContext)
-        val nextMarketLimit = quickSetupMarketLimit(QuickSetupProfileStore.load(context.applicationContext).markets)
+        val app = context.applicationContext
+        QuickSetupProfileStore.applyInitial(app)
+        // Full-universe scanning is the requested default. Upgrade any previously saved
+        // Quick Setup "top 50" profile so existing installs also scan every active contract.
+        val profile = QuickSetupProfileStore.load(app)
+        if (profile.markets != "all") QuickSetupProfileStore.save(app, profile.copy(markets = "all"))
+        val nextMarketLimit = quickSetupMarketLimit("all")
         if (marketLimit != nextMarketLimit) {
             marketLimit = nextMarketLimit
             sharedMarketUniverse = null
