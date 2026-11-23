@@ -1011,7 +1011,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
         RiskCard(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Quick Setup profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("All trading styles · Top 50 liquid USDT perpetual pairs · 1.0% risk per trade", style = MaterialTheme.typography.bodyMedium)
+                Text("All trading styles · All active USDT-M perpetual pairs · 1.0% risk per trade", style = MaterialTheme.typography.bodyMedium)
                 Text("Balanced confirmation keeps the existing strategy-specific entry and safety checks. Ready and entry alerts are enabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (TradeIdeaNotifications.hasPermission(context)) "Android notification permission is available." else "Allow Risk Tracker notifications in Android settings to receive alerts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = {
