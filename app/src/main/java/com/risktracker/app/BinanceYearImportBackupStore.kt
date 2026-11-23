@@ -4,17 +4,29 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal fun validateBinanceYearBackupRows(year: Int, rows: List<BinanceDailyResult>) {
+    require(year in 2018..2026)
+    require(rows.all {
+        it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
+            it.date.startsWith("$year-") &&
+            it.spotPnl.isFinite() &&
+            it.futuresPnl.isFinite() &&
+            it.futuresIncomeByType.values.all(Double::isFinite)
+    }) { "Backup rows must be valid records from the selected year." }
+    require(rows.map { it.date }.distinct().size == rows.size) {
+        "Backup contains duplicate dates; refusing to discard recovery records."
+    }
+}
+
 /** Keeps the most recent complete pre-import Futures rows per year for recovery on this device. */
 class BinanceYearImportBackupStore(context: Context) {
     private val prefs = context.getSharedPreferences("binance_income_import_backup_v1", Context.MODE_PRIVATE)
 
     /** Synchronously commits the complete year snapshot before any live values are replaced. */
     fun save(year: Int, rows: List<BinanceDailyResult>): Boolean {
-        require(year in 2018..2026)
-        require(rows.all { it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() && it.futuresPnl.isFinite() &&
-            it.futuresIncomeByType.values.all(Double::isFinite) }) { "Backup rows must be valid records from the selected year." }
+        validateBinanceYearBackupRows(year, rows)
         val payload = JSONArray()
-        rows.distinctBy { it.date }.sortedBy { it.date }.forEach { row ->
+        rows.sortedBy { it.date }.forEach { row ->
             val breakdown = JSONObject()
             row.futuresIncomeByType.forEach { (type, amount) -> breakdown.put(type, amount) }
             payload.put(JSONObject()
@@ -41,7 +53,7 @@ class BinanceYearImportBackupStore(context: Context) {
                     while (keys.hasNext()) {
                         val date = keys.next()
                         val amount = legacy.getDouble(date)
-                        require(date.take(4).toIntOrNull() == year && amount.isFinite())
+                        require(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && date.startsWith("$year-") && amount.isFinite())
                         add(BinanceDailyResult(date = date, spotPnl = 0.0, futuresPnl = amount))
                     }
                 }.sortedBy { it.date }
@@ -49,7 +61,11 @@ class BinanceYearImportBackupStore(context: Context) {
                 val payload = JSONArray(raw)
                 (0 until payload.length()).map { index ->
                     val row = payload.getJSONObject(index)
-                    val breakdownJson = row.optJSONObject("futuresIncomeByType") ?: JSONObject()
+                    val breakdownJson = if (row.has("futuresIncomeByType")) {
+                        row.getJSONObject("futuresIncomeByType")
+                    } else {
+                        error("Recovery snapshot is missing its income-type breakdown.")
+                    }
                     val breakdown = buildMap {
                         val keys = breakdownJson.keys()
                         while (keys.hasNext()) {
@@ -67,7 +83,7 @@ class BinanceYearImportBackupStore(context: Context) {
                     ).also {
                         require(it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() && it.futuresPnl.isFinite())
                     }
-                }
+                }.also { validateBinanceYearBackupRows(year, it) }
             }
         } catch (_: Exception) {
             null

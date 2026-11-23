@@ -26,4 +26,43 @@ class BinanceImportDiffTest {
         )
         assertEquals(0, result.changes.size)
     }
+    @Test
+    fun completeYearBackupRowsPassValidation() {
+        validateBinanceYearBackupRows(2026, listOf(
+            BinanceDailyResult("2026-01-01", 3.0, 4.0, mapOf("REALIZED_PNL" to 4.0)),
+            BinanceDailyResult("2026-01-02", 1.0, -2.0)
+        ))
+    }
+
+    @Test
+    fun duplicateDatesAreRejectedInsteadOfSilentlyDiscarded() {
+        val rows = listOf(
+            BinanceDailyResult("2026-01-01", 1.0, 2.0),
+            BinanceDailyResult("2026-01-01", 3.0, 4.0)
+        )
+        assertEquals(true, runCatching {
+            validateBinanceYearBackupRows(2026, rows)
+        }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun malformedDatesAndWrongYearAreRejected() {
+        val malformed = listOf(BinanceDailyResult("2026-1-01", 0.0, 1.0))
+        val wrongYear = listOf(BinanceDailyResult("2025-01-01", 0.0, 1.0))
+        assertEquals(true, runCatching {
+            validateBinanceYearBackupRows(2026, malformed)
+        }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(true, runCatching {
+            validateBinanceYearBackupRows(2026, wrongYear)
+        }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun nonFiniteBackupAmountsAreRejected() {
+        val rows = listOf(BinanceDailyResult("2026-01-01", 0.0, Double.POSITIVE_INFINITY))
+        assertEquals(true, runCatching {
+            validateBinanceYearBackupRows(2026, rows)
+        }.exceptionOrNull() is IllegalArgumentException)
+    }
+
 }
