@@ -67,6 +67,20 @@ class BinanceImportDiffTest {
     }
 
     @Test
+    fun dailyHistoryWriteValidationRejectsInvalidAndDuplicateRows() {
+        validateBinanceDailyHistory(listOf(BinanceDailyResult("2026-01-01", 1.0, 2.0)))
+        val impossibleDate = listOf(BinanceDailyResult("2026-02-30", 1.0, 2.0))
+        val duplicateDate = listOf(
+            BinanceDailyResult("2026-01-01", 1.0, 2.0),
+            BinanceDailyResult("2026-01-01", 3.0, 4.0)
+        )
+        assertEquals(true, runCatching { validateBinanceDailyHistory(impossibleDate) }
+            .exceptionOrNull() is IllegalArgumentException)
+        assertEquals(true, runCatching { validateBinanceDailyHistory(duplicateDate) }
+            .exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
     fun nonFiniteBackupAmountsAreRejected() {
         val rows = listOf(BinanceDailyResult("2026-01-01", 0.0, Double.POSITIVE_INFINITY))
         assertEquals(true, runCatching {
