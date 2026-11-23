@@ -39,7 +39,8 @@ class QuickScanPolicyTest {
         assertTrue(quickSetupMarketLimit("all") == null)
     }
 
-    @Test fun unknownMarketModeFallsBackToSafeTopLimit() {
-        assertEquals(50, quickSetupMarketLimit("unknown"))
+    @Test fun fullUniverseIsTheDefaultAndUnknownMode() {
+        assertTrue(quickSetupMarketLimit("unknown") == null)
+        assertTrue(quickSetupMarketLimit("") == null)
     }
 }
