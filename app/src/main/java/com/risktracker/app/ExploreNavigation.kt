@@ -16,7 +16,8 @@ internal fun exploreMenuGroups(): List<Pair<String, List<Pair<String, Int>>>> =
         "MARKET INTELLIGENCE" to listOf(
             "Best Opportunities" to 34,
             "Unified SMC Signals" to 33,
-            "Coin Explosion Radar" to 32
+            "Coin Explosion Radar" to 32,
+            "Market Activity Lab" to 35
         ),
         "PERFORMANCE & REPORTS" to listOf(
             "P&L Calendar" to 23,
