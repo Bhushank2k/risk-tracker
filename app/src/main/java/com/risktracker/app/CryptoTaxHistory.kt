@@ -323,9 +323,21 @@ object CryptoTaxHistory {
         }
     }
 
+    /**
+     * Merge imports as a multiset, not a set. Identical executions can legitimately share a
+     * fallback fingerprint when the exchange export omits trade IDs (or timestamps are rounded).
+     * Keeping the maximum observed multiplicity makes repeated imports idempotent without
+     * collapsing repeated identical rows within a single export or ZIP bundle.
+     */
     fun deduplicate(existing: List<HistoricalCryptoTrade>, incoming: List<HistoricalCryptoTrade>): Pair<List<HistoricalCryptoTrade>, Int> {
-        val seen = existing.map { it.id }.toHashSet()
-        val fresh = incoming.filter { seen.add(it.id) }
+        val existingCounts = existing.groupingBy { it.id }.eachCount()
+        val incomingCounts = mutableMapOf<String, Int>()
+        val fresh = mutableListOf<HistoricalCryptoTrade>()
+        incoming.forEach { trade ->
+            val occurrence = (incomingCounts[trade.id] ?: 0) + 1
+            incomingCounts[trade.id] = occurrence
+            if (occurrence > (existingCounts[trade.id] ?: 0)) fresh += trade
+        }
         return (existing + fresh).sortedBy { it.timestamp } to fresh.size
     }
 
