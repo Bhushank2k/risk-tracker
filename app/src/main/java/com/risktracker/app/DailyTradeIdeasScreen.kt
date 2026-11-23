@@ -59,6 +59,34 @@ internal data class UnifiedSMCScanResults(
 internal data class ScanTicker(val symbol: String, val quoteVolume: Double, val changePct: Double, val last: Double, val volatilityPct: Double, val atrPct: Double = 0.0, val relativeVolume: Double = 0.0)
 internal data class SharedMarketUniverseSnapshot(val activeUsdtPerpetualCount: Int, val tickers: List<ScanTicker>)
 internal data class ScanCandle(val high: Double, val low: Double, val close: Double, val volume: Double, val closeTime: Long, val open: Double = close)
+
+/**
+ * Freshness is evaluated per strategy horizon. An unrelated stale feed must not
+ * suppress a setup whose required timeframes are current.
+ */
+internal fun scanTimeframesFresh(
+    horizon: String,
+    d1: List<ScanCandle>, h4: List<ScanCandle>, h1: List<ScanCandle>,
+    m15: List<ScanCandle>, m5: List<ScanCandle>, m1: List<ScanCandle>,
+    now: Long
+): Boolean {
+    fun fresh(rows: List<ScanCandle>, maxAgeMs: Long): Boolean {
+        val closeTime = rows.lastOrNull()?.closeTime ?: return false
+        val age = now - closeTime
+        return age in 0..maxAgeMs
+    }
+    return when {
+        horizon.contains("scalp", ignoreCase = true) ->
+            fresh(h1, 90L * 60L * 1000L) && fresh(m15, 25L * 60L * 1000L) &&
+                fresh(m5, 10L * 60L * 1000L) && fresh(m1, 3L * 60L * 1000L)
+        horizon.contains("swing", ignoreCase = true) ->
+            fresh(d1, 30L * 60L * 60L * 1000L) && fresh(h4, 6L * 60L * 60L * 1000L) &&
+                fresh(h1, 90L * 60L * 1000L) && fresh(m15, 25L * 60L * 1000L)
+        else ->
+            fresh(h4, 6L * 60L * 60L * 1000L) && fresh(h1, 90L * 60L * 1000L) &&
+                fresh(m15, 25L * 60L * 1000L) && fresh(m5, 10L * 60L * 1000L)
+    }
+}
 internal data class TradeIdea(
     val symbol: String, val side: String, val score: Int, val volume: Double, val change: Double,
     val last: Double, val entry: Double, val stop: Double, val target1: Double, val target2: Double,
@@ -664,9 +692,11 @@ internal object BinanceMarketScanner {
                                 val oiChange = if (micro.oiChangePct == null && (coreIdeas.isNotEmpty() || fundingLooksCrowded))
                                     openInterestChangePct(ticker.symbol) else micro.oiChangePct
                                 val strategyMicro = micro.copy(oiChangePct = oiChange)
-                                val supplementalIdeas = SupplementalTradeStrategies.evaluate(
+                                val supplementalIdeas = if (
+                                    scanTimeframesFresh("Intraday", d1, h4, h1, m15, m5, m1, System.currentTimeMillis())
+                                ) SupplementalTradeStrategies.evaluate(
                                     live, h4, h1, m15, btcH1, strategyMicro
-                                )
+                                ) else emptyList()
                                 val detectedIdeas = coreIdeas + supplementalIdeas
                                 val enrichedIdeas = if (oiChange == null) detectedIdeas else detectedIdeas.map { idea ->
                                     idea.copy(
@@ -818,46 +848,55 @@ internal object BinanceMarketScanner {
                         val m15 = candleSets[3]
                         val m5 = candleSets[4]
                         val m1 = candleSets[5]
-                        // Reject cached snapshots when a newer exchange candle should exist.
+                        // Validate only the intervals consumed by each SMC engine.
+                        // A stale 1M feed must not suppress Swing; stale 1D must not suppress Scalp.
                         val now = System.currentTimeMillis()
                         fun fresh(rows: List<ScanCandle>, maxAgeMs: Long): Boolean {
                             val closeTime = rows.lastOrNull()?.closeTime ?: return false
                             val age = now - closeTime
                             return age in 0..maxAgeMs
                         }
-                        val snapshotFresh =
-                            fresh(d1, 30L * 60L * 60L * 1000L) &&
-                            fresh(h4, 6L * 60L * 60L * 1000L) &&
-                            fresh(h1, 90L * 60L * 1000L) &&
-                            fresh(m15, 25L * 60L * 1000L) &&
-                            fresh(m5, 10L * 60L * 1000L) &&
-                            fresh(m1, 3L * 60L * 1000L)
-                        if (!snapshotFresh) {
+                        val coreScalpFresh = fresh(h1, 90L * 60L * 1000L) &&
+                            fresh(m5, 10L * 60L * 1000L) && fresh(m1, 3L * 60L * 1000L)
+                        val coreIntradayFresh = fresh(h4, 6L * 60L * 60L * 1000L) &&
+                            fresh(h1, 90L * 60L * 1000L) && fresh(m15, 25L * 60L * 1000L)
+                        val coreSwingFresh = fresh(d1, 30L * 60L * 60L * 1000L) &&
+                            fresh(h4, 6L * 60L * 60L * 1000L) && fresh(h1, 90L * 60L * 1000L)
+                        val advancedIntradayFresh = fresh(h1, 90L * 60L * 1000L) &&
+                            fresh(m15, 25L * 60L * 1000L) && fresh(benchmark.first, 90L * 60L * 1000L)
+                        val advancedScalpFresh = fresh(m15, 25L * 60L * 1000L) &&
+                            fresh(m5, 10L * 60L * 1000L) && fresh(benchmark.second, 25L * 60L * 1000L)
+                        if (!(coreScalpFresh || coreIntradayFresh || coreSwingFresh ||
+                                advancedIntradayFresh || advancedScalpFresh)) {
                             failedSymbols.incrementAndGet()
-                            return@async emptyList<SMCTradeSetup>() to emptyList<AdvancedSMCSignal>()
                         }
+
 
                         // Use the same larger cached candle responses as Daily Trade Ideas,
                         // but preserve the exact history windows used by the SMC engines before
                         // this integration so their signal behavior does not change.
-                        val core = listOfNotNull(
-                            evaluateSmcSetup(symbol, last, "Scalp", h1.takeLast(180), m5.takeLast(180), m1.takeLast(120)),
-                            evaluateSmcSetup(symbol, last, "Intraday", h4.takeLast(160), h1.takeLast(180), m15.takeLast(180)),
-                            evaluateSmcSetup(symbol, last, "Swing", d1.takeLast(120), h4.takeLast(160), h1.takeLast(180))
-                        )
+                        val core = buildList {
+                            if (coreScalpFresh) evaluateSmcSetup(symbol, last, "Scalp", h1.takeLast(180), m5.takeLast(180), m1.takeLast(120))?.let { add(it) }
+                            if (coreIntradayFresh) evaluateSmcSetup(symbol, last, "Intraday", h4.takeLast(160), h1.takeLast(180), m15.takeLast(180))?.let { add(it) }
+                            if (coreSwingFresh) evaluateSmcSetup(symbol, last, "Swing", d1.takeLast(120), h4.takeLast(160), h1.takeLast(180))?.let { add(it) }
+                        }
 
                         fun convert(rows: List<ScanCandle>) = rows.map {
                             AdvancedSMCCandle(it.open, it.high, it.low, it.close, it.volume, it.closeTime)
                         }
-                        val advanced = if (h1.isEmpty() || m15.isEmpty() || m5.isEmpty()) emptyList()
-                        else {
-                            val advancedH1 = convert(h1.takeLast(180))
-                            val advancedM15 = convert(m15.takeLast(180))
-                            val advancedM5 = convert(m5.takeLast(180))
-                            val btcH1 = if (symbol == "BTCUSDT") advancedH1 else convert(benchmark.first.takeLast(180))
-                            val btcM15 = if (symbol == "BTCUSDT") advancedM15 else convert(benchmark.second.takeLast(180))
-                            AdvancedSMCSignalEngine.evaluate(symbol, last, advancedH1, advancedM15, btcH1, "Intraday") +
-                                AdvancedSMCSignalEngine.evaluate(symbol, last, advancedM15, advancedM5, btcM15, "Scalp")
+                        val advanced = buildList {
+                            if (advancedIntradayFresh) {
+                                val advancedH1 = convert(h1.takeLast(180))
+                                val advancedM15 = convert(m15.takeLast(180))
+                                val btcH1 = if (symbol == "BTCUSDT") advancedH1 else convert(benchmark.first.takeLast(180))
+                                addAll(AdvancedSMCSignalEngine.evaluate(symbol, last, advancedH1, advancedM15, btcH1, "Intraday"))
+                            }
+                            if (advancedScalpFresh) {
+                                val advancedM15 = convert(m15.takeLast(180))
+                                val advancedM5 = convert(m5.takeLast(180))
+                                val btcM15 = if (symbol == "BTCUSDT") advancedM15 else convert(benchmark.second.takeLast(180))
+                                addAll(AdvancedSMCSignalEngine.evaluate(symbol, last, advancedM15, advancedM5, btcM15, "Scalp"))
+                            }
                         }
                         core to advanced
                         } catch (cancelled: CancellationException) {
@@ -1005,21 +1044,25 @@ internal object BinanceMarketScanner {
     ): List<TradeIdea> {
         fun candles(rows: List<ScanCandle>) = rows.map { V2Candle(it.high, it.low, it.close, it.volume, it.closeTime, it.open) }
         val market = V2Microstructure(micro.spreadBps, micro.bookImbalance, micro.fundingRate, micro.oiChangePct, micro.bidDepthUsd, micro.askDepthUsd)
-        val scalp = ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
-            market, t.quoteVolume, btcBias, "Scalp", btcShock)?.let {
-            buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,
-                trendRows = m15, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "15M", runBacktest = true)
-        }
-        val intraday = ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
-            market, t.quoteVolume, btcBias, "Intraday", btcShock)?.let {
-            buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false,
-                trendRows = h1, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "1H", runBacktest = true)
-        }
-        val swing = ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
-            market, t.quoteVolume, btcBias, "Swing", btcShock)?.let {
-            buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true,
-                trendRows = h4, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "4H", runBacktest = true)
-        }
+        val now = System.currentTimeMillis()
+        val scalp = if (scanTimeframesFresh("Scalp", d1, h4, h1, m15, m5, m1, now))
+            ConfluenceScannerV4.evaluate(candles(h1), candles(m15), candles(m5), candles(m1),
+                market, t.quoteVolume, btcBias, "Scalp", btcShock)?.let {
+                buildIdea(t, it, m5, m1, h1, m15, micro, swingMode = false,
+                    trendRows = m15, vwapBars = 288, setupInterval = "5M", executionInterval = "1M", trendInterval = "15M", runBacktest = true)
+            } else null
+        val intraday = if (scanTimeframesFresh("Intraday", d1, h4, h1, m15, m5, m1, now))
+            ConfluenceScannerV4.evaluate(candles(h4), candles(h1), candles(m15), candles(m5),
+                market, t.quoteVolume, btcBias, "Intraday", btcShock)?.let {
+                buildIdea(t, it, m15, m5, h4, h1, micro, swingMode = false,
+                    trendRows = h1, vwapBars = 96, setupInterval = "15M", executionInterval = "5M", trendInterval = "1H", runBacktest = true)
+            } else null
+        val swing = if (scanTimeframesFresh("Swing", d1, h4, h1, m15, m5, m1, now))
+            ConfluenceScannerV4.evaluate(candles(d1), candles(h4), candles(h1), candles(m15),
+                market, t.quoteVolume, btcBias, "Swing", btcShock)?.let {
+                buildIdea(t, it, h1, m15, d1, h4, micro, swingMode = true,
+                    trendRows = h4, vwapBars = 24, setupInterval = "1H", executionInterval = "15M", trendInterval = "4H", runBacktest = true)
+            } else null
         return listOfNotNull(scalp, intraday, swing)
     }
 
