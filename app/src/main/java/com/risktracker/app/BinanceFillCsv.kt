@@ -35,10 +35,12 @@ object BinanceFillCsvImporter {
         val feeAssetIndex = index("fee asset", "commission asset", "fee currency")
         val realizedIndex = index("realized pnl", "realized profit", "realizedpnl", "realized p&l", "realized profit (usdt)")
         val orderIndex = index("order id", "orderid", "order no.")
+        val tradeIdIndex = index("trade id", "tradeid", "execution id", "executionid", "fill id", "fillid")
         require(timeIndex >= 0 && symbolIndex >= 0 && sideIndex >= 0 && priceIndex >= 0 && qtyIndex >= 0) {
             "Expected Binance trade columns for date/time, symbol/pair, side, price and quantity/executed."
         }
-        val seen = mutableSetOf<String>()
+        val seenTradeIds = mutableSetOf<String>()
+        val fallbackOccurrences = mutableMapOf<String, Int>()
         val fills = mutableListOf<BinanceJournalFill>()
         var duplicates = 0
         var ignored = 0
@@ -69,11 +71,25 @@ object BinanceFillCsvImporter {
                 Regex("[A-Za-z]{2,10}\\s*$").find(feeRaw)?.value?.trim()?.uppercase(Locale.ROOT) ?: ""
             }
             val realized = number(cell(realizedIndex))
-            val fingerprintInput = listOf(market, symbol, rawTime, side, price.toString(), qty.toString(), quote.toString(), feeRaw, cell(realizedIndex), cell(orderIndex)).joinToString("|")
-            val fingerprint = MessageDigest.getInstance("SHA-256")
+            val exchangeTradeId = cell(tradeIdIndex)
+            val fingerprintInput = if (exchangeTradeId.isNotBlank()) {
+                listOf(market, symbol, exchangeTradeId).joinToString("|")
+            } else {
+                listOf(market, symbol, rawTime, side, price.toString(), qty.toString(), quote.toString(),
+                    feeRaw, cell(realizedIndex), cell(orderIndex)).joinToString("|")
+            }
+            val baseFingerprint = MessageDigest.getInstance("SHA-256")
                 .digest(fingerprintInput.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }
-            if (!seen.add(fingerprint)) { duplicates++; return@forEachIndexed }
+            // Only an exchange execution ID proves two rows are the same fill. Identical
+            // no-ID rows can be separate partial executions, so preserve each occurrence.
+            if (exchangeTradeId.isNotBlank() && !seenTradeIds.add(baseFingerprint)) {
+                duplicates++
+                return@forEachIndexed
+            }
+            val occurrence = fallbackOccurrences.getOrDefault(baseFingerprint, 0)
+            fallbackOccurrences[baseFingerprint] = occurrence + 1
+            val fingerprint = if (exchangeTradeId.isNotBlank()) baseFingerprint else "$baseFingerprint:$occurrence"
             fills += BinanceJournalFill(
                 id = "binance:csv:${if (market == "Spot") "spot" else "futures"}:$symbol:$fingerprint",
                 exchange = "Binance", market = market, symbol = symbol, side = side,
@@ -82,7 +98,7 @@ object BinanceFillCsvImporter {
             )
         }
         require(fills.isNotEmpty()) { "No valid trade rows were found in this CSV." }
-        return BinanceFillCsvReport(fills.distinctBy { it.id }.sortedByDescending { it.time }, duplicates, ignored)
+        return BinanceFillCsvReport(fills.sortedByDescending { it.time }, duplicates, ignored)
     }
 
     private fun parseTime(value: String): Long? {

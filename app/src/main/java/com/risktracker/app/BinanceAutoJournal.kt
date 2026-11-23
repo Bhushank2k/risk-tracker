@@ -42,6 +42,51 @@ data class BinanceJournalSyncStatus(
     val windowEnd: Long = 0L
 )
 
+/**
+ * Pure merge helper so CSV/API reconciliation can be tested without Android storage.
+ * Fuzzy matching is deliberately cross-source only and one-to-one: two equal fills from
+ * the same source remain separate executions, while a CSV row can be upgraded by its API row.
+ */
+internal fun mergeBinanceJournalFills(
+    existing: List<BinanceJournalFill>,
+    incoming: List<BinanceJournalFill>
+): Pair<List<BinanceJournalFill>, Int> {
+    val all = existing.associateBy { it.id }.toMutableMap()
+    val consumedForCrossSourceMatch = mutableSetOf<String>()
+    var inserted = 0
+    fun isCsv(fill: BinanceJournalFill) = fill.id.contains(":csv:")
+    fun sameExecution(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
+        if (a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
+        if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
+        return kotlin.math.abs(a.time - b.time) <= 1_000L &&
+            kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+            kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+    }
+    incoming.forEach { fill ->
+        if (all.containsKey(fill.id)) {
+            all[fill.id] = fill
+            return@forEach
+        }
+        val equivalent = all.values.firstOrNull { candidate ->
+            isCsv(candidate) != isCsv(fill) &&
+                candidate.id !in consumedForCrossSourceMatch &&
+                sameExecution(candidate, fill)
+        }
+        if (equivalent == null) {
+            all[fill.id] = fill
+            inserted++
+        } else {
+            consumedForCrossSourceMatch += equivalent.id
+            if (isCsv(equivalent) && !isCsv(fill)) {
+                // Prefer the exchange API record when the same execution was previously imported from CSV.
+                all.remove(equivalent.id)
+                all[fill.id] = fill
+            }
+        }
+    }
+    return all.values.sortedByDescending { it.time } to inserted
+}
+
 object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
@@ -62,37 +107,14 @@ object BinanceAutoJournalStore {
         }.distinctBy { it.id }.sortedByDescending { it.time }
     } catch (_: Exception) { emptyList() }
 
-    /** Merge is idempotent: exchange + market + symbol + exchange trade ID is the primary key. */
+    /** Merge CSV/API representations one-to-one while preserving identical partial executions. */
     fun merge(context: Context, incoming: List<BinanceJournalFill>): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val all = load(context).associateBy { it.id }.toMutableMap()
-        var inserted = 0
-        fun sameExecution(a: BinanceJournalFill, b: BinanceJournalFill): Boolean {
-            if (a.market != b.market || a.symbol != b.symbol || a.side != b.side) return false
-            if (a.orderId.isNotBlank() && b.orderId.isNotBlank() && a.orderId != b.orderId) return false
-            val timeTolerance = 1_000L
-            return kotlin.math.abs(a.time - b.time) <= timeTolerance &&
-                kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
-                kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
-        }
-        incoming.forEach { fill ->
-            val existingById = all[fill.id]
-            if (existingById != null) {
-                all[fill.id] = fill
-                return@forEach
-            }
-            val equivalent = all.values.firstOrNull { sameExecution(it, fill) }
-            if (equivalent == null) {
-                all[fill.id] = fill
-                inserted++
-            } else if (equivalent.id.contains(":csv:") && !fill.id.contains(":csv:")) {
-                // Prefer the exchange API record when the same execution was previously imported from CSV.
-                all.remove(equivalent.id)
-                all[fill.id] = fill
-            }
-        }
+        val merged = mergeBinanceJournalFills(load(context), incoming)
+        val all = merged.first
+        val inserted = merged.second
         val array = JSONArray()
-        all.values.sortedBy { it.time }.forEach { fill ->
+        all.sortedBy { it.time }.forEach { fill ->
             array.put(JSONObject()
                 .put("id", fill.id).put("exchange", fill.exchange).put("market", fill.market)
                 .put("symbol", fill.symbol).put("side", fill.side).put("quantity", fill.quantity)
