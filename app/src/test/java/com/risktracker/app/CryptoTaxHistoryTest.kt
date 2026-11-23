@@ -27,6 +27,35 @@ class CryptoTaxHistoryTest {
         assertEquals(0, added)
     }
 
+    @Test fun identicalNoIdExecutionsWithinOneExportArePreservedAndReimportsAreIdempotent() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+        val parsed = CryptoTaxHistory.parseCsv(csv, "spot-export.csv")
+        assertEquals(2, parsed.size)
+        assertEquals(parsed[0].id, parsed[1].id)
+
+        val (firstImport, firstAdded) = CryptoTaxHistory.deduplicate(emptyList(), parsed)
+        assertEquals(2, firstImport.size)
+        assertEquals(2, firstAdded)
+
+        val (reimported, reimportAdded) = CryptoTaxHistory.deduplicate(firstImport, parsed)
+        assertEquals(2, reimported.size)
+        assertEquals(0, reimportAdded)
+    }
+
+    @Test fun laterExportCanAddAnotherIdenticalExecutionWithoutTradeId() {
+        val oneRow = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\\n" +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+        val twoRows = oneRow +
+            "2025-05-01 10:00:00,BTCUSDT,BUY,1,100,100,0,USDT,\\n"
+        val first = CryptoTaxHistory.parseCsv(oneRow, "part-a.csv")
+        val later = CryptoTaxHistory.parseCsv(twoRows, "part-b.csv")
+        val (merged, added) = CryptoTaxHistory.deduplicate(first, later)
+        assertEquals(2, merged.size)
+        assertEquals(1, added)
+    }
+
     @Test fun stableExchangeTradeIdsDeduplicateAcrossRenamedAndReorderedExports() {
         val header = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId,Realized PnL\n"
         val firstCsv = header +
