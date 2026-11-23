@@ -34,7 +34,7 @@ class AdvancedSMCSignalEngineTest {
         }
         for (i in 44..48) asset[i] = AdvancedSMCCandle(110.0, 120.0, 101.0, 110.0, 10.0, start + i * 3_600_000L)
         asset[48] = AdvancedSMCCandle(99.0, 103.0, 98.0, 102.0, 12.0, start + 48 * 3_600_000L)
-        asset[49] = AdvancedSMCCandle(109.0, 111.0, 100.0, 110.0, 11.0, start + 49 * 3_600_000L)
+        asset[49] = AdvancedSMCCandle(104.0, 106.0, 100.0, 105.0, 11.0, start + 49 * 3_600_000L)
         val benchmark = MutableList(50) { i ->
             AdvancedSMCCandle(110.0, 120.0, 100.0, 110.0, 10.0, start + i * 3_600_000L)
         }
