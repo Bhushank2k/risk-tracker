@@ -58,6 +58,15 @@ class BinanceImportDiffTest {
     }
 
     @Test
+    fun impossibleCalendarDatesAreRejectedAndLeapDaysAreHandled() {
+        assertEquals(true, isValidBinanceCalendarDate("2024-02-29"))
+        assertEquals(false, isValidBinanceCalendarDate("2025-02-29"))
+        assertEquals(false, isValidBinanceCalendarDate("2026-99-99"))
+        assertEquals(false, isValidBinanceCalendarDate("2026-04-31"))
+        assertEquals(false, isValidBinanceCalendarDate("2026-1-01"))
+    }
+
+    @Test
     fun nonFiniteBackupAmountsAreRejected() {
         val rows = listOf(BinanceDailyResult("2026-01-01", 0.0, Double.POSITIVE_INFINITY))
         assertEquals(true, runCatching {
