@@ -261,7 +261,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 9 -> "Tax Report"
                 16 -> "Live Trades"
                 17 -> "Account Activity"
-                18 -> "Sync Health"
+                18 -> "Binance Sync"
                 21 -> "Daily Trade Ideas"
                 23 -> "P&L Calendar"
                 29 -> "Explore"
@@ -450,7 +450,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 9 -> CryptoTaxReportScreen()
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
-                18 -> BinanceSyncHealthScreen()
+                18 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
@@ -650,116 +650,6 @@ private fun ExploreToolCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
-            }
-        }
-    }
-}
-
-// ---------------- Binance sync health ----------------
-
-@Composable
-fun BinanceSyncHealthScreen() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf(BinanceAutoJournalStore.syncStatus(context)) }
-    var fillCount by remember { mutableIntStateOf(BinanceAutoJournalStore.load(context).size) }
-    var loading by remember { mutableStateOf(false) }
-    var operationError by remember { mutableStateOf<String?>(null) }
-
-    fun timeLabel(value: Long): String =
-        if (value <= 0L) "Not recorded" else
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(value))
-
-    fun syncNow() {
-        if (loading) return
-        if (BinanceCredentialStore(context).read() == null) {
-            status = BinanceAutoJournalStore.syncStatus(context)
-            operationError = "Binance is not connected. Open Binance sync and add a read-only API key."
-            return
-        }
-        loading = true
-        operationError = null
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) { BinanceAutoJournalRunner.sync(context) }
-                status = BinanceAutoJournalStore.syncStatus(context)
-                fillCount = BinanceAutoJournalStore.load(context).size
-            } catch (e: Exception) {
-                operationError = e.message ?: "Sync failed unexpectedly. Check connectivity and API permissions."
-                status = BinanceAutoJournalStore.syncStatus(context)
-            } finally {
-                loading = false
-            }
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val syncHealthy = status.state.startsWith("Up to date")
-                        val syncFailed = status.state.contains("failed", true) || status.state.contains("error", true)
-                        Icon(
-                            when {
-                                syncHealthy -> Icons.Filled.CheckCircle
-                                syncFailed -> Icons.Filled.Error
-                                else -> Icons.Default.Warning
-                            },
-                            contentDescription = null,
-                            tint = when {
-                                syncHealthy -> MaterialTheme.colorScheme.primary
-                                syncFailed -> MaterialTheme.colorScheme.error
-                                else -> MaterialTheme.colorScheme.tertiary
-                            }
-                        )
-                        Text(status.state, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    }
-                    Button(onClick = { syncNow() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                        if (loading) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Text(if (loading) "Syncing…" else "Sync now")
-                    }
-                    operationError?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-        item {
-            RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Latest attempt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Saved executions", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(fillCount.toString(), fontWeight = FontWeight.SemiBold)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Records fetched last attempt", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(status.fillsFetched.toString())
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("New records added", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(status.fillsInserted.toString())
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Symbols attempted", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(status.symbolsAttempted.toString())
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Symbol requests failed", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(status.symbolsFailed.toString(), color = if (status.symbolsFailed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                    }
-                }
             }
         }
     }
