@@ -50,15 +50,18 @@ internal fun buildBestOpportunities(
             ?.first
         if (match != null) unmatchedSmc.remove(match)
 
-        val opposingSignal = smcSignals.any {
-            it.symbol.equals(idea.symbol, ignoreCase = true) &&
-                it.side != idea.side &&
-                sameHorizon(it.horizon, idea.horizon)
-        }
         val eligibility = evaluateTradeIdeaEligibility(idea, snapshotAgeMs = tradeIdeaSnapshotAgeMs)
-        val smcAge = match?.detectedAt?.takeIf { it > 0L }
-            ?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE
+        fun signalAge(signal: UnifiedSMCDisplaySignal): Long? =
+            signal.detectedAt.takeIf { it > 0L }?.let { (now - it).coerceAtLeast(0L) }
+        val smcAge = match?.let(::signalAge) ?: Long.MAX_VALUE
         val smcFresh = match != null && smcAge <= smcFreshnessMs
+        // A stale opposing structure is historical context, not a live directional conflict.
+        val opposingSignal = smcSignals.any { signal ->
+            signal.symbol.equals(idea.symbol, ignoreCase = true) &&
+                signal.side != idea.side &&
+                sameHorizon(signal.horizon, idea.horizon) &&
+                (signalAge(signal)?.let { it <= smcFreshnessMs } == true)
+        }
 
         val dailySnapshotFresh = tradeIdeaSnapshotAgeMs <= tradeIdeaFreshnessLimit(idea)
         val status = when {
@@ -78,7 +81,7 @@ internal fun buildBestOpportunities(
                 add("No matching SMC structure confirmation yet.")
             }
             if (opposingSignal) {
-                add("SMC has an opposing ${if (idea.side.equals("LONG", true)) "SHORT" else "LONG"} signal for this symbol and horizon; wait for direction to resolve.")
+                add("SMC has a fresh opposing ${if (idea.side.equals("LONG", true)) "SHORT" else "LONG"} signal for this symbol and horizon; wait for direction to resolve.")
             }
         }.joinToString("\n")
 
