@@ -36,6 +36,35 @@ data class BinanceStatementFetchResult(
     val attemptedCategories: List<String>
 )
 
+internal fun validateBinanceStatementRows(rows: List<BinanceStatement>) {
+    require(rows.all { it.id.isNotBlank() && it.time > 0L && it.category.isNotBlank() && it.amount.isFinite() }) {
+        "Statement rows must have an ID, positive timestamp, category and finite amount."
+    }
+}
+
+internal fun mergeBinanceStatementRows(
+    existing: List<BinanceStatement>,
+    incoming: List<BinanceStatement>
+): Pair<List<BinanceStatement>, Int> {
+    validateBinanceStatementRows(existing)
+    validateBinanceStatementRows(incoming)
+    val seen = existing.map { it.id }.toHashSet()
+    val fresh = incoming.filter { seen.add(it.id) }
+    val merged = (existing + fresh).sortedBy { it.time }
+    validateBinanceStatementRows(merged)
+    return merged to fresh.size
+}
+
+internal fun parseBinanceStatementAmount(value: Any?): Double {
+    val amount = when (value) {
+        is Number -> value.toDouble()
+        is String -> value.trim().toDoubleOrNull()
+        else -> null
+    }
+    require(amount != null && amount.isFinite()) { "Statement amount is missing, malformed or non-finite." }
+    return amount
+}
+
 data class BinanceStatementSyncResult(
     val newRecords: Int,
     val totalRecords: Int,
@@ -49,28 +78,42 @@ data class BinanceStatementSyncResult(
  */
 object BinanceStatementStore {
     private const val PREFS = "binance_account_statements_v1"
-    fun load(context: Context): List<BinanceStatement> = runCatching {
-        val a = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]"))
-        (0 until a.length()).map { i ->
-            val o = a.getJSONObject(i)
-            BinanceStatement(o.getString("id"), o.getLong("time"), o.getString("category"),
-                o.optString("asset"), o.optDouble("amount"), o.optString("status"),
-                o.optString("reference"), o.optString("details"))
-        }.sortedByDescending { it.time }
-    }.getOrDefault(emptyList())
+    /** Strict read for write paths: malformed persisted history must never become an empty replacement. */
+    fun loadStrict(context: Context): List<BinanceStatement> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("rows", "[]") ?: "[]"
+        val array = JSONArray(raw)
+        val rows = (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            BinanceStatement(
+                id = o.getString("id"),
+                time = o.getLong("time"),
+                category = o.getString("category"),
+                asset = o.optString("asset"),
+                amount = parseBinanceStatementAmount(o.opt("amount")),
+                status = o.optString("status"),
+                reference = o.optString("reference"),
+                details = o.optString("details")
+            )
+        }
+        validateBinanceStatementRows(rows)
+        return rows.sortedByDescending { it.time }
+    }
+
+    /** Tolerant display read; callers that mutate storage must use loadStrict. */
+    fun load(context: Context): List<BinanceStatement> = runCatching { loadStrict(context) }.getOrDefault(emptyList())
 
     fun saveMerge(context: Context, incoming: List<BinanceStatement>): Pair<Int, Int> {
-        val old = load(context)
-        val seen = old.map { it.id }.toHashSet()
-        val fresh = incoming.filter { seen.add(it.id) }
-        val all = (old + fresh).sortedBy { it.time }
-        val a = JSONArray()
-        all.forEach { r -> a.put(JSONObject().put("id", r.id).put("time", r.time)
+        val old = loadStrict(context)
+        val (all, inserted) = mergeBinanceStatementRows(old, incoming)
+        val array = JSONArray()
+        all.forEach { r -> array.put(JSONObject().put("id", r.id).put("time", r.time)
             .put("category", r.category).put("asset", r.asset).put("amount", r.amount)
             .put("status", r.status).put("reference", r.reference).put("details", r.details)) }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("rows", a.toString())
-            .putLong("last_sync", System.currentTimeMillis()).apply()
-        return fresh.size to all.size
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("rows", array.toString())
+            .putLong("last_sync", System.currentTimeMillis())
+            .commit()) { "Could not commit Binance account statements." }
+        return inserted to all.size
     }
 
     fun lastSync(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
@@ -115,8 +158,12 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
                            params: List<Pair<String, String>>, mapper: (JSONObject) -> BinanceStatement?) {
         try {
             // A bounded overlap is intentional: repeat syncs safely catch late-arriving records.
+            // Stage the entire category so one malformed row cannot produce a misleading partial import.
             val page = signedGet(base, path, params)
-            for (i in 0 until page.length()) mapper(page.getJSONObject(i))?.let(rows::add)
+            val categoryRows = mutableListOf<BinanceStatement>()
+            for (i in 0 until page.length()) mapper(page.getJSONObject(i))?.let(categoryRows::add)
+            validateBinanceStatementRows(categoryRows)
+            rows += categoryRows
         } catch (_: Exception) {
             // Keep syncing other statement types, but report this category as unavailable to the UI.
             failedCategories += category
@@ -131,9 +178,10 @@ class BinanceStatementApi(private val apiKey: String, private val secret: String
         val end = System.currentTimeMillis()
         fun map(category: String, o: JSONObject, timeKeys: List<String>, assetKey: String, amountKey: String,
                 statusKey: String = "status", idKey: String = "id", detailKeys: List<String> = emptyList()): BinanceStatement? {
-            val time = timeKeys.firstNotNullOfOrNull { key -> o.optLong(key, -1L).takeIf { it > 0 } } ?: return null
+            val time = timeKeys.firstNotNullOfOrNull { key -> o.optLong(key, -1L).takeIf { it > 0 } }
+                ?: throw IllegalArgumentException("$category row is missing a valid timestamp.")
             val asset = o.optString(assetKey)
-            val amount = o.optString(amountKey).toDoubleOrNull() ?: o.optDouble(amountKey, 0.0)
+            val amount = parseBinanceStatementAmount(o.opt(amountKey))
             val ref = o.optString(idKey).ifBlank { o.optString("tranId") }.ifBlank { o.optString("txId") }
             val details = detailKeys.mapNotNull { k -> o.optString(k).takeIf { it.isNotBlank() && it != "null" } }
                 .joinToString(" | ")
