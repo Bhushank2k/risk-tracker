@@ -665,6 +665,12 @@ object BinanceSyncData {
         futures: Map<String, Double>,
         futuresIncomeByType: Map<String, Map<String, Double>> = emptyMap()
     ) {
+        val incomingDates = spot.keys + futures.keys + futuresIncomeByType.keys
+        require(incomingDates.all { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } &&
+            spot.values.all(Double::isFinite) && futures.values.all(Double::isFinite) &&
+            futuresIncomeByType.values.all { components -> components.values.all(Double::isFinite) }) {
+            "Binance sync returned invalid daily dates or non-finite income values."
+        }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val merged = loadStrict(context).associateBy { it.date }.toMutableMap()
         (spot.keys + futures.keys + futuresIncomeByType.keys).forEach { day ->
@@ -731,9 +737,7 @@ object BinanceSyncData {
 
     /** Replace the complete saved daily import during an explicit backup restore. */
     fun replaceAll(context: Context, data: List<BinanceDailyResult>) {
-        require(data.all { it.spotPnl.isFinite() && it.futuresPnl.isFinite() && it.date.isNotBlank() }) {
-            "Imported Binance rows must have valid dates and finite P&L values."
-        }
+        validateBinanceDailyHistory(data)
         val array = JSONArray()
         data.distinctBy { it.date }.sortedBy { it.date }.forEach { array.put(toJson(it)) }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -765,7 +769,9 @@ object BinanceSyncData {
             val spot = json.getDouble("spotPnl")
             val futures = json.getDouble("futuresPnl")
             require(spot.isFinite() && futures.isFinite()) { "Saved Binance history contains a non-finite P&L value." }
-            val breakdownJson = json.optJSONObject("futuresIncomeByType") ?: JSONObject()
+            val breakdownJson = if (json.has("futuresIncomeByType")) {
+                json.getJSONObject("futuresIncomeByType")
+            } else JSONObject()
             val breakdown = buildMap {
                 val keys = breakdownJson.keys()
                 while (keys.hasNext()) {
