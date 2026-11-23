@@ -529,7 +529,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                                 importBackupStore.load(year)
                                             } ?: error("No valid recovery snapshot is available.")
                                             withContext(Dispatchers.IO) {
-                                                val current = BinanceSyncData.load(context)
+                                                val current = BinanceSyncData.loadStrict(context)
                                                     .filter { it.date.take(4).toIntOrNull() == year }
                                                 try {
                                                     BinanceSyncData.replaceFuturesYearRecords(context, year, backup)
