@@ -31,26 +31,42 @@ class BinanceYearImportBackupStore(context: Context) {
     fun load(year: Int): List<BinanceDailyResult>? {
         if (year !in 2018..2026) return null
         return try {
-            val payload = JSONArray(prefs.getString("year_$year", null) ?: return null)
-            (0 until payload.length()).map { index ->
-                val row = payload.getJSONObject(index)
-                val breakdownJson = row.optJSONObject("futuresIncomeByType") ?: JSONObject()
-                val breakdown = buildMap {
-                    val keys = breakdownJson.keys()
+            val raw = prefs.getString("year_$year", null) ?: return null
+            if (raw.trimStart().startsWith("{")) {
+                // Backward compatibility: older app versions stored only { date: futuresPnl }.
+                // Income-type detail was not captured in that format and cannot be reconstructed.
+                val legacy = JSONObject(raw)
+                buildList {
+                    val keys = legacy.keys()
                     while (keys.hasNext()) {
-                        val type = keys.next()
-                        val amount = breakdownJson.getDouble(type)
-                        require(amount.isFinite())
-                        put(type, amount)
+                        val date = keys.next()
+                        val amount = legacy.getDouble(date)
+                        require(date.take(4).toIntOrNull() == year && amount.isFinite())
+                        add(BinanceDailyResult(date = date, spotPnl = 0.0, futuresPnl = amount))
                     }
-                }
-                BinanceDailyResult(
-                    date = row.getString("date"),
-                    spotPnl = row.getDouble("spotPnl"),
-                    futuresPnl = row.getDouble("futuresPnl"),
-                    futuresIncomeByType = breakdown
-                ).also {
-                    require(it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() && it.futuresPnl.isFinite())
+                }.sortedBy { it.date }
+            } else {
+                val payload = JSONArray(raw)
+                (0 until payload.length()).map { index ->
+                    val row = payload.getJSONObject(index)
+                    val breakdownJson = row.optJSONObject("futuresIncomeByType") ?: JSONObject()
+                    val breakdown = buildMap {
+                        val keys = breakdownJson.keys()
+                        while (keys.hasNext()) {
+                            val type = keys.next()
+                            val amount = breakdownJson.getDouble(type)
+                            require(amount.isFinite())
+                            put(type, amount)
+                        }
+                    }
+                    BinanceDailyResult(
+                        date = row.getString("date"),
+                        spotPnl = row.getDouble("spotPnl"),
+                        futuresPnl = row.getDouble("futuresPnl"),
+                        futuresIncomeByType = breakdown
+                    ).also {
+                        require(it.date.take(4).toIntOrNull() == year && it.spotPnl.isFinite() && it.futuresPnl.isFinite())
+                    }
                 }
             }
         } catch (_: Exception) {
