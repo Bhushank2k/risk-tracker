@@ -10,8 +10,8 @@ class BinanceFillCsvImporterTest {
         ByteArrayInputStream(csv.toByteArray(Charsets.UTF_8)), "USDⓈ-M Futures"
     )
 
-    private val noIdHeader = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset,Order ID\\n"
-    private val identicalRow = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,order-1\\n"
+    private val noIdHeader = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset,Order ID\n"
+    private val identicalRow = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,order-1\n"
 
     @Test fun identicalRowsWithoutTradeIdsRemainSeparateExecutions() {
         val report = parse(noIdHeader + identicalRow + identicalRow)
@@ -27,8 +27,8 @@ class BinanceFillCsvImporterTest {
     }
 
     @Test fun exchangeTradeIdsDeduplicateProvenDuplicateRows() {
-        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset,Trade ID\\n"
-        val row = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,trade-123\\n"
+        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset,Trade ID\n"
+        val row = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,trade-123\n"
         val report = parse(header + row + row)
         assertEquals(1, report.fills.size)
         assertEquals(1, report.duplicateRows)
