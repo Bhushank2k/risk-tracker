@@ -268,6 +268,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 32 -> "Coin Explosion Radar"
                 33 -> "Unified SMC Signals"
                 34 -> "Best Opportunities"
+                35 -> "Market Activity Lab"
                 else -> "Explore"
             }
 
@@ -457,6 +458,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 32 -> CoinExplosionRadarScreen()
                 33 -> UnifiedSMCSignalsScreen(onOpenTradeIdeas = { tab = 21 })
                 34 -> BestOpportunitiesScreen(onOpenTradeIdeas = { tab = 21 }, onOpenSmc = { tab = 33 })
+                35 -> MarketActivityLabScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
