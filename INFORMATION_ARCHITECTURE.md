@@ -30,7 +30,8 @@ Best Opportunities is a secondary Explore destination (route 34) that combines D
 | Screen / capability | Owns | May summarize | Avoid repeating |
 |---|---|---|---|
 | Market Overview | Current account snapshot, daily P&L context and headline risk | Recent activity and recorded performance | Full trade history, import diagnostics |
-| Daily Trade Ideas | Generated setups, entry/stop/target context, validation and tracking | Scan freshness and tracked-idea status | Portfolio accounting and journal history; cross-scanner ranking belongs to Best Opportunities |\n| Best Opportunities | Cross-scanner ranking of Daily Trade Ideas with Core/Advanced SMC confirmation, conflict/freshness state and execution checks | Candidate counts and concise scanner status | A second scan lifecycle or replacement for the full Daily Trade Ideas workflow |
+| Daily Trade Ideas | Generated setups, entry/stop/target context, validation and tracking | Scan freshness and tracked-idea status | Portfolio accounting and journal history; cross-scanner ranking belongs to Best Opportunities |
+| Best Opportunities | Cross-scanner ranking of Daily Trade Ideas with Core/Advanced SMC confirmation, conflict/freshness state and execution checks | Candidate counts and concise scanner status | A second scan lifecycle or replacement for the full Daily Trade Ideas workflow |
 | Unified SMC workspace | Core and Advanced SMC candidate presentation from the unified scan result | Candidate counts and scan freshness | A second independent SMC scan lifecycle |
 | Trade History / Journal | Binance executions and grouped position cycles; retained manual records where applicable | Realized result per trade, entries/exits and fees | Portfolio totals and aggregate performance dashboards |
 | P&L Calendar | Daily realized-P&L presentation with source distinctions | Manual and Binance daily totals | A second trade ledger or blended source assumptions |
