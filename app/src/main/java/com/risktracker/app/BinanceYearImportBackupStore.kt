@@ -7,7 +7,7 @@ import org.json.JSONObject
 internal fun validateBinanceYearBackupRows(year: Int, rows: List<BinanceDailyResult>) {
     require(year in 2018..2026)
     require(rows.all {
-        it.date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
+        isValidBinanceCalendarDate(it.date) &&
             it.date.startsWith("$year-") &&
             it.spotPnl.isFinite() &&
             it.futuresPnl.isFinite() &&
@@ -53,7 +53,7 @@ class BinanceYearImportBackupStore(context: Context) {
                     while (keys.hasNext()) {
                         val date = keys.next()
                         val amount = legacy.getDouble(date)
-                        require(date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && date.startsWith("$year-") && amount.isFinite())
+                        require(isValidBinanceCalendarDate(date) && date.startsWith("$year-") && amount.isFinite())
                         add(BinanceDailyResult(date = date, spotPnl = 0.0, futuresPnl = amount))
                     }
                 }.sortedBy { it.date }
