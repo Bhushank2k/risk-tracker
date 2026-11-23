@@ -95,7 +95,11 @@ object BinanceIncomeCsvImporter {
                 ignored++
                 return@forEachIndexed
             }
-            daily[day] = (daily[day] ?: 0.0) + amount
+            val dailyTotal = (daily[day] ?: 0.0) + amount
+            require(dailyTotal.isFinite()) {
+                "Daily income total is non-finite on CSV row $rowNumber."
+            }
+            daily[day] = dailyTotal
             rowsByType[type] = (rowsByType[type] ?: 0) + 1
             activityDates += day
             accepted++

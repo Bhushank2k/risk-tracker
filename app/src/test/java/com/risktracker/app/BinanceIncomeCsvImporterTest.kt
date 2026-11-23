@@ -94,6 +94,18 @@ BTCUSDT,REALIZED_PNL,"1,2,3",USDT,2024-02-03 10:00:00
     }
 
     @Test
+    fun rejectsOverflowWhenDailyIncomeRowsAreAggregated() {
+        val csv = """symbol,incomeType,income,asset,time
+BTCUSDT,REALIZED_PNL,1e308,USDT,2024-02-03 10:00:00
+BTCUSDT,REALIZED_PNL,1e308,USDT,2024-02-03 10:01:00
+"""
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            BinanceIncomeCsvImporter.parse(ByteArrayInputStream(csv.toByteArray()), 2024)
+        }
+        org.junit.Assert.assertTrue(error.message!!.contains("row 3"))
+    }
+
+    @Test
     fun supportsQuotedFieldsContainingCommas() {
         val csv = """symbol,incomeType,income,asset,info,time,tranId
 BTCUSDT,REALIZED_PNL,10,USDT,"close, partial",2024-02-03 10:00:00,1
