@@ -99,6 +99,19 @@ class BestOpportunitiesTest {
         assertTrue(rows.single().explanation.contains("opposing SHORT signal"))
     }
 
+    @Test fun staleOpposingSmcSignalDoesNotCreateLiveConflict() {
+        val rows = buildBestOpportunities(
+            listOf(idea()),
+            listOf(
+                smc(detectedAt = 1_000_000L),
+                smc(id = "old-short", side = "SHORT", low = 109.0, high = 111.0, detectedAt = 100_000L)
+            ),
+            60_000L, 1_050_000L, smcFreshnessMs = 15L * 60L * 1000L
+        )
+        assertEquals(BestOpportunityStatus.CONFIRMED, rows.single().status)
+        assertFalse(rows.single().explanation.contains("opposing SHORT"))
+    }
+
     @Test fun nonOverlappingEntryAreasAreNotMerged() {
         val rows = buildBestOpportunities(listOf(idea()), listOf(smc(low = 105.0, high = 106.0)), 60_000L, 1_050_000L)
     }

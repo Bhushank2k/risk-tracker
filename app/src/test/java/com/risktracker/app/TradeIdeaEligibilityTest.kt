@@ -226,3 +226,40 @@ class TradeIdeaEligibilityTest {
         assertTrue(result.hardGateBlocked)
     }
 }
+
+
+class ScannerTimeframeFreshnessTest {
+    private fun rows(now: Long, ageMs: Long) = listOf(
+        ScanCandle(101.0, 99.0, 100.0, 10.0, now - ageMs)
+    )
+
+    @Test fun swingDoesNotDependOnStaleOneAndFiveMinuteFeeds() {
+        val now = 10_000_000L
+        assertTrue(
+            scanTimeframesFresh(
+                "Swing", rows(now, 60_000L), rows(now, 60_000L),
+                rows(now, 60_000L), rows(now, 60_000L), emptyList(), emptyList(), now
+            )
+        )
+    }
+
+    @Test fun scalpWaitsWhenItsRequiredOneMinuteFeedIsStale() {
+        val now = 10_000_000L
+        assertFalse(
+            scanTimeframesFresh(
+                "Scalp", emptyList(), emptyList(), rows(now, 60_000L),
+                rows(now, 60_000L), rows(now, 60_000L), emptyList(), now
+            )
+        )
+    }
+
+    @Test fun intradayDoesNotDependOnDailyOrOneMinuteFeeds() {
+        val now = 10_000_000L
+        assertTrue(
+            scanTimeframesFresh(
+                "Intraday", emptyList(), rows(now, 60_000L), rows(now, 60_000L),
+                rows(now, 60_000L), rows(now, 60_000L), emptyList(), now
+            )
+        )
+    }
+}
