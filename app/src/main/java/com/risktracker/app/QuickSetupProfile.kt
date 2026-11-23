@@ -8,7 +8,7 @@ import android.content.Context
  */
 internal data class QuickSetupProfile(
     val tradingStyle: String = "all",
-    val markets: String = "top",
+    val markets: String = "all",
     val riskPercent: Double = 1.0,
     val confirmation: String = "balanced",
     val alertsEnabled: Boolean = true
@@ -22,7 +22,7 @@ internal object QuickSetupProfileStore {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return QuickSetupProfile(
             tradingStyle = p.getString("trading_style", "all") ?: "all",
-            markets = p.getString("markets", "top") ?: "top",
+            markets = p.getString("markets", "all") ?: "all",
             riskPercent = p.getFloat("risk_percent", 1.0f).toDouble().coerceIn(0.5, 2.0),
             confirmation = p.getString("confirmation", "balanced") ?: "balanced",
             alertsEnabled = p.getBoolean("alerts_enabled", true)
