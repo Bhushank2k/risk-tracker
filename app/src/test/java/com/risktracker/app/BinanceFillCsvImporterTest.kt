@@ -62,8 +62,8 @@ class BinanceFillCsvImporterTest {
     }
 
     @Test fun rejectsOverflowInDerivedQuoteAmount() {
-        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\\n"
-        val row = "2025-05-01 10:00:00,BTCUSDT,BUY,1e308,1e308,,0,USDT\\n"
+        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\n"
+        val row = "2025-05-01 10:00:00,BTCUSDT,BUY,1e308,1e308,,0,USDT\n"
         assertThrows(IllegalArgumentException::class.java) { parse(header + row) }
     }
 
