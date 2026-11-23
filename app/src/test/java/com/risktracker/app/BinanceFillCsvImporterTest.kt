@@ -2,6 +2,7 @@ package com.risktracker.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 
