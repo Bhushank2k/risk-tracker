@@ -48,8 +48,8 @@ internal object QuickSetupProfileStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(APPLIED, false)) return
         val profile = load(context)
-        apply(context, profile)
         prefs.edit().putBoolean(APPLIED, true).apply()
+        apply(context, profile)
     }
 
     fun apply(context: Context, profile: QuickSetupProfile) {
