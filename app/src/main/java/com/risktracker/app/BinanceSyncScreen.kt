@@ -466,7 +466,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                             val report = preview
                                             val year = pendingImportYear
                                             withContext(Dispatchers.IO) {
-                                                val existingRows = BinanceSyncData.load(context)
+                                                val existingRows = BinanceSyncData.loadStrict(context)
                                                     .filter { it.date.take(4).toIntOrNull() == year }
                                                 val existingDaily = existingRows.associate { it.date to it.futuresPnl }
                                                     .filterValues { it != 0.0 }

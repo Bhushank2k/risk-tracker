@@ -60,4 +60,36 @@ class BinanceSyncStatusTest {
         assertEquals(0, batch.second)
     }
 
+    @Test
+    fun validBinanceDailyHistoryPassesIntegrityCheck() {
+        validateBinanceDailyHistory(listOf(
+            BinanceDailyResult("2026-01-01", 1.0, 2.0, mapOf("REALIZED_PNL" to 2.0)),
+            BinanceDailyResult("2026-01-02", 0.0, -1.5)
+        ))
+    }
+
+    @Test
+    fun duplicateBinanceDatesAreRejectedBeforeMutation() {
+        val rows = listOf(
+            BinanceDailyResult("2026-01-01", 1.0, 2.0),
+            BinanceDailyResult("2026-01-01", 3.0, 4.0)
+        )
+        val error = runCatching { validateBinanceDailyHistory(rows) }.exceptionOrNull()
+        assertEquals(true, error is IllegalArgumentException)
+    }
+
+    @Test
+    fun nonFiniteBinanceAmountsAreRejectedBeforeMutation() {
+        val rows = listOf(BinanceDailyResult("2026-01-01", 0.0, Double.NaN))
+        val error = runCatching { validateBinanceDailyHistory(rows) }.exceptionOrNull()
+        assertEquals(true, error is IllegalArgumentException)
+    }
+
+    @Test
+    fun invalidBinanceDatesAreRejectedBeforeMutation() {
+        val rows = listOf(BinanceDailyResult("not-a-date", 0.0, 1.0))
+        val error = runCatching { validateBinanceDailyHistory(rows) }.exceptionOrNull()
+        assertEquals(true, error is IllegalArgumentException)
+    }
+
 }
