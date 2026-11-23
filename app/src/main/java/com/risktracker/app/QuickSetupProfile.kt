@@ -56,6 +56,8 @@ internal object QuickSetupProfileStore {
         save(context, profile)
         val existingRisk = EntryRiskSettingsStore.load(context)
         EntryRiskSettingsStore.save(context, existingRisk.copy(riskPercent = profile.riskPercent))
+        val appStore = Store(context)
+        appStore.saveInput(appStore.loadInput().copy(riskPercent = profile.riskPercent))
         if (profile.alertsEnabled) {
             TradeIdeaNotifications.setReadyEnabled(context, true)
             TradeIdeaNotifications.setEntryEnabled(context, true)
