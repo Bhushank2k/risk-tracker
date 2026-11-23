@@ -52,13 +52,19 @@ class BinanceFillCsvImporterTest {
 
     @Test fun rejectsNumericPrefixesAndMalformedOptionalAmounts() {
         assertThrows(IllegalStateException::class.java) {
-            parse(noIdHeader + identicalRow.replace(",100,0.5,", ",100USDT,0.5,"))
+            parse(noIdHeader + identicalRow.replace(",100,0.5,", ",100USDTjunk,0.5,"))
         }
         val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\n"
         val badFee = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01oops,USDT\n"
         assertThrows(IllegalStateException::class.java) { parse(header + badFee) }
         val badQuote = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50xyz,0,USDT\n"
         assertThrows(IllegalStateException::class.java) { parse(header + badQuote) }
+    }
+
+    @Test fun rejectsOverflowInDerivedQuoteAmount() {
+        val header = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset\\n"
+        val row = "2025-05-01 10:00:00,BTCUSDT,BUY,1e308,1e308,,0,USDT\\n"
+        assertThrows(IllegalArgumentException::class.java) { parse(header + row) }
     }
 
     @Test fun sameSourceIdenticalApiExecutionsAreNotCollapsed() {
