@@ -110,8 +110,8 @@ fun RiskOverviewScreen(
                         SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(expiry)) +
                         ". WebSocket mark prices remain active for cached positions."
                 } else {
-                    positionsStatus = "Position sync failed · showing saved positions" +
-                        (message.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                    positionsStatus = "Position sync failed · showing saved positions · " +
+                        AppErrorMessage.from(e, "Try again later.")
                 }
             } finally {
                 positionsLoading = false
