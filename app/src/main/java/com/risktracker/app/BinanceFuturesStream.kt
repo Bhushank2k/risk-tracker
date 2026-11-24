@@ -60,20 +60,28 @@ internal object BinanceFuturesStream {
     private val books = ConcurrentHashMap<String, Book>()
     private val tickers = ConcurrentHashMap<String, Ticker>()
     private val funding = ConcurrentHashMap<String, Funding>()
-    private val candles = ConcurrentHashMap<String, JSONObject>()
+    private data class StreamCandle(val payload: JSONObject, val updatedAt: Long)
+    private val candles = ConcurrentHashMap<String, StreamCandle>()
     private val marketConnecting = AtomicBoolean(false)
     private val publicConnecting = AtomicBoolean(false)
     private val depthConnecting = AtomicBoolean(false)
+    private val klineConnecting = AtomicBoolean(false)
     private val marketReconnects = AtomicInteger(0)
     private val publicReconnects = AtomicInteger(0)
     private val depthReconnects = AtomicInteger(0)
+    private val klineReconnects = AtomicInteger(0)
     private val maxDepthSymbols = 150
     @Volatile private var requestedDepthSymbols: List<String> = emptyList()
     @Volatile private var depthSubscriptionGeneration = 0
+    @Volatile private var requestedKlineSymbols: List<String> = emptyList()
+    @Volatile private var requestedKlineInterval: String? = null
+    @Volatile private var klineSubscriptionGeneration = 0
     @Volatile private var marketSocket: WebSocket? = null
     @Volatile private var publicSocket: WebSocket? = null
     @Volatile private var depthSocket: WebSocket? = null
     @Volatile private var pendingDepthSocket: WebSocket? = null
+    @Volatile private var klineSocket: WebSocket? = null
+    @Volatile private var pendingKlineSocket: WebSocket? = null
 
     /**
      * Wait until the currently subscribed symbols have fresh order-book depth.
@@ -99,7 +107,7 @@ internal object BinanceFuturesStream {
     }
 
     @Synchronized
-    fun start(requestedSymbols: List<String>) {
+    fun start(requestedSymbols: List<String>, candleInterval: MarketInterval? = null) {
         // Global aggregate streams cover every eligible contract without building
         // oversized per-symbol subscription URLs or exceeding stream-count limits.
         if (marketSocket == null && !marketConnecting.get()) connectMarket()
@@ -116,6 +124,23 @@ internal object BinanceFuturesStream {
             depthReconnects.set(0)
         }
         if (requestedDepthSymbols.isNotEmpty() && depthSocket == null && !depthConnecting.get()) connectDepth()
+        if (candleInterval != null) {
+            val selection = requestedSymbols.map { it.lowercase() }.distinct().sorted()
+            val nextInterval = candleInterval.api
+            if (selection != requestedKlineSymbols || nextInterval != requestedKlineInterval) {
+                requestedKlineSymbols = selection
+                requestedKlineInterval = nextInterval
+                klineSubscriptionGeneration++
+                klineSocket?.close(1000, "Updating kline subscriptions")
+                pendingKlineSocket?.close(1000, "Updating kline subscriptions")
+                klineSocket = null
+                pendingKlineSocket = null
+                klineConnecting.set(false)
+                klineReconnects.set(0)
+            }
+            if (requestedKlineSymbols.isNotEmpty() && requestedKlineInterval != null &&
+                klineSocket == null && !klineConnecting.get()) connectKlines()
+        }
     }
 
     private fun connectMarket() {
@@ -144,6 +169,56 @@ internal object BinanceFuturesStream {
         val generation = depthSubscriptionGeneration
         val streams = symbols.map { "$it@depth5@100ms" }
         openDepth(PUBLIC_URL + streams.joinToString("/"), generation)
+    }
+
+    private fun connectKlines() {
+        if (!klineConnecting.compareAndSet(false, true)) return
+        val generation = klineSubscriptionGeneration
+        val interval = requestedKlineInterval ?: run { klineConnecting.set(false); return }
+        val streams = requestedKlineSymbols.map { "$it@kline_$interval" }
+        val request = Request.Builder().url(MARKET_URL + streams.joinToString("/")).build()
+        pendingKlineSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (generation != klineSubscriptionGeneration) {
+                    webSocket.close(1000, "Obsolete kline subscription")
+                    return
+                }
+                klineSocket = webSocket
+                pendingKlineSocket = null
+                klineConnecting.set(false)
+                klineReconnects.set(0)
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                runCatching {
+                    val envelope = JSONObject(text)
+                    val batch = envelope.optJSONArray("data")
+                    if (batch != null) {
+                        for (index in 0 until batch.length()) batch.optJSONObject(index)?.let { consume(it) }
+                    } else consume(envelope)
+                }
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                disconnectedKlines(webSocket, generation)
+            }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                disconnectedKlines(webSocket, generation)
+            }
+        })
+    }
+
+    private fun disconnectedKlines(socket: WebSocket, generation: Int) {
+        if (generation != klineSubscriptionGeneration) return
+        if (klineSocket === socket) klineSocket = null
+        if (pendingKlineSocket === socket) pendingKlineSocket = null
+        klineConnecting.set(false)
+        val attempts = klineReconnects.incrementAndGet()
+        val backoffMs = (1_000L shl attempts.coerceAtMost(6)).coerceAtMost(60_000L)
+        scope.launch {
+            delay(backoffMs)
+            if (generation == klineSubscriptionGeneration && klineSocket == null &&
+                pendingKlineSocket == null && requestedKlineSymbols.isNotEmpty() &&
+                requestedKlineInterval != null) connectKlines()
+        }
     }
 
     private fun openDepth(url: String, generation: Int) {
@@ -283,7 +358,7 @@ internal object BinanceFuturesStream {
             }
             "kline" -> {
                 val k = data.optJSONObject("k") ?: return
-                candles["$symbol:${k.optString("i")}"] = JSONObject(k.toString())
+                candles["$symbol:${k.optString("i")}"] = StreamCandle(JSONObject(k.toString()), now)
             }
         }
 
@@ -332,6 +407,28 @@ internal object BinanceFuturesStream {
             val volume = quote.second ?: return@mapNotNull null
             val change = quote.third ?: return@mapNotNull null
             symbol to MarketTicker(symbol, quote.first, change, volume)
+        }.toMap()
+
+    /** Latest completed kline values; partial candles are deliberately excluded. */
+    fun closedCandleSnapshot(symbols: List<String>, interval: MarketInterval): Map<String, MarketCandle> =
+        symbols.distinct().mapNotNull { requested ->
+            val symbol = requested.uppercase()
+            val payload = candles["${symbol.lowercase()}:${interval.api}"]?.payload ?: return@mapNotNull null
+            if (!payload.optBoolean("x", false)) return@mapNotNull null
+            val candle = runCatching {
+                MarketCandle(
+                    payload.getLong("t"), payload.getString("o").toDouble(),
+                    payload.getString("h").toDouble(), payload.getString("l").toDouble(),
+                    payload.getString("c").toDouble(), payload.getString("v").toDouble(),
+                    payload.getLong("T"), payload.getString("q").toDouble(),
+                    payload.optString("V").toDoubleOrNull() ?: 0.0,
+                    payload.optString("Q").toDoubleOrNull() ?: 0.0
+                )
+            }.getOrNull()?.takeIf {
+                it.open > 0.0 && it.close > 0.0 && it.high >= maxOf(it.open, it.close) &&
+                    it.low <= minOf(it.open, it.close) && it.volume >= 0.0
+            } ?: return@mapNotNull null
+            symbol to candle
         }.toMap()
 
     fun microstructure(symbol: String): MarketMicrostructure {

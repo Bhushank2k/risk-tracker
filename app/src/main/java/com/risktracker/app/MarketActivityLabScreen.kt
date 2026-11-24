@@ -44,6 +44,12 @@ fun MarketActivityLabScreen() {
     var updated by remember{mutableLongStateOf(0L)}
     var replay by remember{mutableStateOf<MarketActivityEngine.ReplayStats?>(null)}
     var chartCandles by remember{mutableStateOf<List<MarketCandle>>(emptyList())}
+    var candleHistory by remember { mutableStateOf<Map<String, List<MarketCandle>>>(emptyMap()) }
+    val latestCandleHistory by rememberUpdatedState(candleHistory)
+    val latestThresholds by rememberUpdatedState(config.thresholds)
+    val latestMinimumScore by rememberUpdatedState(config.minimumScore)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestRows by rememberUpdatedState(rows)
     val scope=rememberCoroutineScope()
     var importedReplay by remember { mutableStateOf<MarketReplayReport?>(null) }
     var replayImportStatus by remember { mutableStateOf("") }
@@ -77,6 +83,11 @@ fun MarketActivityLabScreen() {
             }
         }
     }
+    fun mergeCandleHistory(base: List<MarketCandle>, cached: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> =
+        (base + cached + listOfNotNull(live)).associateBy { it.openTime }.values
+            .sortedBy { it.openTime }.takeLast(240)
+    fun mergeClosedCandle(history: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> =
+        mergeCandleHistory(history, emptyList(), live)
     fun refresh(){
         if(loading)return
         loading=true
@@ -85,21 +96,56 @@ fun MarketActivityLabScreen() {
             tickerMap=if(liveTickers.isNotEmpty()) tickerMap+liveTickers else
                 runCatching{MarketActivityDataSource.tickers()}.getOrDefault(tickerMap)
             marketMovers=runCatching{MarketMoversDiscovery.discover(forceRefresh=true)}.getOrDefault(marketMovers)
-            val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval),config.thresholds)}.getOrNull()}}.awaitAll()
+            val liveCandles=BinanceFuturesStream.closedCandleSnapshot(symbols,interval)
+            val result=symbols.map{sym->async{
+                runCatching {
+                    val key="$sym:${interval.api}"
+                    val base=MarketActivityDataSource.candles(sym,interval)
+                    val merged=mergeCandleHistory(base,candleHistory[key].orEmpty(),liveCandles[sym])
+                    Triple(sym,withContext(Dispatchers.Default){MarketActivityEngine.analyze(sym,interval,merged,config.thresholds)},merged)
+                }.getOrNull()
+            }}.awaitAll().filterNotNull()
+            candleHistory=candleHistory+result.associate{"${it.first}:${interval.api}" to it.third}
             result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
             events=MarketActivityPreferences.loadEvents(context)
-            rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=result.filter{it.second==null}.map{it.first}
+            rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=symbols.filter{sym->result.none{it.first==sym} || result.firstOrNull{it.first==sym}?.second==null}
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
             updated=System.currentTimeMillis()
             loading=false
         }
     }
-    LaunchedEffect(symbols) {
-        // The shared public stream carries all-market tickers and bounded depth for scanner pairs.
-        BinanceFuturesStream.start(symbols)
+    LaunchedEffect(symbols, interval) {
+        // One public combined stream carries the scanner's selected kline interval.
+        BinanceFuturesStream.start(symbols, interval)
         while (true) {
             val live = BinanceFuturesStream.tickerSnapshot(symbols)
             if (live.isNotEmpty()) tickerMap = tickerMap + live
+            val completed = BinanceFuturesStream.closedCandleSnapshot(symbols, interval)
+            val changed = mutableListOf<ActivityAnalysis>()
+            var nextHistory = latestCandleHistory
+            for (symbol in symbols) {
+                val candle = completed[symbol] ?: continue
+                val key = "$symbol:${interval.api}"
+                val history = nextHistory[key] ?: continue
+                val merged = mergeClosedCandle(history, candle)
+                if (merged.lastOrNull()?.openTime == history.lastOrNull()?.openTime) continue
+                nextHistory = nextHistory + (key to merged)
+                withContext(Dispatchers.Default) { MarketActivityEngine.analyze(symbol, interval, merged, latestThresholds) }?.let { changed.add(it) }
+                if (symbol == latestSelected) {
+                    chartCandles = merged
+                    replay = withContext(Dispatchers.Default) { MarketActivityEngine.replay(merged) }
+                }
+            }
+            if (nextHistory != latestCandleHistory) candleHistory = nextHistory
+            if (changed.isNotEmpty()) {
+                changed.forEach { MarketActivityPreferences.recordAnalysis(context, it) }
+                val replacements = changed.associateBy { it.symbol }
+                rows = (latestRows.filterNot { it.symbol in replacements.keys } + changed)
+                    .filter { it.score.total >= latestMinimumScore }
+                    .sortedByDescending { it.score.total }
+                events = MarketActivityPreferences.loadEvents(context)
+                updated = System.currentTimeMillis()
+            }
             delay(1_000L)
         }
     }
@@ -110,16 +156,19 @@ fun MarketActivityLabScreen() {
         }
     }
     LaunchedEffect(selected,interval){
-        val loaded=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
-        chartCandles=loaded
-        replay=if(loaded.isNotEmpty()) MarketActivityEngine.replay(loaded) else null
+        val base=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
+        val merged=mergeCandleHistory(base,candleHistory["$selected:${interval.api}"].orEmpty(),
+            BinanceFuturesStream.closedCandleSnapshot(listOf(selected),interval)[selected])
+        candleHistory=candleHistory+("$selected:${interval.api}" to merged)
+        chartCandles=merged
+        replay=if(merged.isNotEmpty()) MarketActivityEngine.replay(merged) else null
     }
     val a=rows.firstOrNull{it.symbol==selected}
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         item{Column(verticalArrangement=Arrangement.spacedBy(5.dp)){
             Text("Market Activity Lab",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
             Text("Early-movement research · public Binance USD-M Futures data · read-only, no orders",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Live WebSocket ticker feed · REST candle history and fallback snapshots",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
+            Text("Live WebSocket tickers + completed candles · REST history bootstrap/recovery",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
         }}
         item {
             Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
