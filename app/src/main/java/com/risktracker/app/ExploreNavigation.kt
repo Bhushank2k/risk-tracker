@@ -20,6 +20,7 @@ internal fun exploreMenuGroups(): List<Pair<String, List<Pair<String, Int>>>> =
             "Market Activity Lab" to 35
         ),
         "PERFORMANCE & REPORTS" to listOf(
+            "Trading Intelligence" to 36,
             "P&L Calendar" to 23,
             "Crypto tax report" to 9
         ),
