@@ -83,10 +83,11 @@ fun MarketActivityLabScreen() {
             }
         }
     }
-    fun mergeClosedCandle(history: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> {
-        if (live == null) return history
-        return (history.filterNot { it.openTime == live.openTime } + live).sortedBy { it.openTime }.takeLast(240)
-    }
+    fun mergeCandleHistory(base: List<MarketCandle>, cached: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> =
+        (base + cached + listOfNotNull(live)).associateBy { it.openTime }.values
+            .sortedBy { it.openTime }.takeLast(240)
+    fun mergeClosedCandle(history: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> =
+        mergeCandleHistory(history, emptyList(), live)
     fun refresh(){
         if(loading)return
         loading=true
@@ -99,8 +100,8 @@ fun MarketActivityLabScreen() {
             val result=symbols.map{sym->async{
                 runCatching {
                     val key="$sym:${interval.api}"
-                    val base=candleHistory[key] ?: MarketActivityDataSource.candles(sym,interval)
-                    val merged=mergeClosedCandle(base,liveCandles[sym])
+                    val base=MarketActivityDataSource.candles(sym,interval)
+                    val merged=mergeCandleHistory(base,candleHistory[key].orEmpty(),liveCandles[sym])
                     Triple(sym,withContext(Dispatchers.Default){MarketActivityEngine.analyze(sym,interval,merged,config.thresholds)},merged)
                 }.getOrNull()
             }}.awaitAll().filterNotNull()
@@ -156,7 +157,8 @@ fun MarketActivityLabScreen() {
     }
     LaunchedEffect(selected,interval){
         val base=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
-        val merged=mergeClosedCandle(base,BinanceFuturesStream.closedCandleSnapshot(listOf(selected),interval)[selected])
+        val merged=mergeCandleHistory(base,candleHistory["$selected:${interval.api}"].orEmpty(),
+            BinanceFuturesStream.closedCandleSnapshot(listOf(selected),interval)[selected])
         candleHistory=candleHistory+("$selected:${interval.api}" to merged)
         chartCandles=merged
         replay=if(merged.isNotEmpty()) MarketActivityEngine.replay(merged) else null
