@@ -299,7 +299,7 @@ internal object TradeIdeaScanManager {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val message = e.message ?: "Market scan failed. Check your connection and retry."
+                val message = AppErrorMessage.from(e, "Market scan failed. Check your connection and retry.")
                 TradeIdeaScanHealthStore.failed(appContext, message)
                 mutableState.value = mutableState.value.copy(
                     error = message, loading = false,
@@ -743,7 +743,7 @@ internal object BinanceMarketScanner {
                             } catch (e: BinanceRateLimitException) {
                                 throw e
                             } catch (e: Exception) {
-                                val detail = "${ticker.symbol}: ${e.message ?: e.javaClass.simpleName}"
+                                val detail = "${ticker.symbol}: data unavailable"
                                 DeepScanOutcome(ticker.symbol, emptyList(), detail, classifyFailure(detail))
                             }
                         }
