@@ -59,7 +59,7 @@ object BinanceIncomeCsvImporter {
             val columns = try {
                 splitCsvLine(line)
             } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("Malformed CSV row $rowNumber: ${e.message}", e)
+                throw IllegalArgumentException("Malformed CSV row $rowNumber. Check the row quoting and separators.", e)
             }
             if (columns.all { it.isBlank() }) return@forEachIndexed
             require(columns.size == headers.size) {

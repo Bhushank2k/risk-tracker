@@ -46,7 +46,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
             try {
                 context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(BinanceStatementStore.csv(context)) }
                 status = "Statement CSV exported."
-            } catch (e: Exception) { status = "Export failed: ${e.message ?: "file error"}" }
+            } catch (e: Exception) { status = AppErrorMessage.from(e, "Export failed. Check storage access and try again.") }
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -72,7 +72,7 @@ fun BinanceStatementsScreen(onBack: () -> Unit) {
                                     "Partial sync: ${result.newRecords} new records; ${result.totalRecords} total stored. Failed categories: ${result.failedCategories.joinToString()}. Check API permissions and retry."
                                 }
                             } catch (e: Exception) {
-                                status = "Sync failed: ${e.message ?: "check API access"}"
+                                status = AppErrorMessage.from(e, "Statement sync failed. Check API access and try again.")
                             } finally { busy = false }
                         }
                     }

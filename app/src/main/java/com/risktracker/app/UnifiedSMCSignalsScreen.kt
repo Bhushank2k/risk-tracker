@@ -159,7 +159,7 @@ internal object UnifiedSMCScanManager {
             } catch (e: Exception) {
                 val message = if (e.isDnsResolutionFailure()) {
                     "Binance DNS lookup failed for fapi.binance.com. Check internet/DNS and tap Retry Scan. Saved signals are unchanged."
-                } else e.message ?: "SMC market scan failed."
+                } else AppErrorMessage.from(e, "SMC market scan failed. Check your connection and retry.")
                 mutableState.value = mutableState.value.copy(error = message, progress = "SMC scan incomplete: $message")
                 val old = SMCScanStateStore.status(app)
                 SMCScanStateStore.update(app, old.optInt("scanned"), old.optInt("total"), false,

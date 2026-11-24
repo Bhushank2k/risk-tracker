@@ -321,13 +321,13 @@ object BinanceAutoJournalRunner {
 
         runCatching { knownSpot += api.recentSpotSymbols() }
             .onSuccess { discoverySucceeded++ }
-            .onFailure { failures += "Spot symbol discovery: ${it.message ?: "request failed"}" }
+            .onFailure { failures += "Spot symbol discovery unavailable" }
         runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
             .onSuccess { discoverySucceeded++ }
-            .onFailure { failures += "Futures position discovery: ${it.message ?: "request failed"}" }
+            .onFailure { failures += "Futures position discovery unavailable" }
         runCatching { knownFutures += api.recentFuturesSymbols(end - 90L * 24 * 60 * 60 * 1000, end) }
             .onSuccess { discoverySucceeded++ }
-            .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
+            .onFailure { failures += "Futures symbol discovery unavailable" }
 
         BinanceAutoJournalStore.rememberSymbols(context, "Spot", knownSpot)
         BinanceAutoJournalStore.rememberSymbols(context, "USDⓈ-M Futures", knownFutures)
@@ -356,7 +356,7 @@ object BinanceAutoJournalRunner {
                 else api.futuresExecutionHistory(symbol, recentStart, end)
             }
             result.onSuccess { fetched += it }
-                .onFailure { symbolFailures++; failures += "$market $symbol recent: ${it.message ?: "request failed"}" }
+                .onFailure { symbolFailures++; failures += "$market $symbol: data unavailable" }
         }
 
         // Older execution history is supplied by explicit CSV backfill, not by automatic API sync.

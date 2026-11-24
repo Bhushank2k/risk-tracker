@@ -110,8 +110,8 @@ fun RiskOverviewScreen(
                         SimpleDateFormat("HH:mm:ss 'IST'", Locale.getDefault()).format(Date(expiry)) +
                         ". WebSocket mark prices remain active for cached positions."
                 } else {
-                    positionsStatus = "Position sync failed · showing saved positions" +
-                        (message.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                    positionsStatus = "Position sync failed · showing saved positions · " +
+                        AppErrorMessage.from(e, "Try again later.")
                 }
             } finally {
                 positionsLoading = false
@@ -138,8 +138,7 @@ fun RiskOverviewScreen(
                 onImportedPnlChange(latest)
                 dailyPnlStatus = "Realized P&L updated from Binance"
             } catch (e: Exception) {
-                dailyPnlStatus = "P&L refresh unavailable · showing saved result" +
-                    (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                dailyPnlStatus = "P&L refresh unavailable · showing saved result"
             } finally {
                 dailyPnlRefreshing = false
             }

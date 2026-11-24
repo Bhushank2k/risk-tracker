@@ -191,7 +191,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     fillCsvPreview = report
                     status = "Trade CSV preview ready. Review it before importing."
                 } catch (e: Exception) {
-                    status = "Trade CSV import failed: " + (e.message ?: "check the Binance export format")
+                    status = AppErrorMessage.from(e, "Trade CSV import failed. Check the file format and try again.")
                 } finally { fillCsvBusy = false }
             }
         }
@@ -213,7 +213,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                     pendingImportReport = report
                     status = "Preview ready for $importYear. Review the totals and confirm to replace the yearly Futures data."
                 } catch (e: Exception) {
-                    status = "CSV import failed: " + (e.message ?: "check the export format")
+                    status = AppErrorMessage.from(e, "CSV import failed. Check the file format and try again.")
                 } finally {
                     busy = false
                 }
@@ -242,7 +242,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                         hasSaved = true
                         secret = ""
                         status = "Credentials saved encrypted on this device. Binance trade history will sync automatically about every 6 hours and when you open Trading Analytics."
-                    } catch (e: Exception) { status = e.message ?: "Could not save credentials." }
+                    } catch (e: Exception) { status = AppErrorMessage.from(e, "Could not save credentials securely.") }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Save & enable automatic sync") }
                 Text("Use a read-only API key. Keep trading and withdrawals disabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -266,7 +266,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                 onSynced()
                                 status = "Sync completed. Imported P&L is visible on Daily P&L."
                             } catch (e: Exception) {
-                                status = "Sync failed: " + (e.message ?: "check credentials and API permissions")
+                                status = AppErrorMessage.from(e, "Binance sync failed. Check API access and try again.")
                             } finally { busy = false }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !busy) { Text(if (busy) "Syncing…" else "Sync now") }
@@ -315,7 +315,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                 historyPreview = rows
                                 status = "Preview ready: ${rows.size} execution fill(s). Nothing has been imported yet."
                             } catch (e: Exception) {
-                                status = "History preview failed: " + (e.message ?: "check dates, symbols and read-only API permissions")
+                                status = AppErrorMessage.from(e, "History preview failed. Check the date range and API access.")
                             } finally { historyBusy = false }
                         }
                     }
@@ -494,7 +494,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                             pendingImportReport = null
                                             onSynced()
                                             status = "Imported ${report.daily.size} daily totals for $year. A recovery snapshot is available below."
-                                        } catch (e: Exception) { status = "Import failed: " + (e.message ?: "could not save/import data") }
+                                        } catch (e: Exception) { status = AppErrorMessage.from(e, "Import failed. Check the file and available storage.") }
                                         finally { busy = false }
                                     }
                                 }, modifier = Modifier.weight(1f), enabled = !busy) { Text("Confirm import") }
@@ -549,7 +549,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                             onSynced()
                                             status = "Restored the pre-import Futures snapshot for $year. The snapshot remains available."
                                         } catch (e: Exception) {
-                                            status = "Restore failed: " + (e.message ?: "could not restore snapshot")
+                                            status = AppErrorMessage.from(e, "Restore failed. Check that the recovery file is valid.")
                                         } finally { busy = false }
                                     }
                                 }
@@ -603,7 +603,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                     if (selectedYear == requestYear) exportId = id
                                     status = "Export request saved for $requestYear (ID: $id). Use Check export status when Binance has prepared it."
                                 } catch (e: Exception) {
-                                    status = "Export request failed: " + (e.message ?: "check API permissions")
+                                    status = AppErrorMessage.from(e, "Export request failed. Check API access and try again.")
                                 } finally { busy = false }
                             }
                         }
@@ -637,7 +637,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                         status = "Binance export status: $exportStatus. Check again later. Response did not contain a download link yet."
                                     }
                                 } catch (e: Exception) {
-                                    status = "Could not check export: " + (e.message ?: "the request may still be processing")
+                                    status = AppErrorMessage.from(e, "Could not check export status. It may still be processing.")
                                 } finally { busy = false }
                             }
                         }

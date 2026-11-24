@@ -127,7 +127,7 @@ fun CloudAlertsScreen() {
             alerts = withContext(Dispatchers.IO) { fetchCloudAlerts(baseUrl, token) }
             lastUpdated = System.currentTimeMillis()
             status = if (alerts.isEmpty()) "Connected · no recent READY alerts." else "Connected · " + alerts.size + " recent alert(s)."
-        } catch (error: Exception) { status = error.message ?: "Unable to load cloud alerts." }
+        } catch (error: Exception) { status = AppErrorMessage.from(error, "Unable to load cloud alerts. Try again.") }
         finally { loading = false }
     }
 
