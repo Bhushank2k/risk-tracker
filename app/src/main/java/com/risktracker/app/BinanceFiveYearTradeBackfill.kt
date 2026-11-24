@@ -28,10 +28,10 @@ import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.security.MessageDigest
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.text.SimpleDateFormat
 import java.util.TimeZone
 import java.util.zip.ZipInputStream
 import javax.crypto.Mac
@@ -157,6 +157,7 @@ fun BinanceFiveYearTradeBackfillSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val windows = remember { fiveYearFuturesTradeWindows() }
+    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     val progress = remember { FuturesTradeArchiveProgress(context) }
     var summary by remember { mutableStateOf(progress.summary(windows)) }
     var status by remember { mutableStateOf("Five-year USDⓈ-M Futures trade archive. Binance allows up to five archive requests per month.") }
@@ -165,7 +166,7 @@ fun BinanceFiveYearTradeBackfillSection() {
     RiskCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Five-year Futures trade history", style = MaterialTheme.typography.titleMedium)
-            Text("Target: ${Date(windows.first().start)} – ${Date(windows.last().end)} (UTC). Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
+            Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
