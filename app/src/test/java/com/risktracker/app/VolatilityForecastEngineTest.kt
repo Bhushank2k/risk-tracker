@@ -23,7 +23,7 @@ class VolatilityForecastEngineTest {
         assertTrue(result.recentVolatilityPercent!!.isFinite())
         assertTrue(result.volatilityPercentile!! in 0.0..100.0)
         assertTrue(result.meanAbsoluteDailyMovePercent!! >= 0.0)
-        assertTrue(result.`90thPercentileAbsoluteMovePercent`!! >= result.meanAbsoluteDailyMovePercent!!)
+        assertTrue(result.p90AbsoluteDailyMovePercent!! >= result.meanAbsoluteDailyMovePercent!!)
     }
 
     @Test fun ignoresInvalidClosesAndSortsCandlesByCloseTime() {
