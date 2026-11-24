@@ -95,7 +95,7 @@ fun MarketActivityLabScreen() {
             interval = interval,
             selectedSymbol = selected,
             savedAt = System.currentTimeMillis(),
-            candles = history.filterKeys { key -> symbols.any { key.startsWith("$it:") } }
+            candles = history.filterKeys { key -> key.endsWith(":${interval.api}") && symbols.any { key.startsWith("$it:") } }
         ))
     }
     fun refresh(){
@@ -130,7 +130,7 @@ fun MarketActivityLabScreen() {
     LaunchedEffect(Unit) {
         val saved = MarketActivityCheckpointStore.load(context)
         if (saved != null) {
-            val restored = saved.candles.filterKeys { key -> symbols.any { key.startsWith("$it:") } }
+            val restored = saved.candles.filterKeys { key -> key.endsWith(":${saved.interval.api}") && symbols.any { key.startsWith("$it:") } }
             interval = saved.interval
             selected = saved.selectedSymbol.takeIf { it in symbols } ?: symbols.first()
             candleHistory = restored
