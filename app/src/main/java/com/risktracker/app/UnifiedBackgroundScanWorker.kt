@@ -86,7 +86,7 @@ class UnifiedBackgroundScanWorker(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            TradeIdeaScanHealthStore.failed(app, e.message ?: "Trade Ideas background scan failed")
+            TradeIdeaScanHealthStore.failed(app, AppErrorMessage.from(e, "Background market scan failed. It will retry automatically."))
             false
         }
 
@@ -133,7 +133,7 @@ class UnifiedBackgroundScanWorker(
                 false,
                 if (e.isDnsResolutionFailure()) {
                     "Background SMC scan paused: Binance DNS lookup failed. WorkManager will retry; cached SMC signals are preserved."
-                } else "Background SMC scan failed: ${e.message ?: "network error"}"
+                } else AppErrorMessage.from(e, "Background SMC scan failed. It will retry automatically.")
             )
             false
         }
