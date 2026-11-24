@@ -37,9 +37,9 @@ import java.util.zip.ZipInputStream
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-private data class FuturesTradeArchiveWindow(val start: Long, val end: Long, val key: String)
+internal data class FuturesTradeArchiveWindow(val start: Long, val end: Long, val key: String)
 
-private fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
+internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
     val utc = TimeZone.getTimeZone("UTC")
     val cursor = Calendar.getInstance(utc).apply { timeInMillis = now; add(Calendar.YEAR, -5) }
     val result = mutableListOf<FuturesTradeArchiveWindow>()
@@ -98,7 +98,7 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
     fun downloadCsv(url: String): List<BinanceJournalFill> {
         val parsed = URL(url)
         require(parsed.protocol == "https") { "Binance archive link must use HTTPS." }
-        require(parsed.host.endsWith("binance.com") || parsed.host.endsWith("binance.net")) {
+        require(parsed.host == "binance.com" || parsed.host.endsWith(".binance.com") || parsed.host == "binance.net" || parsed.host.endsWith(".binance.net")) {
             "Binance returned an unexpected archive download host."
         }
         val connection = parsed.openConnection() as HttpURLConnection
