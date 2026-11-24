@@ -462,7 +462,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 33 -> UnifiedSMCSignalsScreen(onOpenTradeIdeas = { tab = 21 })
                 34 -> BestOpportunitiesScreen(onOpenTradeIdeas = { tab = 21 }, onOpenSmc = { tab = 33 })
                 35 -> MarketActivityLabScreen()
-                36 -> TradingIntelligenceScreen(entries, trades, importedPnl)
+                36 -> TradingIntelligenceScreen(entries, trades, importedPnl, store.maxDailyLoss)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
