@@ -324,6 +324,16 @@ internal object BinanceFuturesStream {
         return null
     }
 
+    /** Fresh all-market WebSocket ticker values for the scanner's configured symbols. */
+    fun tickerSnapshot(symbols: List<String>): Map<String, MarketTicker> =
+        symbols.distinct().mapNotNull { requested ->
+            val symbol = requested.uppercase()
+            val quote = latestTicker(symbol) ?: return@mapNotNull null
+            val volume = quote.second ?: return@mapNotNull null
+            val change = quote.third ?: return@mapNotNull null
+            symbol to MarketTicker(symbol, quote.first, change, volume)
+        }.toMap()
+
     fun microstructure(symbol: String): MarketMicrostructure {
         val key = symbol.lowercase()
         val book = books[key]?.takeIf { System.currentTimeMillis() - it.updatedAt <= MAX_AGE_MS }
