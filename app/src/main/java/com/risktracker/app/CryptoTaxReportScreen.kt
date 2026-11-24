@@ -40,7 +40,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CryptoTaxReportScreen() {
+fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var trades by remember { mutableStateOf(CryptoTaxHistory.load(context)) }
@@ -246,9 +246,11 @@ fun CryptoTaxReportScreen() {
                             Button(onClick = {
                                 val (merged, added) = CryptoTaxHistory.deduplicate(trades, preview.trades)
                                 CryptoTaxHistory.save(context, merged)
-                                trades = merged
+                                val journalAdded = CryptoTaxHistory.mergeIntoJournal(context, preview.trades)
+                                trades = CryptoTaxHistory.load(context)
                                 pendingImport = null
-                                status = "Imported ${preview.trades.size} rows; added $added new records; skipped ${preview.trades.size - added} duplicates."
+                                onJournalImported()
+                                status = "Imported ${preview.trades.size} rows; added $added to trade history and $journalAdded to the shared journal; duplicates were reconciled."
                             }, enabled = !busy && preview.trades.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                                 Text("Confirm and import")
                             }
