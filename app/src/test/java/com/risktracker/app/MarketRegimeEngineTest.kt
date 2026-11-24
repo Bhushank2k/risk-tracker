@@ -2,7 +2,6 @@ package com.risktracker.app
 
 import org.junit.Assert.*
 import org.junit.Test
-import kotlin.math.sin
 
 class MarketRegimeEngineTest {
     private fun candles(closes: List<Double>): List<MarketCandle> = closes.mapIndexed { index, close ->
@@ -23,10 +22,14 @@ class MarketRegimeEngineTest {
         assertTrue(result.confidencePercent!! >= 75.0)
     }
 
-    @Test fun identifiesSidewaysConditionsWhenTrendSignalsConflict() {
-        val closes = (0..239).map { 100.0 + 0.2 * sin(it / 3.0) }
+    @Test fun identifiesSidewaysConditionsWhenLongAndShortTermSignalsConflict() {
+        // The long-term trend remains positive, but the latest 20 sessions pull back.
+        // Neither directional score reaches the 75-point trend threshold.
+        val closes = (0..219).map { 100.0 + it * 0.3 } +
+            (220..239).map { 100.0 + 219 * 0.3 - (it - 219) * 0.15 }
         val result = MarketRegimeEngine.classify("BTCUSDT", candles(closes))
         assertEquals(MarketRegime.SIDEWAYS, result.regime)
+        assertTrue(result.confidencePercent!! >= 0.0)
     }
 
     @Test fun highVolatilityOverridesDirectionalClassification() {
