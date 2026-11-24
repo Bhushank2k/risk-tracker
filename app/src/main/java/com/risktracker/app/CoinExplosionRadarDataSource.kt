@@ -82,7 +82,7 @@ object CoinExplosionRadarDataSource {
                         } catch (cancel: CancellationException) {
                             throw cancel
                         } catch (error: Exception) {
-                            failures += symbol + ": " + (error.message ?: "scan failed")
+                            failures += symbol + ": " + AppErrorMessage.from(error, "market data unavailable")
                             null
                         }
                     }
