@@ -138,8 +138,7 @@ fun RiskOverviewScreen(
                 onImportedPnlChange(latest)
                 dailyPnlStatus = "Realized P&L updated from Binance"
             } catch (e: Exception) {
-                dailyPnlStatus = "P&L refresh unavailable · showing saved result" +
-                    (e.message?.takeIf { it.isNotBlank() }?.let { ": " + it } ?: "")
+                dailyPnlStatus = "P&L refresh unavailable · showing saved result"
             } finally {
                 dailyPnlRefreshing = false
             }
