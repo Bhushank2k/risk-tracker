@@ -81,7 +81,9 @@ fun MarketActivityLabScreen() {
         if(loading)return
         loading=true
         scope.launch{
-            tickerMap=runCatching{MarketActivityDataSource.tickers()}.getOrDefault(emptyMap())
+            val liveTickers=BinanceFuturesStream.tickerSnapshot(symbols)
+            tickerMap=if(liveTickers.isNotEmpty()) tickerMap+liveTickers else
+                runCatching{MarketActivityDataSource.tickers()}.getOrDefault(tickerMap)
             marketMovers=runCatching{MarketMoversDiscovery.discover(forceRefresh=true)}.getOrDefault(marketMovers)
             val result=symbols.map{sym->async{sym to runCatching{MarketActivityEngine.analyze(sym,interval,MarketActivityDataSource.candles(sym,interval),config.thresholds)}.getOrNull()}}.awaitAll()
             result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
@@ -90,6 +92,15 @@ fun MarketActivityLabScreen() {
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
             updated=System.currentTimeMillis()
             loading=false
+        }
+    }
+    LaunchedEffect(symbols) {
+        // The shared public stream carries all-market tickers and bounded depth for scanner pairs.
+        BinanceFuturesStream.start(symbols)
+        while (true) {
+            val live = BinanceFuturesStream.tickerSnapshot(symbols)
+            if (live.isNotEmpty()) tickerMap = tickerMap + live
+            delay(1_000L)
         }
     }
     LaunchedEffect(interval){
@@ -108,6 +119,7 @@ fun MarketActivityLabScreen() {
         item{Column(verticalArrangement=Arrangement.spacedBy(5.dp)){
             Text("Market Activity Lab",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
             Text("Early-movement research · public Binance USD-M Futures data · read-only, no orders",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Live WebSocket ticker feed · REST candle history and fallback snapshots",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
         }}
         item {
             Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
