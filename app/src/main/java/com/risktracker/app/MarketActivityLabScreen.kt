@@ -47,6 +47,9 @@ fun MarketActivityLabScreen() {
     var candleHistory by remember { mutableStateOf<Map<String, List<MarketCandle>>>(emptyMap()) }
     val latestCandleHistory by rememberUpdatedState(candleHistory)
     val latestThresholds by rememberUpdatedState(config.thresholds)
+    val latestMinimumScore by rememberUpdatedState(config.minimumScore)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestRows by rememberUpdatedState(rows)
     val scope=rememberCoroutineScope()
     var importedReplay by remember { mutableStateOf<MarketReplayReport?>(null) }
     var replayImportStatus by remember { mutableStateOf("") }
@@ -98,13 +101,13 @@ fun MarketActivityLabScreen() {
                     val key="$sym:${interval.api}"
                     val base=candleHistory[key] ?: MarketActivityDataSource.candles(sym,interval)
                     val merged=mergeClosedCandle(base,liveCandles[sym])
-                    Triple(sym,MarketActivityEngine.analyze(sym,interval,merged,config.thresholds),merged)
+                    Triple(sym,withContext(Dispatchers.Default){MarketActivityEngine.analyze(sym,interval,merged,config.thresholds)},merged)
                 }.getOrNull()
             }}.awaitAll().filterNotNull()
             candleHistory=candleHistory+result.associate{"${it.first}:${interval.api}" to it.third}
             result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
             events=MarketActivityPreferences.loadEvents(context)
-            rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=symbols.filter{sym->result.none{it.first==sym}}
+            rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=symbols.filter{sym->result.none{it.first==sym} || result.firstOrNull{it.first==sym}?.second==null}
             if(rows.none{it.symbol==selected}&&rows.isNotEmpty())selected=rows.first().symbol
             updated=System.currentTimeMillis()
             loading=false
@@ -126,18 +129,18 @@ fun MarketActivityLabScreen() {
                 val merged = mergeClosedCandle(history, candle)
                 if (merged.lastOrNull()?.openTime == history.lastOrNull()?.openTime) continue
                 nextHistory = nextHistory + (key to merged)
-                MarketActivityEngine.analyze(symbol, interval, merged, latestThresholds)?.let { changed.add(it) }
-                if (symbol == selected) {
+                withContext(Dispatchers.Default) { MarketActivityEngine.analyze(symbol, interval, merged, latestThresholds) }?.let { changed.add(it) }
+                if (symbol == latestSelected) {
                     chartCandles = merged
-                    replay = MarketActivityEngine.replay(merged)
+                    replay = withContext(Dispatchers.Default) { MarketActivityEngine.replay(merged) }
                 }
             }
             if (nextHistory != latestCandleHistory) candleHistory = nextHistory
             if (changed.isNotEmpty()) {
                 changed.forEach { MarketActivityPreferences.recordAnalysis(context, it) }
                 val replacements = changed.associateBy { it.symbol }
-                rows = (rows.filterNot { it.symbol in replacements.keys } + changed)
-                    .filter { it.score.total >= config.minimumScore }
+                rows = (latestRows.filterNot { it.symbol in replacements.keys } + changed)
+                    .filter { it.score.total >= latestMinimumScore }
                     .sortedByDescending { it.score.total }
                 events = MarketActivityPreferences.loadEvents(context)
                 updated = System.currentTimeMillis()
