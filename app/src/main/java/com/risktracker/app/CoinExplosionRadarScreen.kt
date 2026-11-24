@@ -41,7 +41,7 @@ fun CoinExplosionRadarScreen() {
                     selected = it.signals.firstOrNull { signal -> signal.stage != ExplosionStage.REJECTED && signal.score >= config.watchScore }
                     status = "Scanned ${it.scanned} contracts · ${it.signals.count { s -> s.stage != ExplosionStage.REJECTED }} passed safety filters · ${it.failed.size} data failures."
                 }
-                .onFailure { status = it.message ?: "Radar scan failed." }
+                .onFailure { status = AppErrorMessage.from(it, "Radar scan failed. Check your connection and retry.") }
             loading = false
         }
     }
