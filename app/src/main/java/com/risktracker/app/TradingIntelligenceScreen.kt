@@ -100,6 +100,7 @@ fun TradingIntelligenceScreen(
             }
         }
         PeriodForecastSection(reconciled, asOfDate)
+        PersonalTradingCoachSection(manualTrades)
     }
 }
 
@@ -197,6 +198,35 @@ private fun PeriodForecastCard(title: String, forecast: PeriodPnlForecast) {
                 Text(forecast.reliability.name.lowercase().replaceFirstChar { it.uppercase() } +
                     " · " + forecast.sampleCount + " prior recorded days",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonalTradingCoachSection(trades: List<TradeEntry>) {
+    val report = remember(trades) { PersonalTradingCoachEngine.analyze(trades) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Personal trading coach", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Rule-based feedback from your saved closed-trade journal. It does not infer intent or replace your own review.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Journal coverage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(report.tradeCount.toString() + " valid closed trades · " + report.taggedTradeCount + " strategy-tagged")
+                report.insights.forEach { insight ->
+                    Text(insight.title, fontWeight = FontWeight.SemiBold,
+                        color = if (insight.severity == CoachInsightSeverity.CAUTION)
+                            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    Text(insight.detail, style = MaterialTheme.typography.bodySmall)
+                }
+                if (report.limitations.isNotEmpty()) {
+                    Text("Data limitations", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    report.limitations.forEach {
+                        Text("• " + it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }
