@@ -294,7 +294,7 @@ internal suspend fun runTradeIdeaMonitorScan(context: Context): androidx.work.Li
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            TradeIdeaScanHealthStore.failed(context, e.message ?: "Background market scan failed")
+            TradeIdeaScanHealthStore.failed(context, AppErrorMessage.from(e, "Background market scan failed. It will retry automatically."))
             androidx.work.ListenableWorker.Result.retry()
     }
 }
