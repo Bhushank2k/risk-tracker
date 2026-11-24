@@ -107,6 +107,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     32 -> Icons.Filled.ShowChart
     33 -> Icons.Filled.ShowChart
     34 -> Icons.Filled.ShowChart
+    36 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -270,6 +271,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 33 -> "Unified SMC Signals"
                 34 -> "Best Opportunities"
                 35 -> "Market Activity Lab"
+                36 -> "Trading Intelligence"
                 else -> "Explore"
             }
 
@@ -460,6 +462,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 33 -> UnifiedSMCSignalsScreen(onOpenTradeIdeas = { tab = 21 })
                 34 -> BestOpportunitiesScreen(onOpenTradeIdeas = { tab = 21 }, onOpenSmc = { tab = 33 })
                 35 -> MarketActivityLabScreen()
+                36 -> TradingIntelligenceScreen(entries, trades, importedPnl)
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
