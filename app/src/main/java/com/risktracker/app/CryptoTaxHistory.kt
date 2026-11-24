@@ -117,7 +117,7 @@ object CryptoTaxHistory {
                 symbol = fill.symbol, side = fill.side, quantity = fill.quantity,
                 price = fill.price, quoteAmount = fill.quoteAmount, fee = fill.fee,
                 feeAsset = fill.feeAsset, realizedPnl = fill.realizedPnl,
-                source = if (fill.id.contains(":csv:")) "Binance journal CSV" else "Binance API sync"
+                source = if (fill.id.contains(":csv:")) "Journal CSV import" else "Journal API sync"
             )
         }
         return mergeJournalHistory(imported, journal)
@@ -135,7 +135,7 @@ object CryptoTaxHistory {
                 merged[exact] = fill
             } else {
                 val matchingImported = merged.indexOfFirst { saved ->
-                    !saved.source.startsWith("Binance journal ") &&
+                    !saved.source.startsWith("Journal ") &&
                         sameHistoricalExecution(saved, fill)
                 }
                 if (matchingImported >= 0) {
