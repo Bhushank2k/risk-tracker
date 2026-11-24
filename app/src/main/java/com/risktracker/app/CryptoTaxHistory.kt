@@ -254,7 +254,7 @@ object CryptoTaxHistory {
             val quote = value(quoteIdx).replace(",", "").toDoubleOrNull().takeIf { it != null && it > 0 } ?: qty * price
             val rawFee = value(feeIdx).replace(",", "")
             val declaredFeeAsset = value(feeAssetIdx).uppercase(Locale.US)
-            val feePattern = Regex("^([+-]?(?:[0-9]+(?:\\\\.[0-9]*)?|\\\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:\\\\s*([A-Za-z]{2,10}))?$")
+            val feePattern = Regex("^([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:\\s*([A-Za-z]{2,10}))?$")
             val feeMatch = if (rawFee.isBlank()) null else feePattern.matchEntire(rawFee)
             if (rawFee.isNotBlank() && feeMatch == null) {
                 issues += CryptoTaxImportIssue(source, rowNumber, "Invalid fee amount.", line.take(180))
