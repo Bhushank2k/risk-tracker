@@ -38,10 +38,15 @@ object DailyPnlForecastEngine {
     ): DailyPnlForecast {
         require(lookbackDays in 1..365)
         val cutoff = canonicalPnlDate(asOfDate) ?: error("Invalid forecast date")
-        val outcomes = rows.mapNotNull { row ->
+        val datedOutcomes: List<Pair<String, Double>> = rows.mapNotNull { row ->
             val date = canonicalPnlDate(row.date) ?: return@mapNotNull null
-            row.selectedPnl.takeIf { date < cutoff && it.isFinite() }
-        }.sortedBy { canonicalPnlDate(it.first) }.takeLast(lookbackDays)
+            val pnl = row.selectedPnl
+            if (date < cutoff && pnl.isFinite()) date to pnl else null
+        }
+        val outcomes = datedOutcomes
+            .sortedBy { pair -> pair.first }
+            .takeLast(lookbackDays)
+            .map { pair -> pair.second }
 
         val n = outcomes.size
         val reliability = when {
