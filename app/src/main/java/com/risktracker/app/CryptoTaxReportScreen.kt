@@ -144,7 +144,7 @@ fun CryptoTaxReportScreen() {
     val year = selectedYear.toIntOrNull()
     val yearTrades = trades.filter { it.year == year }
     val yearSummary = summaries.firstOrNull { it.year == year }
-    val availableYears = (trades.map { it.year } + (year ?: emptyList<Int>())).distinct().sortedDescending()
+    val availableYears = (trades.map { it.year } + listOfNotNull(year)).distinct().sortedDescending()
     val filteredTrades = yearTrades.asSequence()
         .filter { searchQuery.isBlank() || it.symbol.contains(searchQuery.trim(), ignoreCase = true) || it.source.contains(searchQuery.trim(), ignoreCase = true) }
         .filter { sideFilter == "ALL" || it.side == sideFilter }
