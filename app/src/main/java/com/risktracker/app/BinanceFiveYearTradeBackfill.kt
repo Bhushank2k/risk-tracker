@@ -222,6 +222,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     var requested = 0
                                     val failures = mutableListOf<String>()
                                     windows.filterNot { progress.imported(it) || progress.id(it) != null }.forEach { window ->
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                         runCatching {
                                             val id = api.request(window)
                                             progress.saveId(window, id)
@@ -266,6 +267,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     val pending = mutableListOf<String>()
                                     val failures = mutableListOf<String>()
                                     windows.filter { progress.id(it) != null && !progress.imported(it) }.forEach { window ->
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                         val id = progress.id(window) ?: return@forEach
                                         runCatching {
                                             val state = api.status(id)
