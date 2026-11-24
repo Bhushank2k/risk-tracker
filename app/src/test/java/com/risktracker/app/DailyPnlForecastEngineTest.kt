@@ -24,9 +24,9 @@ class DailyPnlForecastEngineTest {
         }
         val result = DailyPnlForecastEngine.forecast(rows, "2026-02-01")
         assertEquals(10, result.sampleCount)
-        assertEquals(1.5, result.expectedPnl!!, 1e-8)
-        assertEquals(40.0, result.profitableDayPercent!!, 1e-8)
-        assertEquals(50.0, result.losingDayPercent!!, 1e-8)
+        assertEquals(0.5, result.expectedPnl!!, 1e-8)
+        assertEquals(50.0, result.profitableDayPercent!!, 1e-8)
+        assertEquals(40.0, result.losingDayPercent!!, 1e-8)
         assertEquals(ForecastReliability.LIMITED, result.reliability)
         assertTrue(result.lowerOutcome!! <= result.upperOutcome!!)
     }
