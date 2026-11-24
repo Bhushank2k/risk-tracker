@@ -14,6 +14,29 @@ class BinanceFillCsvImporterTest {
     private val noIdHeader = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Fee Asset,Order ID\n"
     private val identicalRow = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,order-1\n"
 
+    @Test fun parsesAttachedUsdtFeeAndExactBinanceFuturesHeaders() {
+        val csv = "\uFEFFUid,Time,Symbol,Side,Price,Quantity,Amount,Fee,Realized Profit,Buyer,Maker,Trade ID,Order ID\\n" +
+            "90488738,2026-11-24 13:46:41,LISTAUSDT,SELL,0.11175,41,4.58175,0.00229087USDT,0.20177378,false,false,154376830,2033186077\\n"
+        val report = parse(csv)
+        assertEquals(1, report.fills.size)
+        assertEquals(0.00229087, report.fills.single().fee, 1e-12)
+        assertEquals("USDT", report.fills.single().feeAsset)
+        assertEquals(0.20177378, report.fills.single().realizedPnl!!, 1e-12)
+        assertTrue(report.fills.single().id.contains("154376830"))
+    }
+
+    @Test fun savedJournalParserSkipsOneDamagedRecordWithoutLosingValidHistory() {
+        val raw = """[
+            {"id":"valid-1","exchange":"Binance","market":"USDⓈ-M Futures","symbol":"BTCUSDT","side":"BUY","quantity":1,"price":100,"quoteAmount":100,"fee":0.1,"feeAsset":"USDT","realizedPnl":null,"time":1746091200000,"orderId":"order-1"},
+            {"id":"broken","symbol":"BTCUSDT","quantity":"not-a-number"}
+        ]"""
+        val result = BinanceAutoJournalStore.parseSavedFills(raw)
+        assertEquals(1, result.fills.size)
+        assertEquals("valid-1", result.fills.single().id)
+        assertEquals(1, result.skippedRecords)
+        assertTrue(!result.unreadableStore)
+    }
+
     @Test fun identicalRowsWithoutTradeIdsRemainSeparateExecutions() {
         val report = parse(noIdHeader + identicalRow + identicalRow)
         assertEquals(2, report.fills.size)
