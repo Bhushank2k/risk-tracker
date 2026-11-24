@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -38,6 +40,12 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 internal data class FuturesTradeArchiveWindow(val start: Long, val end: Long, val key: String)
+
+internal class BinanceArchiveIpBanException(val untilMillis: Long, message: String) : Exception(message)
+
+internal fun parseBinanceIpBanUntilMillis(message: String): Long? =
+    Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE)
+        .find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
 internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
     val utc = TimeZone.getTimeZone("UTC")
@@ -77,6 +85,10 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $code")
+                if (code == 418) {
+                    val until = parseBinanceIpBanUntilMillis(message) ?: (System.currentTimeMillis() + 60_000L)
+                    throw BinanceArchiveIpBanException(until, "Binance HTTP 418: archive requests paused until " + Date(until) + ".")
+                }
                 error("Binance archive API error ($code): $message")
             }
             return JSONObject(body)
@@ -147,6 +159,13 @@ private class FuturesTradeArchiveProgress(context: Context) {
         check(prefs.edit().putBoolean("imported_${window.key}", true).commit()) { "Could not save archive import progress." }
     }
     fun reset() { prefs.edit().clear().apply() }
+    fun cooldownUntilMillis(): Long = prefs.getLong("ip_ban_until_ms", 0L)
+    fun saveCooldownUntilMillis(untilMillis: Long) {
+        prefs.edit().putLong("ip_ban_until_ms", maxOf(cooldownUntilMillis(), untilMillis)).commit()
+    }
+    fun clearExpiredCooldown(nowMillis: Long) {
+        if (cooldownUntilMillis() in 1..nowMillis) prefs.edit().remove("ip_ban_until_ms").apply()
+    }
     fun summary(windows: List<FuturesTradeArchiveWindow>): String {
         val requested = windows.count { id(it) != null }
         val imported = windows.count { imported(it) }
@@ -164,6 +183,17 @@ fun BinanceFiveYearTradeBackfillSection() {
     var summary by remember { mutableStateOf(progress.summary(windows)) }
     var status by remember { mutableStateOf("Five-year USDⓈ-M Futures trade archive. Binance allows up to five archive requests per month.") }
     var busy by remember { mutableStateOf(false) }
+    var clockNow by remember { mutableStateOf(System.currentTimeMillis()) }
+    val cooldownUntil = progress.cooldownUntilMillis()
+    val isCoolingDown = cooldownUntil > clockNow
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            clockNow = System.currentTimeMillis()
+            progress.clearExpiredCooldown(clockNow)
+            delay(1_000L)
+        }
+    }
 
     RiskCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -171,8 +201,12 @@ fun BinanceFiveYearTradeBackfillSection() {
             Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (isCoolingDown) Text(
+                "Binance cooldown active until " + utcDateFormat.format(Date(cooldownUntil)) + " UTC. Archive API calls are disabled until then.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
+            )
             Button(
-                enabled = !busy,
+                enabled = !busy && !isCoolingDown,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()
@@ -188,11 +222,16 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     var requested = 0
                                     val failures = mutableListOf<String>()
                                     windows.filterNot { progress.imported(it) || progress.id(it) != null }.forEach { window ->
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                         runCatching {
                                             val id = api.request(window)
                                             progress.saveId(window, id)
                                             requested++
-                                        }.onFailure { failures += it.message ?: "request failed" }
+                                        }.onFailure { error ->
+                                            if (error is BinanceArchiveIpBanException) progress.saveCooldownUntilMillis(error.untilMillis)
+                                            failures += error.message ?: "request failed"
+                                        }
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                     }
                                     requested to failures
                                 }
@@ -210,7 +249,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                 }
             ) { Text(if (busy) "Working…" else "Request missing archive periods") }
             OutlinedButton(
-                enabled = !busy && windows.any { progress.id(it) != null && !progress.imported(it) },
+                enabled = !busy && !isCoolingDown && windows.any { progress.id(it) != null && !progress.imported(it) },
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()
@@ -228,6 +267,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     val pending = mutableListOf<String>()
                                     val failures = mutableListOf<String>()
                                     windows.filter { progress.id(it) != null && !progress.imported(it) }.forEach { window ->
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                         val id = progress.id(window) ?: return@forEach
                                         runCatching {
                                             val state = api.status(id)
@@ -243,7 +283,11 @@ fun BinanceFiveYearTradeBackfillSection() {
                                                 importedPeriods++
                                                 importedFills += added
                                             }
-                                        }.onFailure { failures += it.message ?: "archive processing failed" }
+                                        }.onFailure { error ->
+                                            if (error is BinanceArchiveIpBanException) progress.saveCooldownUntilMillis(error.untilMillis)
+                                            failures += error.message ?: "archive processing failed"
+                                        }
+                                        if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                     }
                                     Triple(importedPeriods to importedFills, pending, failures)
                                 }
