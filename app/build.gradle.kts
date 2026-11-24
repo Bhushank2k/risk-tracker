@@ -50,4 +50,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     testImplementation("junit:junit:4.13.2")
+    // Use a real JSON implementation in local JVM tests instead of Android mocked stubs.
+    testImplementation("org.json:json:20240303")
 }
