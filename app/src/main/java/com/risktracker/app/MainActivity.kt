@@ -448,11 +448,11 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                     }
                 )
                 5 -> AboutScreen()
-                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
-                9 -> CryptoTaxReportScreen()
+                6 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context); exchangeFills = BinanceAutoJournalStore.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
+                9 -> CryptoTaxReportScreen(onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) })
                 16 -> LiveTradesScreen()
                 17 -> BinanceStatementsScreen(onBack = { tab = 6 })
-                18 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
+                18 -> BinanceSyncScreen(onSynced = { importedPnl = BinanceSyncData.load(context); exchangeFills = BinanceAutoJournalStore.load(context) }, onJournalImported = { exchangeFills = BinanceAutoJournalStore.load(context) }, onNavigate = { tab = it })
                 21 -> DailyTradeIdeasScreen()
                 23 -> PnlCalendarScreen(trades, exchangeFills)
                 29 -> ExploreScreen(menuGroups, onNavigate = { tab = it })
@@ -465,6 +465,13 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                         entries = pair.first
                         trades = pair.second
                         importedPnl = BinanceSyncData.load(context)
+                    },
+                    onClearExchangeHistory = {
+                        BinanceAutoJournalStore.clear(context)
+                        BinanceSyncData.clear(context)
+                        CryptoTaxHistory.clear(context)
+                        exchangeFills = emptyList()
+                        importedPnl = emptyList()
                     }) { tab = it }
                 }
             }
@@ -986,11 +993,12 @@ fun DailyInsights(entries: List<PnlEntry>) {
 }
 
 @Composable
-fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onNavigate: (Int) -> Unit) {
+fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, themeMode: String, onThemeModeChange: (String) -> Unit, onRestore: (Pair<List<PnlEntry>, List<TradeEntry>>) -> Unit, onClearExchangeHistory: () -> Unit, onNavigate: (Int) -> Unit) {
     val context = LocalContext.current
     var dailyLimit by remember { mutableStateOf(store.maxDailyLoss.toString()) }
     var tradeLimit by remember { mutableStateOf(store.maxTradeRisk.toString()) }
     var backupMessage by remember { mutableStateOf("") }
+    var showClearExchangeHistory by remember { mutableStateOf(false) }
     val quickSetup = remember { QuickSetupProfileStore.load(context) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -1054,6 +1062,30 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                 },
                 dismissButton = {
                     TextButton(onClick = { pendingBackupRaw = null; backupMessage = "Restore cancelled. Current records were unchanged." }) { Text("Cancel") }
+                }
+            )
+        }
+        HorizontalDivider()
+        Text("Exchange trade history", style = MaterialTheme.typography.titleMedium)
+        Text("Synced Binance executions, CSV-imported trades, and Binance daily P&L are retained on this device until you clear them. Clearing does not remove manual Daily P&L entries, manual journal trades, account statements, or API credentials. Export or keep your original Binance files before clearing.", 
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = { showClearExchangeHistory = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Clear saved Binance trade data")
+        }
+        if (showClearExchangeHistory) {
+            AlertDialog(
+                onDismissRequest = { showClearExchangeHistory = false },
+                title = { Text("Clear saved Binance trade data?") },
+                text = { Text("This permanently clears synced execution history, CSV-imported trade history, and saved Binance daily P&L from this device. Manual Daily P&L, manual journal trades, account statements, and API credentials will remain. Automatic sync may add new records again after the next sync.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        onClearExchangeHistory()
+                        showClearExchangeHistory = false
+                        backupMessage = "Saved Binance trade data cleared. Manual records and account statements were preserved."
+                    }) { Text("Clear Binance data") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearExchangeHistory = false }) { Text("Cancel") }
                 }
             )
         }
