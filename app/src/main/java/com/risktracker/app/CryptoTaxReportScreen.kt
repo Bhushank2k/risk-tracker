@@ -43,6 +43,7 @@ fun CryptoTaxReportScreen() {
     var rateText by remember { mutableStateOf("83.0") }
     var status by remember { mutableStateOf("Ready to import Binance exports.") }
     var busy by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<CryptoTaxImportPreview?>(null) }
     var showSpotEstimate by remember { mutableStateOf(SPOT_ESTIMATE_DEFAULT_ENABLED) }
     var selectedYear by remember {
         mutableStateOf(run {
@@ -56,11 +57,9 @@ fun CryptoTaxReportScreen() {
             busy = true
             scope.launch {
                 try {
-                    val incoming = withContext(Dispatchers.IO) { CryptoTaxHistory.importUri(context, uri) }
-                    val (merged, added) = CryptoTaxHistory.deduplicate(trades, incoming)
-                    CryptoTaxHistory.save(context, merged)
-                    trades = merged
-                    status = "Imported ${incoming.size} rows; added $added new records; skipped ${incoming.size - added} duplicates."
+                    val preview = withContext(Dispatchers.IO) { CryptoTaxHistory.previewUri(context, uri, trades) }
+                    pendingImport = preview
+                    status = "Import preview ready. Review the detected rows before adding them to your history."
                 } catch (e: Exception) {
                     status = "Import failed: " + (e.message ?: "unsupported file")
                 } finally { busy = false }
@@ -148,6 +147,33 @@ fun CryptoTaxReportScreen() {
                     Text(if (busy) "Importing…" else "Import Binance CSV / ZIP")
                 }
                 Text("Rows stored: ${trades.size} · Financial years found: ${trades.map { it.year }.distinct().size}", style = MaterialTheme.typography.bodyMedium)
+                pendingImport?.let { preview ->
+                    val firstYear = preview.trades.minOf { it.year }
+                    val lastYear = preview.trades.maxOf { it.year }
+                    RiskCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Review import before saving", style = MaterialTheme.typography.titleSmall)
+                            Text("Detected rows: ${preview.trades.size}")
+                            Text("New records: ${preview.newRecordCount}")
+                            Text("Already present: ${preview.duplicateRecordCount}")
+                            Text("Financial years: FY $firstYear–${(lastYear + 1).toString().takeLast(2)}" +
+                                if (firstYear == lastYear) "" else " (through FY $lastYear–${(lastYear + 1).toString().takeLast(2)})")
+                            Text("Nothing has been saved yet. Existing records remain unchanged until you confirm.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick = {
+                                val (merged, added) = CryptoTaxHistory.deduplicate(trades, preview.trades)
+                                CryptoTaxHistory.save(context, merged)
+                                trades = merged
+                                pendingImport = null
+                                status = "Imported ${preview.trades.size} rows; added $added new records; skipped ${preview.trades.size - added} duplicates."
+                            }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Confirm and import") }
+                            OutlinedButton(onClick = {
+                                pendingImport = null
+                                status = "Import cancelled. No records were changed."
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Cancel import") }
+                        }
+                    }
+                }
                 val quality = CryptoTaxHistory.dataQuality(trades)
                 Spacer(Modifier.height(4.dp))
                 Text("Data completeness check", style = MaterialTheme.typography.titleSmall)
