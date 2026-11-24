@@ -129,16 +129,19 @@ object CryptoTaxHistory {
         journal: List<HistoricalCryptoTrade>
     ): List<HistoricalCryptoTrade> {
         val merged = imported.toMutableList()
+        val consumedImported = mutableSetOf<Int>()
         journal.forEach { fill ->
             val exact = merged.indexOfFirst { it.id == fill.id }
             if (exact >= 0) {
                 merged[exact] = fill
             } else {
-                val matchingImported = merged.indexOfFirst { saved ->
-                    !saved.source.startsWith("Journal ") &&
-                        sameHistoricalExecution(saved, fill)
-                }
+                val matchingImported = merged.indices.firstOrNull { index ->
+                    index !in consumedImported &&
+                        !merged[index].source.startsWith("Journal ") &&
+                        sameHistoricalExecution(merged[index], fill)
+                } ?: -1
                 if (matchingImported >= 0) {
+                    consumedImported += matchingImported
                     if (fill.source == "Journal API sync") merged[matchingImported] = fill
                 } else {
                     merged += fill
