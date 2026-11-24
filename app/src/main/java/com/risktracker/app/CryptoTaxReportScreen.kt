@@ -212,7 +212,7 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
                     Text("${trades.size} rows", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("Import Binance Spot or Futures CSV / ZIP. Preview and inspect duplicates or rejected rows before saving. Existing journal and Daily P&L records are not modified.",
+                Text("Import Binance Spot or Futures CSV / ZIP. Preview and inspect duplicates or rejected rows before saving. Confirmed fills merge into the shared Binance trade history; manual journal and Daily P&L records remain unchanged.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = { importPicker.launch(arrayOf("text/*", "application/zip", "application/octet-stream", "application/vnd.ms-excel")) },
                     enabled = !busy, modifier = Modifier.fillMaxWidth()) {
