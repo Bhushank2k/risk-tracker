@@ -129,11 +129,12 @@ object CryptoTaxHistory {
         parseCsvWithDiagnostics(text, source).trades
 
     fun parseCsvWithDiagnostics(text: String, source: String): CryptoTaxCsvResult {
-        val lines = text.lineSequence().filter { it.isNotBlank() }.toList()
-        if (lines.size < 2) return CryptoTaxCsvResult(emptyList(), listOf(
+        val lines = text.lineSequence().toList()
+        val headerIndex = lines.indexOfFirst { it.isNotBlank() }
+        if (headerIndex < 0 || lines.drop(headerIndex + 1).none { it.isNotBlank() }) return CryptoTaxCsvResult(emptyList(), listOf(
             CryptoTaxImportIssue(source, null, "File has no transaction rows.", "")
         ))
-        val header = csvRow(lines.first()).map { it.trim().lowercase(Locale.US).replace(" ", "").replace("_", "") }
+        val header = csvRow(lines[headerIndex]).map { it.trim().lowercase(Locale.US).replace(" ", "").replace("_", "") }
         fun index(vararg names: String) = names.firstNotNullOfOrNull { n -> header.indexOf(n.lowercase(Locale.US).replace(" ", "").replace("_", "")).takeIf { it >= 0 } } ?: -1
         val timeIdx = index("time", "timestamp", "datetime", "date(utc)", "date")
         val symbolIdx = index("symbol", "pair", "market")
@@ -148,10 +149,11 @@ object CryptoTaxHistory {
         if (timeIdx < 0 || symbolIdx < 0) throw IllegalArgumentException("CSV needs date/time and symbol/pair columns. Choose a Binance trade-history export.")
         val parsed = mutableListOf<HistoricalCryptoTrade>()
         val issues = mutableListOf<CryptoTaxImportIssue>()
-        lines.drop(1).forEachIndexed { rowNo, line ->
+        lines.drop(headerIndex + 1).forEachIndexed { rowNo, line ->
+            if (line.isBlank()) return@forEachIndexed
             val c = csvRow(line)
             fun value(i: Int) = if (i in c.indices) c[i].trim() else ""
-            val rowNumber = rowNo + 2
+            val rowNumber = headerIndex + rowNo + 2
             val timestamp = parseTimestamp(value(timeIdx))
             if (timestamp == null) {
                 issues += CryptoTaxImportIssue(source, rowNumber, "Missing or unrecognized date/time.", line.take(180))
