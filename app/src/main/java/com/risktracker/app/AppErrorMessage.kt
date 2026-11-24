@@ -1,5 +1,7 @@
 package com.risktracker.app
 
+import android.util.Log
+
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -11,6 +13,7 @@ import java.util.concurrent.TimeoutException
  */
 internal object AppErrorMessage {
     fun from(error: Throwable, fallback: String): String {
+        Log.w("RiskTracker", fallback, error)
         val chain = generateSequence(error) { it.cause }.take(8).toList()
         val text = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
         val types = chain.map { it.javaClass.simpleName.lowercase() }
@@ -26,7 +29,7 @@ internal object AppErrorMessage {
                 "The request timed out. Please try again."
             "http 401" in text || "http 403" in text || "unauthorized" in text || "api-key" in text ->
                 "Access was denied. Check your read-only API credentials and permissions."
-            Regex("""http 5\\d\\d""").containsMatchIn(text) ||
+            Regex("""http 5\d\d""").containsMatchIn(text) ||
                 "server error" in text || "service unavailable" in text ->
                 "The service is temporarily unavailable. Please try again shortly."
             chain.any { it is IOException } || types.any { "connect" in it } ->
