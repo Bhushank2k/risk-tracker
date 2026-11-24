@@ -15,8 +15,8 @@ class BinanceFillCsvImporterTest {
     private val identicalRow = "2025-05-01 10:00:00,BTCUSDT,BUY,100,0.5,50,0.01,USDT,order-1\n"
 
     @Test fun parsesAttachedUsdtFeeAndExactBinanceFuturesHeaders() {
-        val csv = "\uFEFFUid,Time,Symbol,Side,Price,Quantity,Amount,Fee,Realized Profit,Buyer,Maker,Trade ID,Order ID\\n" +
-            "90488738,2026-11-24 13:46:41,LISTAUSDT,SELL,0.11175,41,4.58175,0.00229087USDT,0.20177378,false,false,154376830,2033186077\\n"
+        val csv = "\uFEFFUid,Time,Symbol,Side,Price,Quantity,Amount,Fee,Realized Profit,Buyer,Maker,Trade ID,Order ID\n" +
+            "90488738,2026-11-24 13:46:41,LISTAUSDT,SELL,0.11175,41,4.58175,0.00229087USDT,0.20177378,false,false,154376830,2033186077\n"
         val report = parse(csv)
         assertEquals(1, report.fills.size)
         assertEquals(0.00229087, report.fills.single().fee, 1e-12)
