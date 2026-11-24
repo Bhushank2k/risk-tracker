@@ -692,7 +692,7 @@ fun LiveTradesScreen() {
                 liveTrades = rows
                 status = ""
             } catch (e: Exception) {
-                status = e.message ?: "Could not load live trades. Check API permissions and connection."
+                status = AppErrorMessage.from(e, "Could not load live trades. Check API access and try again.")
             } finally {
                 loading = false
             }
@@ -1002,7 +1002,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
     val quickSetup = remember { QuickSetupProfileStore.load(context) }
     var pendingBackupRaw by remember { mutableStateOf<String?>(null) }
     val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = "Export failed: " + (e.message ?: "unknown error") }
+        if (uri != null) try { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(store.exportBackup()) }; backupMessage = "Backup exported." } catch (e: Exception) { backupMessage = AppErrorMessage.from(e, "Backup export failed. Check storage access and try again.") }
     }
     val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -1011,7 +1011,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                 pendingBackupRaw = raw
                 backupMessage = "Backup file loaded. Confirm below before replacing current journal and daily records."
             } catch (e: Exception) {
-                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
+                backupMessage = AppErrorMessage.from(e, "Backup could not be restored. Check that the file is valid.")
             }
         }
     }
@@ -1055,7 +1055,7 @@ fun MoreScreen(store: Store, entries: List<PnlEntry>, trades: List<TradeEntry>, 
                                 onRestore(store.importBackup(raw))
                                 backupMessage = "Backup restored. The selected backup replaced current daily P&L and journal entries."
                             } catch (e: Exception) {
-                                backupMessage = "Restore failed: " + (e.message ?: "invalid backup")
+                                backupMessage = AppErrorMessage.from(e, "Backup could not be restored. Check that the file is valid.")
                             }
                         }
                     }) { Text("Replace records") }
