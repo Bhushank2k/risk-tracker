@@ -55,8 +55,8 @@ data class CryptoTaxImportPreview(
     val trades: List<HistoricalCryptoTrade>,
     val newRecordCount: Int,
     val duplicateRecordCount: Int,
-    val firstTimestamp: Long,
-    val lastTimestamp: Long,
+    val firstTimestamp: Long?,
+    val lastTimestamp: Long?,
     val issues: List<CryptoTaxImportIssue> = emptyList()
 )
 
@@ -195,16 +195,13 @@ object CryptoTaxHistory {
     fun previewUri(context: Context, uri: Uri, existing: List<HistoricalCryptoTrade>): CryptoTaxImportPreview {
         val result = importUriWithDiagnostics(context, uri)
         val incoming = result.trades
-        if (incoming.isEmpty()) throw IllegalArgumentException(
-            result.issues.firstOrNull()?.reason ?: "No supported trade rows found in this file."
-        )
         val (_, added) = deduplicate(existing, incoming)
         return CryptoTaxImportPreview(
             trades = incoming,
             newRecordCount = added,
             duplicateRecordCount = incoming.size - added,
-            firstTimestamp = incoming.minOf { it.timestamp },
-            lastTimestamp = incoming.maxOf { it.timestamp },
+            firstTimestamp = incoming.minOfOrNull { it.timestamp },
+            lastTimestamp = incoming.maxOfOrNull { it.timestamp },
             issues = result.issues
         )
     }
@@ -232,11 +229,12 @@ object CryptoTaxHistory {
                                 if (count <= 0) break
                                 bytes.write(buffer, 0, count)
                             }
+                            val entryName = entry.name
                             val result = runCatching {
-                                parseCsvWithDiagnostics(bytes.toString(Charsets.UTF_8.name()), entry.name)
+                                parseCsvWithDiagnostics(bytes.toString(Charsets.UTF_8.name()), entryName)
                             }.getOrElse { error ->
                                 CryptoTaxCsvResult(emptyList(), listOf(CryptoTaxImportIssue(
-                                    entry.name, null, error.message ?: "Could not parse CSV file.", ""
+                                    entryName, null, error.message ?: "Could not parse CSV file.", ""
                                 )))
                             }
                             imported += result.trades
