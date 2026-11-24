@@ -6,7 +6,7 @@ import org.junit.Test
 class BinanceSyncStatusTest {
     @Test
     fun successfulSyncIsExplicitlyWindowBounded() {
-        assertEquals("Up to date (7-day window)", classifyBinanceSyncState(
+        assertEquals("Synced (recent + historical backfill)", classifyBinanceSyncState(
             success = true,
             failureCount = 0,
             discoverySucceeded = 3
@@ -58,6 +58,23 @@ class BinanceSyncStatusTest {
         val batch = selectBinanceSymbolBatch(listOf("ETHUSDT", "BTCUSDT"), offset = 99)
         assertEquals(listOf("BTCUSDT", "ETHUSDT"), batch.first)
         assertEquals(0, batch.second)
+    }
+
+    @Test
+    fun historicalBackfillUsesAtMostSevenDayWindows() {
+        val start = 1_000L
+        val end = start + 20L * 24 * 60 * 60 * 1000
+        val window = nextBinanceBackfillWindow(start, end)!!
+        assertEquals(start, window.first)
+        assertEquals(7L * 24 * 60 * 60 * 1000, window.last - window.first + 1)
+    }
+
+    @Test
+    fun historicalBackfillFinalWindowStopsAtEnd() {
+        val end = 10_000L
+        val window = nextBinanceBackfillWindow(end - 100L, end)!!
+        assertEquals(end, window.last)
+        assertEquals(null, nextBinanceBackfillWindow(end + 1L, end))
     }
 
     @Test
