@@ -38,4 +38,15 @@ class AppErrorMessageTest {
             AppErrorMessage.from(IOException("raw server payload and internal details"), "Could not load data. Try again.")
         )
     }
+    @Test fun mapsAuthorizationAndServerErrorsWithoutRawDetails() {
+        assertEquals(
+            "Access was denied. Check your read-only API credentials and permissions.",
+            AppErrorMessage.from(IllegalStateException("HTTP 403: private response body"), "Fallback")
+        )
+        assertEquals(
+            "The service is temporarily unavailable. Please try again shortly.",
+            AppErrorMessage.from(IllegalStateException("HTTP 503: upstream diagnostic"), "Fallback")
+        )
+    }
+
 }
