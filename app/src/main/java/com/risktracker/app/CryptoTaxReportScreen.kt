@@ -156,6 +156,24 @@ fun CryptoTaxReportScreen() {
                             Text("Detected rows: ${preview.trades.size}")
                             Text("New records: ${preview.newRecordCount}")
                             Text("Already present: ${preview.duplicateRecordCount}")
+                            if (preview.issues.isNotEmpty()) {
+                                Text("Rows needing review: ${preview.issues.size}", color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.titleSmall)
+                                preview.issues.take(20).forEach { issue ->
+                                    val location = issue.rowNumber?.let { "row $it" } ?: "file"
+                                    Text("${issue.fileName} · $location: ${issue.reason}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error)
+                                    if (issue.sample.isNotBlank()) Text(issue.sample,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (preview.issues.size > 20) Text("Showing first 20 of ${preview.issues.size} issues.",
+                                    style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("No skipped rows detected.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary)
+                            }
                             Text("Financial years: FY $firstYear–${(lastYear + 1).toString().takeLast(2)}" +
                                 if (firstYear == lastYear) "" else " (through FY $lastYear–${(lastYear + 1).toString().takeLast(2)})")
                             Text("Nothing has been saved yet. Existing records remain unchanged until you confirm.",
