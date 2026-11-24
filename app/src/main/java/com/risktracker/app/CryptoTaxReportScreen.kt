@@ -148,16 +148,38 @@ fun CryptoTaxReportScreen() {
                 }
                 Text("Rows stored: ${trades.size} · Financial years found: ${trades.map { it.year }.distinct().size}", style = MaterialTheme.typography.bodyMedium)
                 pendingImport?.let { preview ->
-                    val firstYear = preview.trades.minOf { it.year }
-                    val lastYear = preview.trades.maxOf { it.year }
+                    val firstYear = preview.trades.minOfOrNull { it.year }
+                    val lastYear = preview.trades.maxOfOrNull { it.year }
                     RiskCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Review import before saving", style = MaterialTheme.typography.titleSmall)
                             Text("Detected rows: ${preview.trades.size}")
                             Text("New records: ${preview.newRecordCount}")
                             Text("Already present: ${preview.duplicateRecordCount}")
-                            Text("Financial years: FY $firstYear–${(lastYear + 1).toString().takeLast(2)}" +
-                                if (firstYear == lastYear) "" else " (through FY $lastYear–${(lastYear + 1).toString().takeLast(2)})")
+                            if (preview.issues.isNotEmpty()) {
+                                Text("Rows needing review: ${preview.issues.size}", color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.titleSmall)
+                                preview.issues.take(20).forEach { issue ->
+                                    val location = issue.rowNumber?.let { "row $it" } ?: "file"
+                                    Text("${issue.fileName} · $location: ${issue.reason}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error)
+                                    if (issue.sample.isNotBlank()) Text(issue.sample,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (preview.issues.size > 20) Text("Showing first 20 of ${preview.issues.size} issues.",
+                                    style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("No skipped rows detected.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (firstYear != null && lastYear != null) {
+                                Text("Financial years: FY $firstYear–${(lastYear + 1).toString().takeLast(2)}" +
+                                    if (firstYear == lastYear) "" else " (through FY $lastYear–${(lastYear + 1).toString().takeLast(2)})")
+                            } else {
+                                Text("No valid transaction rows were detected.", color = MaterialTheme.colorScheme.error)
+                            }
                             Text("Nothing has been saved yet. Existing records remain unchanged until you confirm.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Button(onClick = {
@@ -166,7 +188,7 @@ fun CryptoTaxReportScreen() {
                                 trades = merged
                                 pendingImport = null
                                 status = "Imported ${preview.trades.size} rows; added $added new records; skipped ${preview.trades.size - added} duplicates."
-                            }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Confirm and import") }
+                            }, enabled = !busy && preview.trades.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Confirm and import") }
                             OutlinedButton(onClick = {
                                 pendingImport = null
                                 status = "Import cancelled. No records were changed."
