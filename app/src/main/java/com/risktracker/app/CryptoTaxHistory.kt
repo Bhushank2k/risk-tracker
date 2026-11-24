@@ -169,7 +169,21 @@ object CryptoTaxHistory {
                 realizedPnl = trade.realizedPnl, time = trade.timestamp, orderId = ""
             )
         }
-        return BinanceAutoJournalStore.merge(context, fills)
+        // Re-importing the same no-ID CSV through the second importer should not add a second copy.
+        val existingCsv = BinanceAutoJournalStore.load(context).filter { it.id.contains(":csv:") }
+        val consumed = mutableSetOf<String>()
+        val additions = fills.filterNot { incoming ->
+            val duplicate = existingCsv.firstOrNull { saved ->
+                saved.id !in consumed && saved.market == incoming.market &&
+                    saved.symbol == incoming.symbol && saved.side == incoming.side &&
+                    kotlin.math.abs(saved.time - incoming.time) <= 1_000L &&
+                    kotlin.math.abs(saved.quantity - incoming.quantity) <= maxOf(1e-10, kotlin.math.abs(saved.quantity) * 1e-8) &&
+                    kotlin.math.abs(saved.price - incoming.price) <= maxOf(1e-8, kotlin.math.abs(saved.price) * 1e-8)
+            }
+            if (duplicate != null) consumed += duplicate.id
+            duplicate != null
+        }
+        return BinanceAutoJournalStore.merge(context, additions)
     }
 
     fun clear(context: Context) {
