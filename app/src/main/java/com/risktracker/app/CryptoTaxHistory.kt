@@ -96,7 +96,7 @@ object CryptoTaxHistory {
     fun load(context: Context): List<HistoricalCryptoTrade> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
         val arr = JSONArray(raw)
-        return (0 until arr.length()).mapNotNull { i ->
+        val imported = (0 until arr.length()).mapNotNull { i ->
             runCatching {
                 val o = arr.getJSONObject(i)
                 HistoricalCryptoTrade(
@@ -110,6 +110,72 @@ object CryptoTaxHistory {
                 )
             }.getOrNull()
         }.sortedBy { it.timestamp }
+        val journal = BinanceAutoJournalStore.load(context).map { fill ->
+            HistoricalCryptoTrade(
+                id = fill.id, timestamp = fill.time, exchange = fill.exchange,
+                market = if (fill.market.contains("Futures", true)) "Futures" else "Spot",
+                symbol = fill.symbol, side = fill.side, quantity = fill.quantity,
+                price = fill.price, quoteAmount = fill.quoteAmount, fee = fill.fee,
+                feeAsset = fill.feeAsset, realizedPnl = fill.realizedPnl,
+                source = if (fill.id.contains(":csv:")) "Binance journal CSV" else "Binance API sync"
+            )
+        }
+        return mergeJournalHistory(imported, journal)
+    }
+
+    /** Adds saved API/CSV journal fills to the report without collapsing separate same-source partial fills. */
+    internal fun mergeJournalHistory(
+        imported: List<HistoricalCryptoTrade>,
+        journal: List<HistoricalCryptoTrade>
+    ): List<HistoricalCryptoTrade> {
+        val merged = imported.toMutableList()
+        journal.forEach { fill ->
+            val exact = merged.indexOfFirst { it.id == fill.id }
+            if (exact >= 0) {
+                merged[exact] = fill
+            } else {
+                val matchingImported = merged.indexOfFirst { saved ->
+                    !saved.source.startsWith("Binance journal ") &&
+                        sameHistoricalExecution(saved, fill)
+                }
+                if (matchingImported >= 0) {
+                    if (fill.source == "Binance API sync") merged[matchingImported] = fill
+                } else {
+                    merged += fill
+                }
+            }
+        }
+        return merged.sortedBy { it.timestamp }
+    }
+
+    private fun sameHistoricalExecution(a: HistoricalCryptoTrade, b: HistoricalCryptoTrade): Boolean {
+        val marketA = if (a.market.contains("Futures", true)) "Futures" else "Spot"
+        val marketB = if (b.market.contains("Futures", true)) "Futures" else "Spot"
+        if (marketA != marketB || a.symbol != b.symbol || a.side != b.side) return false
+        return kotlin.math.abs(a.timestamp - b.timestamp) <= 1_000L &&
+            kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+            kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+    }
+
+    /** Makes a confirmed tax-report CSV import visible in the shared journal and P&L calendar. */
+    fun mergeIntoJournal(context: Context, trades: List<HistoricalCryptoTrade>): Int {
+        val fills = trades.map { trade ->
+            val market = if (trade.market.contains("Futures", true)) "USDⓈ-M Futures" else "Spot"
+            val id = if (trade.id.startsWith("binance:")) trade.id else "binance:csv:tax:${trade.id}"
+            BinanceJournalFill(
+                id = id, exchange = trade.exchange, market = market, symbol = trade.symbol,
+                side = trade.side, quantity = trade.quantity, price = trade.price,
+                quoteAmount = trade.quoteAmount, fee = trade.fee, feeAsset = trade.feeAsset,
+                realizedPnl = trade.realizedPnl, time = trade.timestamp, orderId = ""
+            )
+        }
+        return BinanceAutoJournalStore.merge(context, fills)
+    }
+
+    fun clear(context: Context) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()) {
+            "Could not clear imported crypto trade history."
+        }
     }
 
     fun save(context: Context, trades: List<HistoricalCryptoTrade>) {
@@ -180,8 +246,11 @@ object CryptoTaxHistory {
                 listOf("Binance", market, timestamp.toString(), symbol, side, qty.toString(),
                     price.toString(), quote.toString(), fee.toString(), feeAsset).joinToString("|")
             }
+            val stableId = if (exchangeTradeId.isNotBlank()) {
+                "binance:${if (market == "Futures") "futures" else "spot"}:$symbol:$exchangeTradeId"
+            } else "csv:" + sha256(identity)
             parsed += HistoricalCryptoTrade(
-                id = "csv:" + sha256(identity),
+                id = stableId,
                 timestamp = timestamp, exchange = "Binance", market = market,
                 symbol = symbol, side = side, quantity = qty, price = price, quoteAmount = quote,
                 fee = fee, feeAsset = feeAsset, realizedPnl = pnl, source = source
