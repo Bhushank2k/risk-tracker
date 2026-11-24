@@ -26,7 +26,7 @@ class CryptoTaxHistoryTest {
         assertEquals("USDT", trade.feeAsset)
 
         val conflicting = csv.replace("0.00229087USDT", "0.00229087oops").replace(",Trade ID", ",Fee Asset,Trade ID")
-            .replace(",0.20177378,154376830", ",USDT,0.20177378,154376830")
+            .replace(",0.20177378,154376830", ",0.20177378,USDT,154376830")
         val result = CryptoTaxHistory.parseCsvWithDiagnostics(conflicting, "binance-futures-trade-history.csv")
         assertTrue(result.trades.isEmpty())
         assertEquals(1, result.issues.size)
