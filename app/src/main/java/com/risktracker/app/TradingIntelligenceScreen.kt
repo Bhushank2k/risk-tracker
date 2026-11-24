@@ -47,15 +47,19 @@ fun TradingIntelligenceScreen(
     var volatilityLoading by remember { mutableStateOf(true) }
     var volatilityError by remember { mutableStateOf<String?>(null) }
     var volatilityReports by remember { mutableStateOf<List<VolatilityForecast>>(emptyList()) }
+    var marketRegimes by remember { mutableStateOf<List<MarketRegimeAssessment>>(emptyList()) }
     LaunchedEffect(Unit) {
         volatilityLoading = true
         volatilityError = null
         try {
-            val btc = MarketActivityDataSource.candles("BTCUSDT", MarketInterval.D1, 120)
-            val eth = MarketActivityDataSource.candles("ETHUSDT", MarketInterval.D1, 120)
-            volatilityReports = listOfNotNull(
-                VolatilityForecastEngine.forecast("BTCUSDT", btc),
-                VolatilityForecastEngine.forecast("ETHUSDT", eth)
+            val btc = MarketActivityDataSource.candles("BTCUSDT", MarketInterval.D1, 240)
+            val eth = MarketActivityDataSource.candles("ETHUSDT", MarketInterval.D1, 240)
+            val btcVolatility = VolatilityForecastEngine.forecast("BTCUSDT", btc)
+            val ethVolatility = VolatilityForecastEngine.forecast("ETHUSDT", eth)
+            volatilityReports = listOf(btcVolatility, ethVolatility)
+            marketRegimes = listOf(
+                MarketRegimeEngine.classify("BTCUSDT", btc, btcVolatility),
+                MarketRegimeEngine.classify("ETHUSDT", eth, ethVolatility)
             )
         } catch (error: CancellationException) {
             throw error
@@ -127,6 +131,7 @@ fun TradingIntelligenceScreen(
         PersonalTradingCoachSection(manualTrades)
         ProfitProtectionSection(reconciled, manualTrades, asOfDate, dailyLossLimit)
         VolatilityForecastSection(volatilityReports, volatilityLoading, volatilityError)
+        MarketRegimeSection(marketRegimes, volatilityLoading, volatilityError)
     }
 }
 
@@ -386,5 +391,42 @@ private fun VolatilityForecastSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MarketRegimeSection(
+    reports: List<MarketRegimeAssessment>,
+    loading: Boolean,
+    error: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Market regime", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("A rule-based BTC/ETH daily trend classification using EMA alignment, 20-day momentum, RSI and the volatility percentile.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (loading) {
+            Card(Modifier.fillMaxWidth()) { Text("Classifying completed daily candles…", Modifier.padding(14.dp)) }
+        } else if (error != null) {
+            Card(Modifier.fillMaxWidth()) { Text(error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
+        } else if (reports.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) { Text("No market regime assessment is available.", Modifier.padding(14.dp)) }
+        } else {
+            reports.forEach { report ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(report.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(report.regime.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        if (report.confidencePercent != null) {
+                            Text("Rule-alignment score: " + report.confidencePercent.num(0) + "% · not a probability")
+                        }
+                        Text("Completed daily candles: " + report.sampleCount)
+                        report.evidence.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
+        Text("Regime labels describe indicator alignment, not a prediction of future direction. The first version does not yet personalize strategy recommendations by regime.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
