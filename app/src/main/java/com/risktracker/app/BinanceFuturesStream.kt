@@ -128,16 +128,16 @@ internal object BinanceFuturesStream {
             val selection = requestedSymbols.map { it.lowercase() }.distinct().sorted()
             val nextInterval = candleInterval.api
             if (selection != requestedKlineSymbols || nextInterval != requestedKlineInterval) {
-            requestedKlineSymbols = selection
-            requestedKlineInterval = nextInterval
-            klineSubscriptionGeneration++
-            klineSocket?.close(1000, "Updating kline subscriptions")
-            pendingKlineSocket?.close(1000, "Updating kline subscriptions")
-            klineSocket = null
-            pendingKlineSocket = null
-            klineConnecting.set(false)
-            klineReconnects.set(0)
-        }
+                requestedKlineSymbols = selection
+                requestedKlineInterval = nextInterval
+                klineSubscriptionGeneration++
+                klineSocket?.close(1000, "Updating kline subscriptions")
+                pendingKlineSocket?.close(1000, "Updating kline subscriptions")
+                klineSocket = null
+                pendingKlineSocket = null
+                klineConnecting.set(false)
+                klineReconnects.set(0)
+            }
             if (requestedKlineSymbols.isNotEmpty() && requestedKlineInterval != null &&
                 klineSocket == null && !klineConnecting.get()) connectKlines()
         }
