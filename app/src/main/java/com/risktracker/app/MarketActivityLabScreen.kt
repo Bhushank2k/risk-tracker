@@ -134,9 +134,11 @@ fun MarketActivityLabScreen() {
             interval = saved.interval
             selected = saved.selectedSymbol.takeIf { it in symbols } ?: symbols.first()
             candleHistory = restored
-            val restoredRows = restored.mapNotNull { (key, candles) ->
-                val symbol = key.substringBefore(':')
-                runCatching { MarketActivityEngine.analyze(symbol, saved.interval, candles, config.thresholds) }.getOrNull()
+            val restoredRows = withContext(Dispatchers.Default) {
+                restored.mapNotNull { (key, candles) ->
+                    val symbol = key.substringBefore(':')
+                    runCatching { MarketActivityEngine.analyze(symbol, saved.interval, candles, config.thresholds) }.getOrNull()
+                }
             }
             rows = restoredRows.filter { it.score.total >= config.minimumScore }.sortedByDescending { it.score.total }
             updated = saved.savedAt
