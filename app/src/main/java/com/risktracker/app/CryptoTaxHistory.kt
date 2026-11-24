@@ -139,7 +139,7 @@ object CryptoTaxHistory {
                         sameHistoricalExecution(saved, fill)
                 }
                 if (matchingImported >= 0) {
-                    if (fill.source == "Binance API sync") merged[matchingImported] = fill
+                    if (fill.source == "Journal API sync") merged[matchingImported] = fill
                 } else {
                     merged += fill
                 }
