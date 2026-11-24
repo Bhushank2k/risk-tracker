@@ -65,7 +65,7 @@ object BinanceFillCsvImporter {
                 val raw = value.trim()
                 if (raw.isEmpty()) return null
                 val numeric = "[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
-                val pattern = if (allowAssetSuffix) Regex("^($numeric)(?:\\s+[A-Za-z]{2,10})?$") else Regex("^($numeric)$")
+                val pattern = if (allowAssetSuffix) Regex("^($numeric)(?:\\s*[A-Za-z]{2,10})?$") else Regex("^($numeric)$")
                 val match = pattern.matchEntire(raw) ?: return null
                 return match.groupValues[1].toDoubleOrNull()?.takeIf { it.isFinite() }
             }
