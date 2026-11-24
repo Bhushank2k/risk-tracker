@@ -245,7 +245,8 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Button(onClick = {
                                 val (merged, added) = CryptoTaxHistory.deduplicate(trades, preview.trades)
-                                CryptoTaxHistory.save(context, merged)
+                                // Keep the report store limited to CSV imports; API/CSV journal fills remain canonical in the shared journal.
+                                CryptoTaxHistory.save(context, merged.filterNot { it.source.startsWith("Journal ") })
                                 val journalAdded = CryptoTaxHistory.mergeIntoJournal(context, preview.trades)
                                 trades = CryptoTaxHistory.load(context)
                                 pendingImport = null
