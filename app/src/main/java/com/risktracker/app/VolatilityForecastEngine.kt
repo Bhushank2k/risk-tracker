@@ -10,7 +10,7 @@ data class VolatilityForecast(
     val recentVolatilityPercent: Double?,
     val volatilityPercentile: Double?,
     val meanAbsoluteDailyMovePercent: Double?,
-    val 90thPercentileAbsoluteMovePercent: Double?,
+    val p90AbsoluteDailyMovePercent: Double?,
     val regime: VolatilityRegime,
     val reliabilityLabel: String
 )
@@ -60,7 +60,7 @@ object VolatilityForecastEngine {
             recentVolatilityPercent = recentVol,
             volatilityPercentile = rank,
             meanAbsoluteDailyMovePercent = meanAbsolute,
-            90thPercentileAbsoluteMovePercent = p90,
+            p90AbsoluteDailyMovePercent = p90,
             regime = regime,
             reliabilityLabel = reliability
         )
