@@ -40,4 +40,15 @@ class BinanceFiveYearTradeBackfillTest {
         assertEquals(now, windows.last().end)
         assertTrue(windows.last().end < windows.last().start + 366L * 24 * 60 * 60 * 1000)
     }
+    @Test
+    fun parsesBinanceIpBanExpiryFrom418Message() {
+        assertEquals(1795534036482L, parseBinanceIpBanUntilMillis(
+            "Way too many requests; IP(152.56.15.155) banned until 1795534036482. Please use websocket."
+        ))
+    }
+
+    @Test
+    fun missingBanExpiryReturnsNull() {
+        assertEquals(null, parseBinanceIpBanUntilMillis("Way too many requests"))
+    }
 }
