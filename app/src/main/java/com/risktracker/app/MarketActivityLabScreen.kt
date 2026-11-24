@@ -79,7 +79,7 @@ fun MarketActivityLabScreen() {
                     replayImportStatus = "Replay complete. Review the out-of-sample sample count before interpreting results."
                 }.onFailure {
                     importedReplay = null
-                    replayImportStatus = it.message ?: "Unable to replay this CSV."
+                    replayImportStatus = AppErrorMessage.from(it, "Unable to replay this CSV. Check the file and try again.")
                 }
                 importingReplay = false
             }
@@ -259,7 +259,7 @@ fun MarketActivityLabScreen() {
                         if(selected !in next.symbols) selected=next.symbols.first()
                         configStatus="Settings saved."
                         refresh()
-                    }.onFailure{configStatus=it.message ?: "Unable to save settings."}
+                    }.onFailure{configStatus=AppErrorMessage.from(it, "Unable to save settings. Try again.")}
                 }){Text("Save & scan")}
             }
             if(configStatus.isNotBlank())Text(configStatus,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
