@@ -41,7 +41,7 @@ object DailyPnlForecastEngine {
         val outcomes = rows.mapNotNull { row ->
             val date = canonicalPnlDate(row.date) ?: return@mapNotNull null
             row.selectedPnl.takeIf { date < cutoff && it.isFinite() }
-        }.takeLast(lookbackDays)
+        }.sortedBy { canonicalPnlDate(it.first) }.takeLast(lookbackDays)
 
         val n = outcomes.size
         val reliability = when {
