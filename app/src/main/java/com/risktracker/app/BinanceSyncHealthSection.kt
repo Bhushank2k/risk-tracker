@@ -128,5 +128,6 @@ fun BinanceSyncHealthSection() {
                 }
             }
         }
+        BinanceFiveYearTradeBackfillSection()
     }
 }
