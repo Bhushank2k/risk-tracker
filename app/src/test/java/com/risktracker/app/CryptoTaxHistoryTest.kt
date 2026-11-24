@@ -95,6 +95,38 @@ class CryptoTaxHistoryTest {
         assertEquals(0, added)
     }
 
+    @Test fun tradeIdUsesSameCanonicalIdentityAsBinanceApiFill() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId\\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101\\n"
+        val trade = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv").single()
+        assertEquals("binance:futures:BTCUSDT:tx-101", trade.id)
+    }
+
+    @Test fun journalApiFillReconcilesWithHistoricalCsvTradeId() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId\\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101\\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val apiFill = imported.single().copy(
+            id = "binance:futures:BTCUSDT:tx-101",
+            source = "Journal API sync",
+            market = "Futures"
+        )
+        val merged = CryptoTaxHistory.mergeJournalHistory(imported, listOf(apiFill))
+        assertEquals(1, merged.size)
+        assertEquals("Journal API sync", merged.single().source)
+    }
+
+    @Test fun identicalSameSourceJournalFillsRemainSeparateExecutions() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val journal = listOf(
+            imported.single().copy(id = "binance:futures:BTCUSDT:fill-1", source = "Journal API sync", market = "Futures"),
+            imported.single().copy(id = "binance:futures:BTCUSDT:fill-2", source = "Journal API sync", market = "Futures")
+        )
+        assertEquals(2, CryptoTaxHistory.mergeJournalHistory(emptyList(), journal).size)
+    }
+
     @Test fun fallbackTradeFingerprintDoesNotDependOnFilenameOrRowNumber() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n"
