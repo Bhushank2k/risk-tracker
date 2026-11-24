@@ -294,7 +294,7 @@ private fun ProfitProtectionSection(
                 )
                 OutlinedTextField(
                     value = streakText,
-                    onValueChange = { streakText = it.filter(Char::isDigit).take(2); prefs.edit().putString("maximum_loss_streak", streakText).apply() },
+                    onValueChange = { value -> val updated = value.filter(Char::isDigit).take(2); streakText = updated; prefs.edit().putString("maximum_loss_streak", updated).apply() },
                     modifier = Modifier.fillMaxWidth(), label = { Text("Consecutive losing trades threshold (1–20)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
