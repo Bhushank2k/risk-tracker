@@ -67,7 +67,7 @@ private object BinanceReversalKlineSource {
   signals=ConfirmedReversalEngine.detect(symbol,data).takeLast(20).reversed()
   stats=withContext(Dispatchers.Default){ConfirmedReversalEngine.backtest(data)};updated=System.currentTimeMillis()
   if(data.size<60)error="Insufficient closed 15m candle history."
- }catch(e:Exception){error=e.message?:"Unable to load Binance Futures candles."}finally{loading=false}}}
+ }catch(e:Exception){error=AppErrorMessage.from(e, "Unable to load market candles. Check your connection and retry.")}finally{loading=false}}}
  LaunchedEffect(Unit){refresh()}
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
   item{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
