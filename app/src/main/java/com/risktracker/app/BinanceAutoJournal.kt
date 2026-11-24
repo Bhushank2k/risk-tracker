@@ -149,6 +149,25 @@ object BinanceAutoJournalStore {
             .putInt("symbol_cursor_${market.hashCode()}", cursor.coerceAtLeast(0)).apply()
     }
 
+    /** Per-symbol historical cursor. Long.MAX_VALUE means that symbol's API backfill is complete. */
+    fun backfillCursor(context: Context, market: String, symbol: String, initialStart: Long): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong("backfill_${market.hashCode()}_$symbol", initialStart)
+
+    fun saveBackfillCursor(context: Context, market: String, symbol: String, cursor: Long) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putLong("backfill_${market.hashCode()}_$symbol", cursor).apply()
+    }
+
+    fun backfillSymbolCursor(context: Context, market: String): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt("backfill_symbol_cursor_${market.hashCode()}", 0)
+
+    fun saveBackfillSymbolCursor(context: Context, market: String, cursor: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt("backfill_symbol_cursor_${market.hashCode()}", cursor.coerceAtLeast(0)).apply()
+    }
+
     fun lastSync(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
@@ -186,12 +205,22 @@ object BinanceAutoJournalStore {
 }
 
 /**
- * App-open and periodic best-effort sync. It refreshes symbols known from an earlier import,
- * current Spot holdings and currently open USDⓈ-M positions. Use Historical import to seed older
- * or closed symbols; Binance doesn't provide a single all-symbol user-trades endpoint.
+ * App-open and periodic sync. Recent data is refreshed while a durable per-symbol cursor backfills
+ * older API-available history in bounded windows. Binance has no all-symbol user-trades endpoint;
+ * historical CSV imports remain necessary for symbols outside the discovered/imported universe.
  */
+const val BINANCE_API_BACKFILL_DAYS = 180L
+const val BINANCE_BACKFILL_SYMBOLS_PER_RUN = 25
+
+/** Returns the next inclusive 7-day-or-smaller API window, or null when that symbol is complete. */
+internal fun nextBinanceBackfillWindow(cursor: Long, end: Long, windowMillis: Long = 7L * 24 * 60 * 60 * 1000): LongRange? {
+    require(cursor > 0L && end > 0L && windowMillis > 0L) { "Backfill timestamps and window must be positive." }
+    if (cursor > end) return null
+    return cursor..minOf(end, cursor + windowMillis - 1)
+}
+
 internal fun classifyBinanceSyncState(success: Boolean, failureCount: Int, discoverySucceeded: Int): String = when {
-    success -> "Up to date (7-day window)"
+    success -> "Synced (recent + historical backfill)"
     failureCount > 0 && discoverySucceeded > 0 -> "Partial sync"
     else -> "Sync failed"
 }
@@ -241,7 +270,9 @@ object BinanceAutoJournalRunner {
         val api = BinanceApi(credentials.first, credentials.second)
         val end = attemptedAt
         // Keep a rolling overlap to catch late updates and avoid gaps after the device is offline.
-        val start = end - 7L * 24 * 60 * 60 * 1000
+        val recentStart = end - 7L * 24 * 60 * 60 * 1000
+        val backfillStart = end - BINANCE_API_BACKFILL_DAYS * 24L * 60 * 60 * 1000
+        val backfillWindowMs = 7L * 24 * 60 * 60 * 1000
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
         val failures = mutableListOf<String>()
@@ -253,7 +284,7 @@ object BinanceAutoJournalRunner {
         runCatching { api.liveTrades().filter { it.market == "USDⓈ-M Futures" }.forEach { knownFutures += it.symbol } }
             .onSuccess { discoverySucceeded++ }
             .onFailure { failures += "Futures position discovery: ${it.message ?: "request failed"}" }
-        runCatching { knownFutures += api.recentFuturesSymbols(start, end) }
+        runCatching { knownFutures += api.recentFuturesSymbols(end - 90L * 24 * 60 * 60 * 1000, end) }
             .onSuccess { discoverySucceeded++ }
             .onFailure { failures += "Futures symbol discovery: ${it.message ?: "request failed"}" }
 
@@ -280,18 +311,47 @@ object BinanceAutoJournalRunner {
             futuresBatch.first.map { "USDⓈ-M Futures" to it }).forEach { (market, symbol) ->
             symbolsAttempted++
             val result = runCatching {
-                if (market == "Spot") api.spotExecutionHistory(symbol, start, end)
-                else api.futuresExecutionHistory(symbol, start, end)
+                if (market == "Spot") api.spotExecutionHistory(symbol, recentStart, end)
+                else api.futuresExecutionHistory(symbol, recentStart, end)
             }
             result.onSuccess { fetched += it }
-                .onFailure { symbolFailures++; failures += "$market $symbol: ${it.message ?: "request failed"}" }
+                .onFailure { symbolFailures++; failures += "$market $symbol recent: ${it.message ?: "request failed"}" }
+        }
+
+        // Backfill in bounded, resumable 7-day windows. Each symbol has a durable cursor.
+        var backfillWindowsFetched = 0
+        listOf("Spot" to knownSpot, "USDⓈ-M Futures" to knownFutures).forEach { (market, symbols) ->
+            val batch = selectBinanceSymbolBatch(
+                symbols, BinanceAutoJournalStore.backfillSymbolCursor(context, market),
+                limit = BINANCE_BACKFILL_SYMBOLS_PER_RUN
+            )
+            BinanceAutoJournalStore.saveBackfillSymbolCursor(context, market, batch.second)
+            batch.first.forEach { symbol ->
+                val cursor = BinanceAutoJournalStore.backfillCursor(context, market, symbol, backfillStart)
+                val window = nextBinanceBackfillWindow(cursor, end, backfillWindowMs)
+                if (window != null) {
+                    val result = runCatching {
+                        if (market == "Spot") api.spotExecutionHistory(symbol, window.first, window.last)
+                        else api.futuresExecutionHistory(symbol, window.first, window.last)
+                    }
+                    result.onSuccess { rows ->
+                        fetched += rows
+                        backfillWindowsFetched++
+                        val next = if (window.last >= end) Long.MAX_VALUE else window.last + 1
+                        BinanceAutoJournalStore.saveBackfillCursor(context, market, symbol, next)
+                    }.onFailure {
+                        symbolFailures++
+                        failures += "$market $symbol historical backfill: ${it.message ?: "request failed"}"
+                    }
+                }
+            }
         }
 
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Up to date (7-day window)" -> "Sync completed for the rolling 7-day window. Binance symbol discovery is automatic for current Spot holdings and Futures income/positions; older closed Spot pairs may not be discoverable through Binance's symbol-scoped trade-history API."
+            "Synced (recent + historical backfill)" -> "Recent executions refreshed. Historical backfill is progressing in resumable 7-day windows ($backfillWindowsFetched windows completed this run). Binance has no all-symbol trade endpoint; symbols outside the discovered/imported set and records outside API availability may require Binance CSV exports."
             "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."
@@ -306,7 +366,7 @@ object BinanceAutoJournalRunner {
             symbolsFailed = symbolFailures,
             fillsFetched = fetched.size,
             fillsInserted = inserted,
-            windowStart = start,
+            windowStart = recentStart,
             windowEnd = end
         ))
         inserted
