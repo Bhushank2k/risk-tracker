@@ -141,6 +141,17 @@ class CryptoTaxHistoryTest {
         assertEquals(2, CryptoTaxHistory.mergeJournalHistory(emptyList(), journal).size)
     }
 
+    @Test fun crossSourceFallbackMatchingIsOneToOneAndPreservesExtraPartialFill() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val journal = listOf(
+            imported.single().copy(id = "binance:csv:tax:fill-1", source = "Journal CSV import", market = "Futures"),
+            imported.single().copy(id = "binance:csv:tax:fill-2", source = "Journal CSV import", market = "Futures")
+        )
+        assertEquals(2, CryptoTaxHistory.mergeJournalHistory(imported, journal).size)
+    }
+
     @Test fun fallbackTradeFingerprintDoesNotDependOnFilenameOrRowNumber() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,Realized PnL\n" +
             "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,120\n"
