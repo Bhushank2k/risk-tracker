@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun TradingIntelligenceScreen(
@@ -41,6 +43,27 @@ fun TradingIntelligenceScreen(
     }
     val forecast = remember(reconciled, asOfDate) {
         DailyPnlForecastEngine.forecast(reconciled, asOfDate)
+    }
+    var volatilityLoading by remember { mutableStateOf(true) }
+    var volatilityError by remember { mutableStateOf<String?>(null) }
+    var volatilityReports by remember { mutableStateOf<List<VolatilityForecast>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        volatilityLoading = true
+        volatilityError = null
+        try {
+            val btc = MarketActivityDataSource.candles("BTCUSDT", MarketInterval.D1, 120)
+            val eth = MarketActivityDataSource.candles("ETHUSDT", MarketInterval.D1, 120)
+            volatilityReports = listOfNotNull(
+                VolatilityForecastEngine.forecast("BTCUSDT", btc),
+                VolatilityForecastEngine.forecast("ETHUSDT", eth)
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            volatilityError = AppErrorMessage.from(error, "Daily market candles are temporarily unavailable.")
+        } finally {
+            volatilityLoading = false
+        }
     }
 
     Column(
@@ -103,6 +126,7 @@ fun TradingIntelligenceScreen(
         PeriodForecastSection(reconciled, asOfDate)
         PersonalTradingCoachSection(manualTrades)
         ProfitProtectionSection(reconciled, manualTrades, asOfDate, dailyLossLimit)
+        VolatilityForecastSection(volatilityReports, volatilityLoading, volatilityError)
     }
 }
 
@@ -314,6 +338,52 @@ private fun ProfitProtectionSection(
                 }
                 Text("Peak tracking begins when this feature observes a current-day P&L update; earlier intraday peaks cannot be reconstructed from daily totals.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VolatilityForecastSection(
+    reports: List<VolatilityForecast>,
+    loading: Boolean,
+    error: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Tomorrow's volatility outlook", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Based on recent completed BTC and ETH daily candles. These are historical volatility descriptors, not directional price predictions.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (loading) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("Loading completed daily candles…", Modifier.padding(14.dp))
+            }
+        } else if (error != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Text(error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error)
+            }
+        } else if (reports.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("No volatility estimates are available.", Modifier.padding(14.dp))
+            }
+        } else {
+            reports.forEach { report ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(report.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (report.regime == VolatilityRegime.INSUFFICIENT) {
+                            Text("Not enough completed daily candles to estimate volatility.")
+                        } else {
+                            Text(report.regime.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Recent 20-session volatility: " + report.recentVolatilityPercent!!.num(2) + "%")
+                            Text("Historical volatility percentile: " + report.volatilityPercentile!!.num(0) + "th")
+                            Text("Mean absolute daily move: " + report.meanAbsoluteDailyMovePercent!!.num(2) + "%")
+                            Text("Recent 90th percentile absolute move: " + report.p90AbsoluteDailyMovePercent!!.num(2) + "%")
+                            Text(report.reliabilityLabel + " · " + report.sampleCount + " daily returns",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
         }
     }
