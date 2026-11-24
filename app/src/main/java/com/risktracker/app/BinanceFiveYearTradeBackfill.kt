@@ -46,7 +46,9 @@ internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis())
     repeat(5) {
         val start = cursor.timeInMillis
         cursor.add(Calendar.YEAR, 1)
-        val end = minOf(cursor.timeInMillis - 1L, now)
+        val nextYearBoundary = cursor.timeInMillis
+        // Include the current instant when the final annual boundary lands exactly on now.
+        val end = if (nextYearBoundary >= now) now else nextYearBoundary - 1L
         if (start <= end) result += FuturesTradeArchiveWindow(start, end, "${start}_${end}")
     }
     return result
