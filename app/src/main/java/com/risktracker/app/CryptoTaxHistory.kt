@@ -96,7 +96,7 @@ object CryptoTaxHistory {
     fun load(context: Context): List<HistoricalCryptoTrade> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
         val arr = JSONArray(raw)
-        return (0 until arr.length()).mapNotNull { i ->
+        val imported = (0 until arr.length()).mapNotNull { i ->
             runCatching {
                 val o = arr.getJSONObject(i)
                 HistoricalCryptoTrade(
@@ -110,6 +110,100 @@ object CryptoTaxHistory {
                 )
             }.getOrNull()
         }.sortedBy { it.timestamp }
+        val journal = BinanceAutoJournalStore.load(context).map { fill ->
+            HistoricalCryptoTrade(
+                id = fill.id, timestamp = fill.time, exchange = fill.exchange,
+                market = if (fill.market.contains("Futures", true)) "Futures" else "Spot",
+                symbol = fill.symbol, side = fill.side, quantity = fill.quantity,
+                price = fill.price, quoteAmount = fill.quoteAmount, fee = fill.fee,
+                feeAsset = fill.feeAsset, realizedPnl = fill.realizedPnl,
+                source = if (fill.id.contains(":csv:")) "Journal CSV import" else "Journal API sync"
+            )
+        }
+        return mergeJournalHistory(imported, journal)
+    }
+
+    /** Adds saved API/CSV journal fills to the report without collapsing separate same-source partial fills. */
+    internal fun mergeJournalHistory(
+        imported: List<HistoricalCryptoTrade>,
+        journal: List<HistoricalCryptoTrade>
+    ): List<HistoricalCryptoTrade> {
+        val merged = imported.toMutableList()
+        val consumedImported = mutableSetOf<Int>()
+        journal.forEach { fill ->
+            val exact = merged.indexOfFirst { it.id == fill.id }
+            if (exact >= 0) {
+                merged[exact] = fill
+            } else {
+                val matchingImported = merged.indices.firstOrNull { index ->
+                    index !in consumedImported &&
+                        !merged[index].source.startsWith("Journal ") &&
+                        sameHistoricalExecution(merged[index], fill)
+                } ?: -1
+                if (matchingImported >= 0) {
+                    consumedImported += matchingImported
+                    if (fill.source == "Journal API sync") merged[matchingImported] = fill
+                } else {
+                    merged += fill
+                }
+            }
+        }
+        return merged.sortedBy { it.timestamp }
+    }
+
+    private fun sameHistoricalExecution(a: HistoricalCryptoTrade, b: HistoricalCryptoTrade): Boolean {
+        val marketA = if (a.market.contains("Futures", true)) "Futures" else "Spot"
+        val marketB = if (b.market.contains("Futures", true)) "Futures" else "Spot"
+        if (marketA != marketB || a.symbol != b.symbol || a.side != b.side) return false
+        return kotlin.math.abs(a.timestamp - b.timestamp) <= 1_000L &&
+            kotlin.math.abs(a.quantity - b.quantity) <= maxOf(1e-10, kotlin.math.abs(a.quantity) * 1e-8) &&
+            kotlin.math.abs(a.price - b.price) <= maxOf(1e-8, kotlin.math.abs(a.price) * 1e-8)
+    }
+
+    /** Makes a confirmed tax-report CSV import visible in the shared journal and P&L calendar. */
+    fun mergeIntoJournal(context: Context, trades: List<HistoricalCryptoTrade>): Int {
+        val fallbackOccurrences = mutableMapOf<String, Int>()
+        val fills = trades.mapNotNull { trade ->
+            if (trade.symbol.isBlank() || trade.side !in setOf("BUY", "SELL") ||
+                trade.timestamp <= 0L || !trade.quantity.isFinite() || trade.quantity <= 0.0 ||
+                !trade.price.isFinite() || trade.price <= 0.0 ||
+                !trade.quoteAmount.isFinite() || trade.quoteAmount < 0.0 ||
+                !trade.fee.isFinite()
+            ) return@mapNotNull null
+            val market = if (trade.market.contains("Futures", true)) "USDⓈ-M Futures" else "Spot"
+            val id = if (trade.id.startsWith("binance:")) trade.id else {
+                val occurrence = fallbackOccurrences.getOrDefault(trade.id, 0)
+                fallbackOccurrences[trade.id] = occurrence + 1
+                "binance:csv:tax:${trade.id}:$occurrence"
+            }
+            BinanceJournalFill(
+                id = id, exchange = trade.exchange, market = market, symbol = trade.symbol,
+                side = trade.side, quantity = trade.quantity, price = trade.price,
+                quoteAmount = trade.quoteAmount, fee = trade.fee, feeAsset = trade.feeAsset,
+                realizedPnl = trade.realizedPnl, time = trade.timestamp, orderId = ""
+            )
+        }
+        // Re-importing the same no-ID CSV through the second importer should not add a second copy.
+        val existingCsv = BinanceAutoJournalStore.load(context).filter { it.id.contains(":csv:") }
+        val consumed = mutableSetOf<String>()
+        val additions = fills.filterNot { incoming ->
+            val duplicate = existingCsv.firstOrNull { saved ->
+                saved.id !in consumed && saved.market == incoming.market &&
+                    saved.symbol == incoming.symbol && saved.side == incoming.side &&
+                    kotlin.math.abs(saved.time - incoming.time) <= 1_000L &&
+                    kotlin.math.abs(saved.quantity - incoming.quantity) <= maxOf(1e-10, kotlin.math.abs(saved.quantity) * 1e-8) &&
+                    kotlin.math.abs(saved.price - incoming.price) <= maxOf(1e-8, kotlin.math.abs(saved.price) * 1e-8)
+            }
+            if (duplicate != null) consumed += duplicate.id
+            duplicate != null
+        }
+        return BinanceAutoJournalStore.merge(context, additions)
+    }
+
+    fun clear(context: Context) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()) {
+            "Could not clear imported crypto trade history."
+        }
     }
 
     fun save(context: Context, trades: List<HistoricalCryptoTrade>) {
@@ -167,11 +261,26 @@ object CryptoTaxHistory {
             val qty = value(qtyIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val price = value(priceIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val quote = value(quoteIdx).replace(",", "").toDoubleOrNull().takeIf { it != null && it > 0 } ?: qty * price
-            val fee = value(feeIdx).replace(",", "").toDoubleOrNull() ?: 0.0
+            val rawFee = value(feeIdx).replace(",", "")
+            val declaredFeeAsset = value(feeAssetIdx).uppercase(Locale.US)
+            val feePattern = Regex("^([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:\\s*([A-Za-z]{2,10}))?$")
+            val feeMatch = if (rawFee.isBlank()) null else feePattern.matchEntire(rawFee)
+            if (rawFee.isNotBlank() && feeMatch == null) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Invalid fee amount.", line.take(180))
+                return@forEachIndexed
+            }
+            val attachedFeeAsset = feeMatch?.groupValues?.getOrNull(2).orEmpty().uppercase(Locale.US)
+            if (attachedFeeAsset.isNotBlank() && declaredFeeAsset.isNotBlank() &&
+                attachedFeeAsset != declaredFeeAsset
+            ) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Attached fee asset conflicts with Fee Asset column.", line.take(180))
+                return@forEachIndexed
+            }
+            val fee = feeMatch?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: 0.0
             val sideRaw = value(sideIdx).uppercase(Locale.US)
             val side = when { sideRaw.contains("BUY") -> "BUY"; sideRaw.contains("SELL") -> "SELL"; else -> sideRaw.ifBlank { "UNKNOWN" } }
             val pnl = value(pnlIdx).replace(",", "").toDoubleOrNull()
-            val feeAsset = value(feeAssetIdx).uppercase(Locale.US)
+            val feeAsset = declaredFeeAsset.ifBlank { attachedFeeAsset }
             val market = if (source.contains("futures", true)) "Futures" else "Spot"
             val exchangeTradeId = value(tradeIdIdx)
             val identity = if (exchangeTradeId.isNotBlank()) {
@@ -180,8 +289,11 @@ object CryptoTaxHistory {
                 listOf("Binance", market, timestamp.toString(), symbol, side, qty.toString(),
                     price.toString(), quote.toString(), fee.toString(), feeAsset).joinToString("|")
             }
+            val stableId = if (exchangeTradeId.isNotBlank()) {
+                "binance:${if (market == "Futures") "futures" else "spot"}:$symbol:$exchangeTradeId"
+            } else "csv:" + sha256(identity)
             parsed += HistoricalCryptoTrade(
-                id = "csv:" + sha256(identity),
+                id = stableId,
                 timestamp = timestamp, exchange = "Binance", market = market,
                 symbol = symbol, side = side, quantity = qty, price = price, quoteAmount = quote,
                 fee = fee, feeAsset = feeAsset, realizedPnl = pnl, source = source
@@ -403,11 +515,19 @@ object CryptoTaxHistory {
     fun deduplicate(existing: List<HistoricalCryptoTrade>, incoming: List<HistoricalCryptoTrade>): Pair<List<HistoricalCryptoTrade>, Int> {
         val existingCounts = existing.groupingBy { it.id }.eachCount()
         val incomingCounts = mutableMapOf<String, Int>()
+        val consumedJournalMatches = mutableSetOf<Int>()
         val fresh = mutableListOf<HistoricalCryptoTrade>()
         incoming.forEach { trade ->
             val occurrence = (incomingCounts[trade.id] ?: 0) + 1
             incomingCounts[trade.id] = occurrence
-            if (occurrence > (existingCounts[trade.id] ?: 0)) fresh += trade
+            if (occurrence <= (existingCounts[trade.id] ?: 0)) return@forEach
+            val journalMatch = existing.indices.firstOrNull { index ->
+                index !in consumedJournalMatches &&
+                    existing[index].source.startsWith("Journal ") &&
+                    sameHistoricalExecution(existing[index], trade)
+            }
+            if (journalMatch != null) consumedJournalMatches += journalMatch
+            else fresh += trade
         }
         return (existing + fresh).sortedBy { it.timestamp } to fresh.size
     }

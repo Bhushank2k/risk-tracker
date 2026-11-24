@@ -18,6 +18,20 @@ class CryptoTaxHistoryTest {
         assertEquals(null, rows[1].realizedPnl)
     }
 
+    @Test fun parsesBinanceFeeWithAttachedAssetSuffixAndRejectsConflicts() {
+        val csv = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Realized Profit,Trade ID\n" +
+            "2026-11-24 13:46:41,LISTAUSDT,SELL,0.11175,41,4.58175,0.00229087USDT,0.20177378,154376830\n"
+        val trade = CryptoTaxHistory.parseCsv(csv, "binance-futures-trade-history.csv").single()
+        assertEquals(0.00229087, trade.fee, 1e-12)
+        assertEquals("USDT", trade.feeAsset)
+
+        val conflicting = csv.replace("0.00229087USDT", "0.00229087oops").replace(",Trade ID", ",Fee Asset,Trade ID")
+            .replace(",0.20177378,154376830", ",0.20177378,USDT,154376830")
+        val result = CryptoTaxHistory.parseCsvWithDiagnostics(conflicting, "binance-futures-trade-history.csv")
+        assertTrue(result.trades.isEmpty())
+        assertEquals(1, result.issues.size)
+    }
+
     @Test fun importDiagnosticsIdentifyInvalidTimestampAndMissingSymbolRows() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
             "not-a-date,BTCUSDT,BUY,1,100,100,0,USDT\n" +
@@ -93,6 +107,60 @@ class CryptoTaxHistoryTest {
         val (merged, added) = CryptoTaxHistory.deduplicate(first, second)
         assertEquals(2, merged.size)
         assertEquals(0, added)
+    }
+
+    @Test fun tradeIdUsesSameCanonicalIdentityAsBinanceApiFill() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101\n"
+        val trade = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv").single()
+        assertEquals("binance:futures:BTCUSDT:tx-101", trade.id)
+    }
+
+    @Test fun journalApiFillReconcilesWithHistoricalCsvTradeId() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset,TradeId\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT,tx-101\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val apiFill = imported.single().copy(
+            id = "binance:futures:BTCUSDT:tx-101",
+            source = "Journal API sync",
+            market = "Futures"
+        )
+        val merged = CryptoTaxHistory.mergeJournalHistory(imported, listOf(apiFill))
+        assertEquals(1, merged.size)
+        assertEquals("Journal API sync", merged.single().source)
+    }
+
+    @Test fun identicalSameSourceJournalFillsRemainSeparateExecutions() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val journal = listOf(
+            imported.single().copy(id = "binance:futures:BTCUSDT:fill-1", source = "Journal API sync", market = "Futures"),
+            imported.single().copy(id = "binance:futures:BTCUSDT:fill-2", source = "Journal API sync", market = "Futures")
+        )
+        assertEquals(2, CryptoTaxHistory.mergeJournalHistory(emptyList(), journal).size)
+    }
+
+    @Test fun crossSourceFallbackMatchingIsOneToOneAndPreservesExtraPartialFill() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\n"
+        val imported = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val journal = listOf(
+            imported.single().copy(id = "binance:csv:tax:fill-1", source = "Journal CSV import", market = "Futures"),
+            imported.single().copy(id = "binance:csv:tax:fill-2", source = "Journal CSV import", market = "Futures")
+        )
+        assertEquals(2, CryptoTaxHistory.mergeJournalHistory(imported, journal).size)
+    }
+
+    @Test fun importDedupMatchesExistingJournalFillsOneToOne() {
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\n" +
+            "2019-06-01 12:30:00,BTCUSDT,SELL,0.5,10000,5000,2,USDT\n"
+        val parsed = CryptoTaxHistory.parseCsv(csv, "futures-trades.csv")
+        val journal = parsed.first().copy(id = "binance:csv:journal:fill-1", source = "Journal CSV import")
+        val (merged, added) = CryptoTaxHistory.deduplicate(listOf(journal), parsed)
+        assertEquals(2, merged.size)
+        assertEquals(1, added)
     }
 
     @Test fun fallbackTradeFingerprintDoesNotDependOnFilenameOrRowNumber() {

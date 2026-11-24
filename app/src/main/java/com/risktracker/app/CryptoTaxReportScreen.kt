@@ -40,7 +40,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CryptoTaxReportScreen() {
+fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var trades by remember { mutableStateOf(CryptoTaxHistory.load(context)) }
@@ -212,7 +212,7 @@ fun CryptoTaxReportScreen() {
                     Text("${trades.size} rows", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("Import Binance Spot or Futures CSV / ZIP. Preview and inspect duplicates or rejected rows before saving. Existing journal and Daily P&L records are not modified.",
+                Text("Import Binance Spot or Futures CSV / ZIP. Preview and inspect duplicates or rejected rows before saving. Confirmed fills merge into the shared Binance trade history; manual journal and Daily P&L records remain unchanged.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = { importPicker.launch(arrayOf("text/*", "application/zip", "application/octet-stream", "application/vnd.ms-excel")) },
                     enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -245,10 +245,13 @@ fun CryptoTaxReportScreen() {
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Button(onClick = {
                                 val (merged, added) = CryptoTaxHistory.deduplicate(trades, preview.trades)
-                                CryptoTaxHistory.save(context, merged)
-                                trades = merged
+                                // Keep the report store limited to CSV imports; API/CSV journal fills remain canonical in the shared journal.
+                                CryptoTaxHistory.save(context, merged.filterNot { it.source.startsWith("Journal ") })
+                                val journalAdded = CryptoTaxHistory.mergeIntoJournal(context, preview.trades)
+                                trades = CryptoTaxHistory.load(context)
                                 pendingImport = null
-                                status = "Imported ${preview.trades.size} rows; added $added new records; skipped ${preview.trades.size - added} duplicates."
+                                onJournalImported()
+                                status = "Imported ${preview.trades.size} rows; added $added to trade history and $journalAdded to the shared journal; duplicates were reconciled."
                             }, enabled = !busy && preview.trades.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                                 Text("Confirm and import")
                             }

@@ -167,6 +167,15 @@ object BinanceAutoJournalStore {
         return inserted
     }
 
+    /** Clears saved execution history and sync cursors/status without touching API credentials. */
+    fun clear(context: Context) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()) {
+            "Could not clear saved Binance trade history."
+        }
+        context.getSharedPreferences("binance_auto_journal_recovery_v1", Context.MODE_PRIVATE)
+            .edit().clear().commit()
+    }
+
     fun knownSymbols(context: Context, market: String): Set<String> {
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getStringSet("symbols_${market.hashCode()}", emptySet()) ?: emptySet()
@@ -246,22 +255,15 @@ object BinanceAutoJournalStore {
 }
 
 /**
- * App-open and periodic sync. Recent data is refreshed while a durable per-symbol cursor backfills
- * older API-available history in bounded windows. Binance has no all-symbol user-trades endpoint;
- * historical CSV imports remain necessary for symbols outside the discovered/imported universe.
+ * App-open and periodic sync refresh only the rolling seven-day execution window. Older history is
+ * retained locally and backfilled through explicit CSV imports. Binance has no all-symbol user-trades
+ * endpoint, so CSV imports remain necessary for symbols outside the discovered/imported universe.
  */
-const val BINANCE_API_BACKFILL_DAYS = 180L
-const val BINANCE_BACKFILL_SYMBOLS_PER_RUN = 25
-
-/** Returns the next inclusive 7-day-or-smaller API window, or null when that symbol is complete. */
-internal fun nextBinanceBackfillWindow(cursor: Long, end: Long, windowMillis: Long = 7L * 24 * 60 * 60 * 1000): LongRange? {
-    require(cursor > 0L && end > 0L && windowMillis > 0L) { "Backfill timestamps and window must be positive." }
-    if (cursor > end) return null
-    return cursor..minOf(end, cursor + windowMillis - 1)
-}
+/** Automatic execution-history refresh is deliberately limited to a rolling seven-day window. */
+const val BINANCE_RECENT_SYNC_DAYS = 7L
 
 internal fun classifyBinanceSyncState(success: Boolean, failureCount: Int, discoverySucceeded: Int): String = when {
-    success -> "Synced (recent + historical backfill)"
+    success -> "Synced (last 7 days)"
     failureCount > 0 && discoverySucceeded > 0 -> "Partial sync"
     else -> "Sync failed"
 }
@@ -311,9 +313,7 @@ object BinanceAutoJournalRunner {
         val api = BinanceApi(credentials.first, credentials.second)
         val end = attemptedAt
         // Keep a rolling overlap to catch late updates and avoid gaps after the device is offline.
-        val recentStart = end - 7L * 24 * 60 * 60 * 1000
-        val backfillStart = end - BINANCE_API_BACKFILL_DAYS * 24L * 60 * 60 * 1000
-        val backfillWindowMs = 7L * 24 * 60 * 60 * 1000
+        val recentStart = end - BINANCE_RECENT_SYNC_DAYS * 24L * 60 * 60 * 1000
         val knownSpot = BinanceAutoJournalStore.knownSymbols(context, "Spot").toMutableSet()
         val knownFutures = BinanceAutoJournalStore.knownSymbols(context, "USDⓈ-M Futures").toMutableSet()
         val failures = mutableListOf<String>()
@@ -359,40 +359,12 @@ object BinanceAutoJournalRunner {
                 .onFailure { symbolFailures++; failures += "$market $symbol recent: ${it.message ?: "request failed"}" }
         }
 
-        // Backfill in bounded, resumable 7-day windows. Each symbol has a durable cursor.
-        var backfillWindowsFetched = 0
-        listOf("Spot" to knownSpot, "USDⓈ-M Futures" to knownFutures).forEach { (market, symbols) ->
-            val batch = selectBinanceSymbolBatch(
-                symbols, BinanceAutoJournalStore.backfillSymbolCursor(context, market),
-                limit = BINANCE_BACKFILL_SYMBOLS_PER_RUN
-            )
-            BinanceAutoJournalStore.saveBackfillSymbolCursor(context, market, batch.second)
-            batch.first.forEach { symbol ->
-                val cursor = BinanceAutoJournalStore.backfillCursor(context, market, symbol, backfillStart)
-                val window = nextBinanceBackfillWindow(cursor, end, backfillWindowMs)
-                if (window != null) {
-                    val result = runCatching {
-                        if (market == "Spot") api.spotExecutionHistory(symbol, window.first, window.last)
-                        else api.futuresExecutionHistory(symbol, window.first, window.last)
-                    }
-                    result.onSuccess { rows ->
-                        fetched += rows
-                        backfillWindowsFetched++
-                        val next = if (window.last >= end) Long.MAX_VALUE else window.last + 1
-                        BinanceAutoJournalStore.saveBackfillCursor(context, market, symbol, next)
-                    }.onFailure {
-                        symbolFailures++
-                        failures += "$market $symbol historical backfill: ${it.message ?: "request failed"}"
-                    }
-                }
-            }
-        }
-
+        // Older execution history is supplied by explicit CSV backfill, not by automatic API sync.
         val inserted = BinanceAutoJournalStore.merge(context, fetched)
         val success = failures.isEmpty() && discoverySucceeded > 0
         val state = classifyBinanceSyncState(success, failures.size, discoverySucceeded)
         val detail = when (state) {
-            "Synced (recent + historical backfill)" -> "Recent executions refreshed. Historical backfill is progressing in resumable 7-day windows ($backfillWindowsFetched windows completed this run). Binance has no all-symbol trade endpoint; symbols outside the discovered/imported set and records outside API availability may require Binance CSV exports."
+            "Synced (last 7 days)" -> "The rolling 7-day execution window was refreshed and merged into saved history. Older trades remain stored and can be added with Binance CSV imports. Binance has no all-symbol trade endpoint, so symbols outside the discovered/imported set may require CSV exports."
             "Partial sync" -> "Partial sync: ${failures.size} request(s) failed. First issue: ${failures.first()}. Review history/imports for gaps."
             else -> failures.firstOrNull()?.let { "Sync failed: $it. Check connectivity and read-only API permissions." }
                 ?: "No discovery request succeeded. Check network access and read-only API permissions."

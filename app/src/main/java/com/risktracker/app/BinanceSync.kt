@@ -811,6 +811,13 @@ object BinanceSyncData {
         emptyList()
     }
 
+    /** Explicitly clears imported/synced daily P&L history; manual journal entries are stored elsewhere. */
+    fun clear(context: Context) {
+        check(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()) {
+            "Could not clear saved Binance daily history."
+        }
+    }
+
     fun lastSync(context: Context): Long = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
     fun lastFastRefresh(context: Context): Long =
