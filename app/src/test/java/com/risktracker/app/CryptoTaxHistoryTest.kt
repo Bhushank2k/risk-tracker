@@ -19,9 +19,9 @@ class CryptoTaxHistoryTest {
     }
 
     @Test fun importDiagnosticsIdentifyInvalidTimestampAndMissingSymbolRows() {
-        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\\n" +
-            "not-a-date,BTCUSDT,BUY,1,100,100,0,USDT\\n" +
-            "2025-05-01 10:00:00,,SELL,1,120,120,0,USDT\\n" +
+        val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
+            "not-a-date,BTCUSDT,BUY,1,100,100,0,USDT\n" +
+            "2025-05-01 10:00:00,,SELL,1,120,120,0,USDT\n" +
             "2025-05-02 10:00:00,ETHUSDT,BUY,1,100,100,0,USDT"
         val result = CryptoTaxHistory.parseCsvWithDiagnostics(csv, "spot.csv")
         assertEquals(1, result.trades.size)
@@ -33,7 +33,7 @@ class CryptoTaxHistoryTest {
     }
 
     @Test fun allInvalidRowsRemainVisibleAsDiagnostics() {
-        val csv = "Date(UTC),Pair,Side,Executed,Price\\n" +
+        val csv = "Date(UTC),Pair,Side,Executed,Price\n" +
             "bad-date,BTCUSDT,BUY,1,100"
         val result = CryptoTaxHistory.parseCsvWithDiagnostics(csv, "bad.csv")
         assertTrue(result.trades.isEmpty())
