@@ -229,7 +229,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                             requested++
                                         }.onFailure { error ->
                                             if (error is BinanceArchiveIpBanException) progress.saveCooldownUntilMillis(error.untilMillis)
-                                            failures += error.message ?: "request failed"
+                                            failures += AppErrorMessage.from(error, "Archive request failed.")
                                         }
                                         if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                     }
@@ -242,7 +242,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     "${result.first} request(s) saved. Binance rejected another request: ${result.second.first()} Remaining periods can be retried later; monthly quota is controlled by Binance."
                                 }
                             } catch (e: Exception) {
-                                status = e.message ?: "Could not request historical archives."
+                                status = AppErrorMessage.from(e, "Could not request historical archives. Try again later.")
                             } finally { busy = false }
                         }
                     }
@@ -285,7 +285,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                             }
                                         }.onFailure { error ->
                                             if (error is BinanceArchiveIpBanException) progress.saveCooldownUntilMillis(error.untilMillis)
-                                            failures += error.message ?: "archive processing failed"
+                                            failures += AppErrorMessage.from(error, "Archive processing failed.")
                                         }
                                         if (progress.cooldownUntilMillis() > System.currentTimeMillis()) return@forEach
                                     }
@@ -299,7 +299,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                                     if (result.first.first == 0 && result.second.isEmpty() && result.third.isEmpty()) append(" No unprocessed archive requests were found.")
                                 }
                             } catch (e: Exception) {
-                                status = e.message ?: "Could not check the archive requests."
+                                status = AppErrorMessage.from(e, "Could not check archive status. Try again later.")
                             } finally { busy = false }
                         }
                     }
