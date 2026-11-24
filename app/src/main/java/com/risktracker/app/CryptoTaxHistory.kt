@@ -39,6 +39,14 @@ data class HistoricalCryptoTrade(
     }
 }
 
+data class CryptoTaxImportPreview(
+    val trades: List<HistoricalCryptoTrade>,
+    val newRecordCount: Int,
+    val duplicateRecordCount: Int,
+    val firstTimestamp: Long,
+    val lastTimestamp: Long
+)
+
 data class TaxDataQuality(
     val score: Int,
     val transactionCount: Int,
@@ -152,6 +160,22 @@ object CryptoTaxHistory {
                 fee = fee, feeAsset = feeAsset, realizedPnl = pnl, source = source
             )
         }
+    }
+
+    /**
+     * Parse an import without changing stored history. The caller must explicitly confirm
+     * before merging the returned records into the saved ledger.
+     */
+    fun previewUri(context: Context, uri: Uri, existing: List<HistoricalCryptoTrade>): CryptoTaxImportPreview {
+        val incoming = importUri(context, uri)
+        val (_, added) = deduplicate(existing, incoming)
+        return CryptoTaxImportPreview(
+            trades = incoming,
+            newRecordCount = added,
+            duplicateRecordCount = incoming.size - added,
+            firstTimestamp = incoming.minOf { it.timestamp },
+            lastTimestamp = incoming.maxOf { it.timestamp }
+        )
     }
 
     fun importUri(context: Context, uri: Uri): List<HistoricalCryptoTrade> {
