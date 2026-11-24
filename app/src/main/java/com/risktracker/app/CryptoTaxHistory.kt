@@ -252,11 +252,26 @@ object CryptoTaxHistory {
             val qty = value(qtyIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val price = value(priceIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val quote = value(quoteIdx).replace(",", "").toDoubleOrNull().takeIf { it != null && it > 0 } ?: qty * price
-            val fee = value(feeIdx).replace(",", "").toDoubleOrNull() ?: 0.0
+            val rawFee = value(feeIdx).replace(",", "")
+            val declaredFeeAsset = value(feeAssetIdx).uppercase(Locale.US)
+            val feePattern = Regex("^([+-]?(?:[0-9]+(?:\\\\.[0-9]*)?|\\\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:\\\\s*([A-Za-z]{2,10}))?$")
+            val feeMatch = if (rawFee.isBlank()) null else feePattern.matchEntire(rawFee)
+            if (rawFee.isNotBlank() && feeMatch == null) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Invalid fee amount.", line.take(180))
+                return@forEachIndexed
+            }
+            val attachedFeeAsset = feeMatch?.groupValues?.getOrNull(2).orEmpty().uppercase(Locale.US)
+            if (attachedFeeAsset.isNotBlank() && declaredFeeAsset.isNotBlank() &&
+                attachedFeeAsset != declaredFeeAsset
+            ) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Attached fee asset conflicts with Fee Asset column.", line.take(180))
+                return@forEachIndexed
+            }
+            val fee = feeMatch?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: 0.0
             val sideRaw = value(sideIdx).uppercase(Locale.US)
             val side = when { sideRaw.contains("BUY") -> "BUY"; sideRaw.contains("SELL") -> "SELL"; else -> sideRaw.ifBlank { "UNKNOWN" } }
             val pnl = value(pnlIdx).replace(",", "").toDoubleOrNull()
-            val feeAsset = value(feeAssetIdx).uppercase(Locale.US)
+            val feeAsset = declaredFeeAsset.ifBlank { attachedFeeAsset }
             val market = if (source.contains("futures", true)) "Futures" else "Spot"
             val exchangeTradeId = value(tradeIdIdx)
             val identity = if (exchangeTradeId.isNotBlank()) {
