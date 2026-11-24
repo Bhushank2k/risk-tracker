@@ -348,7 +348,7 @@ object CryptoTaxHistory {
                                 parseCsvWithDiagnostics(bytes.toString(Charsets.UTF_8.name()), entryName)
                             }.getOrElse { error ->
                                 CryptoTaxCsvResult(emptyList(), listOf(CryptoTaxImportIssue(
-                                    entryName, null, error.message ?: "Could not parse CSV file.", ""
+                                    entryName, null, AppErrorMessage.from(error, "Could not parse CSV file."), ""
                                 )))
                             }
                             imported += result.trades
