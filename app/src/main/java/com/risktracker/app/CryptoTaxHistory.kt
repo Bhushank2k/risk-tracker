@@ -515,11 +515,19 @@ object CryptoTaxHistory {
     fun deduplicate(existing: List<HistoricalCryptoTrade>, incoming: List<HistoricalCryptoTrade>): Pair<List<HistoricalCryptoTrade>, Int> {
         val existingCounts = existing.groupingBy { it.id }.eachCount()
         val incomingCounts = mutableMapOf<String, Int>()
+        val consumedJournalMatches = mutableSetOf<Int>()
         val fresh = mutableListOf<HistoricalCryptoTrade>()
         incoming.forEach { trade ->
             val occurrence = (incomingCounts[trade.id] ?: 0) + 1
             incomingCounts[trade.id] = occurrence
-            if (occurrence > (existingCounts[trade.id] ?: 0)) fresh += trade
+            if (occurrence <= (existingCounts[trade.id] ?: 0)) return@forEach
+            val journalMatch = existing.indices.firstOrNull { index ->
+                index !in consumedJournalMatches &&
+                    existing[index].source.startsWith("Journal ") &&
+                    sameHistoricalExecution(existing[index], trade)
+            }
+            if (journalMatch != null) consumedJournalMatches += journalMatch
+            else fresh += trade
         }
         return (existing + fresh).sortedBy { it.timestamp } to fresh.size
     }
