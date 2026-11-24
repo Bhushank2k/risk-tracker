@@ -39,12 +39,25 @@ data class HistoricalCryptoTrade(
     }
 }
 
+data class CryptoTaxImportIssue(
+    val fileName: String,
+    val rowNumber: Int?,
+    val reason: String,
+    val sample: String
+)
+
+data class CryptoTaxCsvResult(
+    val trades: List<HistoricalCryptoTrade>,
+    val issues: List<CryptoTaxImportIssue>
+)
+
 data class CryptoTaxImportPreview(
     val trades: List<HistoricalCryptoTrade>,
     val newRecordCount: Int,
     val duplicateRecordCount: Int,
     val firstTimestamp: Long,
-    val lastTimestamp: Long
+    val lastTimestamp: Long,
+    val issues: List<CryptoTaxImportIssue> = emptyList()
 )
 
 data class TaxDataQuality(
@@ -111,10 +124,15 @@ object CryptoTaxHistory {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, arr.toString()).apply()
     }
 
-    /** Parses Binance-style CSV files by header names, not column positions. */
-    fun parseCsv(text: String, source: String): List<HistoricalCryptoTrade> {
+    /** Parses Binance-style CSV files and retains diagnostics for rows that cannot be imported. */
+    fun parseCsv(text: String, source: String): List<HistoricalCryptoTrade> =
+        parseCsvWithDiagnostics(text, source).trades
+
+    fun parseCsvWithDiagnostics(text: String, source: String): CryptoTaxCsvResult {
         val lines = text.lineSequence().filter { it.isNotBlank() }.toList()
-        if (lines.size < 2) return emptyList()
+        if (lines.size < 2) return CryptoTaxCsvResult(emptyList(), listOf(
+            CryptoTaxImportIssue(source, null, "File has no transaction rows.", "")
+        ))
         val header = csvRow(lines.first()).map { it.trim().lowercase(Locale.US).replace(" ", "").replace("_", "") }
         fun index(vararg names: String) = names.firstNotNullOfOrNull { n -> header.indexOf(n.lowercase(Locale.US).replace(" ", "").replace("_", "")).takeIf { it >= 0 } } ?: -1
         val timeIdx = index("time", "timestamp", "datetime", "date(utc)", "date")
@@ -128,12 +146,22 @@ object CryptoTaxHistory {
         val pnlIdx = index("realizedpnl", "realizedprofit", "pnl")
         val tradeIdIdx = index("tradeid", "id", "executionid")
         if (timeIdx < 0 || symbolIdx < 0) throw IllegalArgumentException("CSV needs date/time and symbol/pair columns. Choose a Binance trade-history export.")
-        return lines.drop(1).mapIndexedNotNull { rowNo, line ->
+        val parsed = mutableListOf<HistoricalCryptoTrade>()
+        val issues = mutableListOf<CryptoTaxImportIssue>()
+        lines.drop(1).forEachIndexed { rowNo, line ->
             val c = csvRow(line)
             fun value(i: Int) = if (i in c.indices) c[i].trim() else ""
-            val timestamp = parseTimestamp(value(timeIdx)) ?: return@mapIndexedNotNull null
+            val rowNumber = rowNo + 2
+            val timestamp = parseTimestamp(value(timeIdx))
+            if (timestamp == null) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Missing or unrecognized date/time.", line.take(180))
+                return@forEachIndexed
+            }
             val symbol = value(symbolIdx).uppercase(Locale.US)
-            if (symbol.isBlank()) return@mapIndexedNotNull null
+            if (symbol.isBlank()) {
+                issues += CryptoTaxImportIssue(source, rowNumber, "Missing trading symbol/pair.", line.take(180))
+                return@forEachIndexed
+            }
             val qty = value(qtyIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val price = value(priceIdx).replace(",", "").toDoubleOrNull() ?: 0.0
             val quote = value(quoteIdx).replace(",", "").toDoubleOrNull().takeIf { it != null && it > 0 } ?: qty * price
@@ -144,22 +172,20 @@ object CryptoTaxHistory {
             val feeAsset = value(feeAssetIdx).uppercase(Locale.US)
             val market = if (source.contains("futures", true)) "Futures" else "Spot"
             val exchangeTradeId = value(tradeIdIdx)
-            // Prefer an exchange-provided trade/execution ID. If an export lacks one,
-            // fall back to a deterministic transaction fingerprint that is independent
-            // of the filename and row ordering so re-imports can be deduplicated.
             val identity = if (exchangeTradeId.isNotBlank()) {
                 "Binance|$market|$symbol|$exchangeTradeId"
             } else {
                 listOf("Binance", market, timestamp.toString(), symbol, side, qty.toString(),
                     price.toString(), quote.toString(), fee.toString(), feeAsset).joinToString("|")
             }
-            HistoricalCryptoTrade(
+            parsed += HistoricalCryptoTrade(
                 id = "csv:" + sha256(identity),
                 timestamp = timestamp, exchange = "Binance", market = market,
                 symbol = symbol, side = side, quantity = qty, price = price, quoteAmount = quote,
                 fee = fee, feeAsset = feeAsset, realizedPnl = pnl, source = source
             )
         }
+        return CryptoTaxCsvResult(parsed, issues)
     }
 
     /**
@@ -167,23 +193,32 @@ object CryptoTaxHistory {
      * before merging the returned records into the saved ledger.
      */
     fun previewUri(context: Context, uri: Uri, existing: List<HistoricalCryptoTrade>): CryptoTaxImportPreview {
-        val incoming = importUri(context, uri)
+        val result = importUriWithDiagnostics(context, uri)
+        val incoming = result.trades
+        if (incoming.isEmpty()) throw IllegalArgumentException(
+            result.issues.firstOrNull()?.reason ?: "No supported trade rows found in this file."
+        )
         val (_, added) = deduplicate(existing, incoming)
         return CryptoTaxImportPreview(
             trades = incoming,
             newRecordCount = added,
             duplicateRecordCount = incoming.size - added,
             firstTimestamp = incoming.minOf { it.timestamp },
-            lastTimestamp = incoming.maxOf { it.timestamp }
+            lastTimestamp = incoming.maxOf { it.timestamp },
+            issues = result.issues
         )
     }
 
-    fun importUri(context: Context, uri: Uri): List<HistoricalCryptoTrade> {
+    fun importUri(context: Context, uri: Uri): List<HistoricalCryptoTrade> =
+        importUriWithDiagnostics(context, uri).trades
+
+    fun importUriWithDiagnostics(context: Context, uri: Uri): CryptoTaxCsvResult {
         val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else "import.csv"
         } ?: "import.csv"
         val input = context.contentResolver.openInputStream(uri) ?: error("Could not open selected file.")
         val imported = mutableListOf<HistoricalCryptoTrade>()
+        val issues = mutableListOf<CryptoTaxImportIssue>()
         input.use { stream ->
             if (name.endsWith(".zip", true)) {
                 ZipInputStream(stream).use { zip ->
@@ -197,19 +232,31 @@ object CryptoTaxHistory {
                                 if (count <= 0) break
                                 bytes.write(buffer, 0, count)
                             }
-                            val text = bytes.toString(Charsets.UTF_8.name())
-                            runCatching { imported += parseCsv(text, entry.name) }
+                            val result = runCatching {
+                                parseCsvWithDiagnostics(bytes.toString(Charsets.UTF_8.name()), entry.name)
+                            }.getOrElse { error ->
+                                CryptoTaxCsvResult(emptyList(), listOf(CryptoTaxImportIssue(
+                                    entry.name, null, error.message ?: "Could not parse CSV file.", ""
+                                )))
+                            }
+                            imported += result.trades
+                            issues += result.issues
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
                     }
                 }
             } else {
-                imported += parseCsv(BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText(), name)
+                val text = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText()
+                val result = parseCsvWithDiagnostics(text, name)
+                imported += result.trades
+                issues += result.issues
             }
         }
-        if (imported.isEmpty()) throw IllegalArgumentException("No supported trade rows found. Export Binance trade history as CSV or ZIP.")
-        return imported
+        if (imported.isEmpty() && issues.isEmpty()) throw IllegalArgumentException(
+            "No CSV transaction files were found. Export Binance trade history as CSV or ZIP."
+        )
+        return CryptoTaxCsvResult(imported, issues)
     }
 
     /**
