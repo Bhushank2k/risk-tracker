@@ -124,9 +124,10 @@ internal object BinanceFuturesStream {
             depthReconnects.set(0)
         }
         if (requestedDepthSymbols.isNotEmpty() && depthSocket == null && !depthConnecting.get()) connectDepth()
-        val selection = requestedSymbols.map { it.lowercase() }.distinct().sorted()
-        val nextInterval = candleInterval?.api
-        if (selection != requestedKlineSymbols || nextInterval != requestedKlineInterval) {
+        if (candleInterval != null) {
+            val selection = requestedSymbols.map { it.lowercase() }.distinct().sorted()
+            val nextInterval = candleInterval.api
+            if (selection != requestedKlineSymbols || nextInterval != requestedKlineInterval) {
             requestedKlineSymbols = selection
             requestedKlineInterval = nextInterval
             klineSubscriptionGeneration++
@@ -137,8 +138,9 @@ internal object BinanceFuturesStream {
             klineConnecting.set(false)
             klineReconnects.set(0)
         }
-        if (requestedKlineSymbols.isNotEmpty() && requestedKlineInterval != null &&
-            klineSocket == null && !klineConnecting.get()) connectKlines()
+            if (requestedKlineSymbols.isNotEmpty() && requestedKlineInterval != null &&
+                klineSocket == null && !klineConnecting.get()) connectKlines()
+        }
     }
 
     private fun connectMarket() {
