@@ -69,7 +69,7 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
                     pendingImport = preview
                     status = "Import preview ready. Review the detected rows before adding them to your history."
                 } catch (e: Exception) {
-                    status = "Import failed: " + (e.message ?: "unsupported file")
+                    status = AppErrorMessage.from(e, "Import failed. Check the file format and try again.")
                 } finally { busy = false }
             }
         }
@@ -84,7 +84,7 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
             }
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csv) }
             status = "Year-wise CSV report exported. Review missing P&L rows before relying on totals."
-        } catch (e: Exception) { status = "Export failed: " + (e.message ?: "invalid INR rate") }
+        } catch (e: Exception) { status = AppErrorMessage.from(e, "Export failed. Check the conversion rate and try again.") }
     }
     val transactionExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) try {
@@ -95,7 +95,7 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
                 ?: throw IllegalStateException("Could not write to the selected destination.")
             status = "Exported ${trades.count { it.year == selectedFinancialYear }} transaction rows for FY ${selectedFinancialYear}-${(selectedFinancialYear + 1).toString().takeLast(2)}. Review source data before using for tax reporting."
         } catch (e: Exception) {
-            status = "Transaction export failed: " + (e.message ?: "could not write CSV")
+            status = AppErrorMessage.from(e, "Transaction export failed. Check storage access and try again.")
         }
     }
 
@@ -127,7 +127,7 @@ fun CryptoTaxReportScreen(onJournalImported: () -> Unit = {}) {
                 output.use { document.writeTo(it) }
                 status = "Printable tax review exported. Verify source statements, missing records and INR assumptions before use."
             } catch (e: Exception) {
-                status = "PDF export failed: " + (e.message ?: "could not generate report")
+                status = AppErrorMessage.from(e, "PDF export failed. Check storage access and try again.")
             } finally {
                 document.close()
             }
