@@ -61,12 +61,16 @@ object BinanceFillCsvImporter {
                 "SELL", "SHORT" -> "SELL"
                 else -> { ignored++; return@forEachIndexed }
             }
-            fun number(value: String, allowAssetSuffix: Boolean = false): Double? {
+            fun number(value: String, allowAssetSuffix: Boolean = false, expectedAsset: String = ""): Double? {
                 val raw = value.trim()
                 if (raw.isEmpty()) return null
                 val numeric = "[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
-                val pattern = if (allowAssetSuffix) Regex("^($numeric)(?:\\s*[A-Za-z]{2,10})?$") else Regex("^($numeric)$")
+                val pattern = if (allowAssetSuffix) Regex("^($numeric)(?:\\s*([A-Za-z]{2,10}))?$") else Regex("^($numeric)$")
                 val match = pattern.matchEntire(raw) ?: return null
+                val suffix = match.groupValues.getOrNull(2).orEmpty()
+                if (suffix.isNotEmpty() && expectedAsset.isNotBlank() &&
+                    !suffix.equals(expectedAsset.trim(), ignoreCase = true)
+                ) return null
                 return match.groupValues[1].toDoubleOrNull()?.takeIf { it.isFinite() }
             }
             val price = number(cell(priceIndex)) ?: error("Invalid price on CSV row $rowNo.")
@@ -79,9 +83,11 @@ object BinanceFillCsvImporter {
                 "Quote amount must be positive and finite on CSV row $rowNo."
             }
             val feeRaw = cell(feeIndex)
+            val declaredFeeAsset = cell(feeAssetIndex)
             val fee = if (feeRaw.isBlank()) 0.0 else
-                number(feeRaw, allowAssetSuffix = true) ?: error("Invalid fee on CSV row $rowNo.")
-            val feeAsset = cell(feeAssetIndex).ifBlank {
+                number(feeRaw, allowAssetSuffix = true, expectedAsset = declaredFeeAsset)
+                    ?: error("Invalid fee on CSV row $rowNo.")
+            val feeAsset = declaredFeeAsset.ifBlank {
                 Regex("[A-Za-z]{2,10}\\s*$").find(feeRaw)?.value?.trim()?.uppercase(Locale.ROOT) ?: ""
             }
             val realizedRaw = cell(realizedIndex)
