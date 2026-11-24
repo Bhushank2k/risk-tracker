@@ -10,6 +10,10 @@ The automatic execution journal records last-attempt and last-success timestamps
 
 The automatic collector uses a rolling seven-day window and a bounded set of discovered/known symbols. A successful seven-day sync is not proof of complete account history. Missing dates can be legitimate periods with no activity, or missing source coverage; do not interpret missing records as zero P&L.
 
+Execution fills and daily P&L are merged into on-device history rather than replaced by each recent refresh. Older saved rows remain available across app restarts and later syncs. Automatic execution sync does not backfill older fills; use the explicit historical API preview or Binance trade CSV import for older executions. Repeated imports use Binance execution IDs where available and a one-to-one fallback match where needed, while preserving separate partial fills.
+
+The Settings & data screen provides a confirmed manual clear action for saved Binance executions, CSV-imported trade history and synced daily P&L. It does not clear manual Daily P&L, manual journal trades, account statements or API credentials.
+
 ## Historical coverage limitations
 
 The standard USDⓈ-M Futures income endpoint has limited historical availability. API pagination does not recover records outside Binance retention. Older executions and income records require supported Binance exports or user-provided CSV history. Export request quotas and download-link expiry are controlled by Binance; request only needed years and save exports promptly.
