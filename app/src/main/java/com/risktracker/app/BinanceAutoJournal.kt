@@ -255,9 +255,9 @@ object BinanceAutoJournalStore {
 }
 
 /**
- * App-open and periodic sync. Recent data is refreshed while a durable per-symbol cursor backfills
- * older API-available history in bounded windows. Binance has no all-symbol user-trades endpoint;
- * historical CSV imports remain necessary for symbols outside the discovered/imported universe.
+ * App-open and periodic sync refresh only the rolling seven-day execution window. Older history is
+ * retained locally and backfilled through explicit CSV imports. Binance has no all-symbol user-trades
+ * endpoint, so CSV imports remain necessary for symbols outside the discovered/imported universe.
  */
 /** Automatic execution-history refresh is deliberately limited to a rolling seven-day window. */
 const val BINANCE_RECENT_SYNC_DAYS = 7L
