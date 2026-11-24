@@ -18,6 +18,20 @@ class CryptoTaxHistoryTest {
         assertEquals(null, rows[1].realizedPnl)
     }
 
+    @Test fun parsesBinanceFeeWithAttachedAssetSuffixAndRejectsConflicts() {
+        val csv = "Date(UTC),Symbol,Side,Price,Quantity,Amount,Fee,Realized Profit,Trade ID\\n" +
+            "2026-11-24 13:46:41,LISTAUSDT,SELL,0.11175,41,4.58175,0.00229087USDT,0.20177378,154376830\\n"
+        val trade = CryptoTaxHistory.parseCsv(csv, "binance-futures-trade-history.csv").single()
+        assertEquals(0.00229087, trade.fee, 1e-12)
+        assertEquals("USDT", trade.feeAsset)
+
+        val conflicting = csv.replace("0.00229087USDT", "0.00229087oops").replace(",Trade ID", ",Fee Asset,Trade ID")
+            .replace(",0.20177378,154376830", ",USDT,0.20177378,154376830")
+        val result = CryptoTaxHistory.parseCsvWithDiagnostics(conflicting, "binance-futures-trade-history.csv")
+        assertTrue(result.trades.isEmpty())
+        assertEquals(1, result.issues.size)
+    }
+
     @Test fun importDiagnosticsIdentifyInvalidTimestampAndMissingSymbolRows() {
         val csv = "Date(UTC),Pair,Side,Executed,Price,Amount,Fee,Fee Asset\n" +
             "not-a-date,BTCUSDT,BUY,1,100,100,0,USDT\n" +
