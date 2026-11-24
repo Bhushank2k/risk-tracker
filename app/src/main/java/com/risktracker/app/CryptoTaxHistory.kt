@@ -159,9 +159,14 @@ object CryptoTaxHistory {
 
     /** Makes a confirmed tax-report CSV import visible in the shared journal and P&L calendar. */
     fun mergeIntoJournal(context: Context, trades: List<HistoricalCryptoTrade>): Int {
+        val fallbackOccurrences = mutableMapOf<String, Int>()
         val fills = trades.map { trade ->
             val market = if (trade.market.contains("Futures", true)) "USDⓈ-M Futures" else "Spot"
-            val id = if (trade.id.startsWith("binance:")) trade.id else "binance:csv:tax:${trade.id}"
+            val id = if (trade.id.startsWith("binance:")) trade.id else {
+                val occurrence = fallbackOccurrences.getOrDefault(trade.id, 0)
+                fallbackOccurrences[trade.id] = occurrence + 1
+                "binance:csv:tax:${trade.id}:$occurrence"
+            }
             BinanceJournalFill(
                 id = id, exchange = trade.exchange, market = market, symbol = trade.symbol,
                 side = trade.side, quantity = trade.quantity, price = trade.price,
