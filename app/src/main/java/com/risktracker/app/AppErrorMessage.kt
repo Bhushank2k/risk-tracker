@@ -1,6 +1,5 @@
 package com.risktracker.app
 
-import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeoutException
@@ -28,7 +27,7 @@ internal object AppErrorMessage {
             Regex("""http 5\d\d""").containsMatchIn(text) ||
                 "server error" in text || "service unavailable" in text ->
                 "The service is temporarily unavailable. Please try again shortly."
-            chain.any { it is IOException } || types.any { "connect" in it } ->
+            chain.any { it is java.net.ConnectException } || types.any { "connect" in it } ->
                 "Connection problem. Check your internet and try again."
             else -> fallback
         }
