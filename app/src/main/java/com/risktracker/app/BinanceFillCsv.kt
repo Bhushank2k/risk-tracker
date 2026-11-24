@@ -112,8 +112,11 @@ object BinanceFillCsvImporter {
             val occurrence = fallbackOccurrences.getOrDefault(baseFingerprint, 0)
             fallbackOccurrences[baseFingerprint] = occurrence + 1
             val fingerprint = if (exchangeTradeId.isNotBlank()) baseFingerprint else "$baseFingerprint:$occurrence"
+            val stableExchangeId = exchangeTradeId.takeIf { it.isNotBlank() }?.let {
+                "binance:${if (market == "Spot") "spot" else "futures"}:$symbol:$it"
+            }
             fills += BinanceJournalFill(
-                id = "binance:csv:${if (market == "Spot") "spot" else "futures"}:$symbol:$fingerprint",
+                id = stableExchangeId ?: "binance:csv:${if (market == "Spot") "spot" else "futures"}:$symbol:$fingerprint",
                 exchange = "Binance", market = market, symbol = symbol, side = side,
                 quantity = qty, price = price, quoteAmount = quote, fee = fee, feeAsset = feeAsset,
                 realizedPnl = realized, time = time, orderId = cell(orderIndex)
