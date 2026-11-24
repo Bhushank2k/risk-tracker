@@ -11,21 +11,31 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun TradingIntelligenceScreen(
     dailyEntries: List<PnlEntry>,
     manualTrades: List<TradeEntry>,
-    importedDailyPnl: List<BinanceDailyResult>
+    importedDailyPnl: List<BinanceDailyResult>,
+    dailyLossLimit: Double = 0.0
 ) {
     val asOfDate = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val reconciled = remember(dailyEntries, manualTrades, importedDailyPnl) {
@@ -33,6 +43,31 @@ fun TradingIntelligenceScreen(
     }
     val forecast = remember(reconciled, asOfDate) {
         DailyPnlForecastEngine.forecast(reconciled, asOfDate)
+    }
+    var volatilityLoading by remember { mutableStateOf(true) }
+    var volatilityError by remember { mutableStateOf<String?>(null) }
+    var volatilityReports by remember { mutableStateOf<List<VolatilityForecast>>(emptyList()) }
+    var marketRegimes by remember { mutableStateOf<List<MarketRegimeAssessment>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        volatilityLoading = true
+        volatilityError = null
+        try {
+            val btc = MarketActivityDataSource.candles("BTCUSDT", MarketInterval.D1, 240)
+            val eth = MarketActivityDataSource.candles("ETHUSDT", MarketInterval.D1, 240)
+            val btcVolatility = VolatilityForecastEngine.forecast("BTCUSDT", btc)
+            val ethVolatility = VolatilityForecastEngine.forecast("ETHUSDT", eth)
+            volatilityReports = listOf(btcVolatility, ethVolatility)
+            marketRegimes = listOf(
+                MarketRegimeEngine.classify("BTCUSDT", btc, btcVolatility),
+                MarketRegimeEngine.classify("ETHUSDT", eth, ethVolatility)
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            volatilityError = AppErrorMessage.from(error, "Daily market candles are temporarily unavailable.")
+        } finally {
+            volatilityLoading = false
+        }
     }
 
     Column(
@@ -92,5 +127,306 @@ fun TradingIntelligenceScreen(
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
             }
         }
+        PeriodForecastSection(reconciled, asOfDate)
+        PersonalTradingCoachSection(manualTrades)
+        ProfitProtectionSection(reconciled, manualTrades, asOfDate, dailyLossLimit)
+        VolatilityForecastSection(volatilityReports, volatilityLoading, volatilityError)
+        MarketRegimeSection(marketRegimes, volatilityLoading, volatilityError)
+    }
+}
+
+@Composable
+private fun PeriodForecastSection(rows: List<ReconciledDailyPnl>, asOfDate: String) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("trading_intelligence_targets_v1", 0) }
+    var weeklyTargetText by remember { mutableStateOf(prefs.getString("weekly_target", "") ?: "") }
+    var monthlyTargetText by remember { mutableStateOf(prefs.getString("monthly_target", "") ?: "") }
+    val weeklyTarget = weeklyTargetText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val monthlyTarget = monthlyTargetText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+
+    val today = remember(asOfDate) {
+        java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(asOfDate)?.let { parsed ->
+            java.util.Calendar.getInstance().apply {
+                time = parsed
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+        } ?: java.util.Calendar.getInstance()
+    }
+    val weekStart = remember(today) {
+        (today.clone() as java.util.Calendar).apply {
+            firstDayOfWeek = java.util.Calendar.MONDAY
+            val offset = (get(java.util.Calendar.DAY_OF_WEEK) - java.util.Calendar.MONDAY + 7) % 7
+            add(java.util.Calendar.DAY_OF_YEAR, -offset)
+        }
+    }
+    val weekEnd = remember(weekStart) { (weekStart.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, 7) } }
+    val monthStart = remember(today) { (today.clone() as java.util.Calendar).apply { set(java.util.Calendar.DAY_OF_MONTH, 1) } }
+    val monthEnd = remember(monthStart) { (monthStart.clone() as java.util.Calendar).apply { add(java.util.Calendar.MONTH, 1) } }
+    val formatter = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
+    fun buildForecast(start: java.util.Calendar, end: java.util.Calendar, target: Double?): PeriodPnlForecast {
+        val startKey = formatter.format(start.time)
+        val todayKey = formatter.format(today.time)
+        val endKey = formatter.format(end.time)
+        val completedPnl = rows.filter { row ->
+            val date = canonicalPnlDate(row.date)
+            date != null && date >= startKey && date < todayKey && row.selectedPnl.isFinite()
+        }.sumOf { it.selectedPnl }
+        val remaining = ((end.timeInMillis - today.timeInMillis) / 86_400_000L).toInt().coerceIn(0, 60)
+        return PeriodPnlForecastEngine.forecast(rows, asOfDate, completedPnl, remaining, target)
+    }
+    val weekly = remember(rows, asOfDate, weeklyTarget) { buildForecast(weekStart, weekEnd, weeklyTarget) }
+    val monthly = remember(rows, asOfDate, monthlyTarget) { buildForecast(monthStart, monthEnd, monthlyTarget) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Weekly & monthly outlook", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Targets are optional. Projections resample your prior recorded result days and include only completed P&L earlier than today.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = weeklyTargetText,
+            onValueChange = { weeklyTargetText = it; prefs.edit().putString("weekly_target", it).apply() },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Weekly net P&L target (USD)") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        PeriodForecastCard("This week", weekly)
+        OutlinedTextField(
+            value = monthlyTargetText,
+            onValueChange = { monthlyTargetText = it; prefs.edit().putString("monthly_target", it).apply() },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Monthly net P&L target (USD)") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        PeriodForecastCard("This month", monthly)
+    }
+}
+
+@Composable
+private fun PeriodForecastCard(title: String, forecast: PeriodPnlForecast) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (forecast.expectedEndPnl == null) {
+                Text("At least 10 prior recorded result days are required for a projection.")
+            } else {
+                Text("Projected period-end P&L: " + forecast.expectedEndPnl.usd(),
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                    color = pnlColor(forecast.expectedEndPnl))
+                Text("Historical resampling range: " + forecast.lowerEndPnl!!.usd() + " to " + forecast.upperEndPnl!!.usd())
+                Text("Current completed-day P&L: " + forecast.currentPeriodPnl.usd() +
+                    " · Remaining calendar sessions: " + forecast.remainingSessions)
+                forecast.targetPnl?.let { target ->
+                    Text("Target " + target.usd() + " · Historical resampling frequency to reach target: " +
+                        forecast.targetReachPercent!!.num(1) + "%")
+                    forecast.requiredAverageDailyPnl?.let {
+                        Text("Required average per remaining day: " + it.usd())
+                    }
+                }
+                Text(forecast.reliability.name.lowercase().replaceFirstChar { it.uppercase() } +
+                    " · " + forecast.sampleCount + " prior recorded days",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonalTradingCoachSection(trades: List<TradeEntry>) {
+    val report = remember(trades) { PersonalTradingCoachEngine.analyze(trades) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Personal trading coach", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Rule-based feedback from your saved closed-trade journal. It does not infer intent or replace your own review.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Journal coverage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(report.tradeCount.toString() + " valid closed trades · " + report.taggedTradeCount + " strategy-tagged")
+                report.insights.forEach { insight ->
+                    Text(insight.title, fontWeight = FontWeight.SemiBold,
+                        color = if (insight.severity == CoachInsightSeverity.CAUTION)
+                            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    Text(insight.detail, style = MaterialTheme.typography.bodySmall)
+                }
+                if (report.limitations.isNotEmpty()) {
+                    Text("Data limitations", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    report.limitations.forEach {
+                        Text("• " + it, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfitProtectionSection(
+    rows: List<ReconciledDailyPnl>,
+    trades: List<TradeEntry>,
+    asOfDate: String,
+    dailyLossLimit: Double
+) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("trading_intelligence_protection_v1", 0) }
+    var targetText by remember { mutableStateOf(prefs.getString("profit_target", "") ?: "") }
+    var givebackText by remember { mutableStateOf(prefs.getString("maximum_giveback", "") ?: "") }
+    var streakText by remember { mutableStateOf(prefs.getString("maximum_loss_streak", "3") ?: "3") }
+    val dailyPnl = rows.firstOrNull { canonicalPnlDate(it.date) == asOfDate }?.selectedPnl
+    val savedPeak = prefs.getFloat("peak_pnl_$asOfDate", Float.NaN).toDouble()
+    var peakObserved by remember(asOfDate) {
+        androidx.compose.runtime.mutableStateOf(
+            if (savedPeak.isFinite()) maxOf(savedPeak, dailyPnl?.takeIf { it.isFinite() } ?: savedPeak)
+            else dailyPnl?.takeIf { it.isFinite() }
+        )
+    }
+    androidx.compose.runtime.LaunchedEffect(dailyPnl, asOfDate) {
+        val value = dailyPnl?.takeIf { it.isFinite() }
+        if (value != null && (peakObserved == null || value > peakObserved!!)) {
+            peakObserved = value
+            prefs.edit().putFloat("peak_pnl_$asOfDate", value.toFloat()).apply()
+        }
+    }
+    val streak = remember(trades) { currentTradeStreak(trades) }
+    val losses = if (streak.kind == "Loss") streak.count else 0
+    val target = targetText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val giveback = givebackText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val streakLimit = streakText.toIntOrNull()?.takeIf { it in 1..20 }
+    val alerts = remember(dailyPnl, peakObserved, losses, dailyLossLimit, target, giveback, streakLimit) {
+        ProfitProtectionEngine.evaluate(
+            dailyPnl, peakObserved, losses,
+            ProfitProtectionSettings(dailyLossLimit, target, giveback, streakLimit)
+        )
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Profit & loss protection", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Advisory rules only. They do not block orders, change leverage, or close positions.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Daily controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Existing daily loss limit: " + if (dailyLossLimit.isFinite() && dailyLossLimit > 0.0) dailyLossLimit.usd() else "Not configured")
+                OutlinedTextField(
+                    value = targetText,
+                    onValueChange = { targetText = it; prefs.edit().putString("profit_target", it).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Daily profit target (USD)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+                OutlinedTextField(
+                    value = givebackText,
+                    onValueChange = { givebackText = it; prefs.edit().putString("maximum_giveback", it).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Maximum giveback from observed peak (USD)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+                OutlinedTextField(
+                    value = streakText,
+                    onValueChange = { value -> val updated = value.filter(Char::isDigit).take(2); streakText = updated; prefs.edit().putString("maximum_loss_streak", updated).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Consecutive losing trades threshold (1–20)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Text("Today's recorded P&L: " + (dailyPnl?.takeIf { it.isFinite() }?.usd() ?: "Unavailable"))
+                Text("Observed in-session peak: " + (peakObserved?.usd() ?: "Unavailable"))
+                if (alerts.isEmpty()) {
+                    Text(
+                        if (dailyPnl == null) "No current-day P&L record is available. Daily profit/loss checks are inactive."
+                        else "No configured protection threshold is currently triggered.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    alerts.forEach { alert ->
+                        Text(alert.title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                        Text(alert.detail, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Text("Peak tracking begins when this feature observes a current-day P&L update; earlier intraday peaks cannot be reconstructed from daily totals.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VolatilityForecastSection(
+    reports: List<VolatilityForecast>,
+    loading: Boolean,
+    error: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Tomorrow's volatility outlook", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Based on recent completed BTC and ETH daily candles. These are historical volatility descriptors, not directional price predictions.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (loading) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("Loading completed daily candles…", Modifier.padding(14.dp))
+            }
+        } else if (error != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Text(error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error)
+            }
+        } else if (reports.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("No volatility estimates are available.", Modifier.padding(14.dp))
+            }
+        } else {
+            reports.forEach { report ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(report.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (report.regime == VolatilityRegime.INSUFFICIENT) {
+                            Text("Not enough completed daily candles to estimate volatility.")
+                        } else {
+                            Text(report.regime.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Recent 20-session volatility: " + report.recentVolatilityPercent!!.num(2) + "%")
+                            Text("Historical volatility percentile: " + report.volatilityPercentile!!.num(0) + "th")
+                            Text("Mean absolute daily move: " + report.meanAbsoluteDailyMovePercent!!.num(2) + "%")
+                            Text("Recent 90th percentile absolute move: " + report.p90AbsoluteDailyMovePercent!!.num(2) + "%")
+                            Text(report.reliabilityLabel + " · " + report.sampleCount + " daily returns",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarketRegimeSection(
+    reports: List<MarketRegimeAssessment>,
+    loading: Boolean,
+    error: String?
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Market regime", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("A rule-based BTC/ETH daily trend classification using EMA alignment, 20-day momentum, RSI and the volatility percentile.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (loading) {
+            Card(Modifier.fillMaxWidth()) { Text("Classifying completed daily candles…", Modifier.padding(14.dp)) }
+        } else if (error != null) {
+            Card(Modifier.fillMaxWidth()) { Text(error, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.error) }
+        } else if (reports.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) { Text("No market regime assessment is available.", Modifier.padding(14.dp)) }
+        } else {
+            reports.forEach { report ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(report.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(report.regime.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        if (report.confidencePercent != null) {
+                            Text("Rule-alignment score: " + report.confidencePercent.num(0) + "% · not a probability")
+                        }
+                        Text("Completed daily candles: " + report.sampleCount)
+                        report.evidence.forEach { Text("• " + it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
+        Text("Regime labels describe indicator alignment, not a prediction of future direction. The first version does not yet personalize strategy recommendations by regime.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
