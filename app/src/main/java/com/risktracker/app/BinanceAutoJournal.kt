@@ -12,6 +12,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+data class BinanceJournalLoadResult(
+    val fills: List<BinanceJournalFill>,
+    val skippedRecords: Int,
+    val unreadableStore: Boolean
+)
+
 /** One immutable exchange execution. Fills stay distinct; they are not misrepresented as closed positions. */
 data class BinanceJournalFill(
     val id: String,
@@ -91,21 +97,56 @@ object BinanceAutoJournalStore {
     private const val PREFS = "binance_auto_journal_v1"
     private const val KEY = "fills"
 
-    fun load(context: Context): List<BinanceJournalFill> = try {
-        val rows = JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
-        (0 until rows.length()).map { i ->
-            val row = rows.getJSONObject(i)
-            BinanceJournalFill(
-                id = row.getString("id"), exchange = row.optString("exchange", "Binance"),
-                market = row.optString("market", "Spot"), symbol = row.optString("symbol"),
-                side = row.optString("side"), quantity = row.optDouble("quantity"),
-                price = row.optDouble("price"), quoteAmount = row.optDouble("quoteAmount"),
-                fee = row.optDouble("fee"), feeAsset = row.optString("feeAsset"),
-                realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
-                time = row.optLong("time"), orderId = row.optString("orderId")
-            )
-        }.distinctBy { it.id }.sortedByDescending { it.time }
-    } catch (_: Exception) { emptyList() }
+    fun load(context: Context): List<BinanceJournalFill> = loadWithDiagnostics(context).fills
+
+    /** Parses each saved execution independently so one damaged row cannot hide the entire history. */
+    internal fun parseSavedFills(raw: String): BinanceJournalLoadResult {
+        val rows = try { JSONArray(raw) } catch (_: Exception) {
+            return BinanceJournalLoadResult(emptyList(), 1, true)
+        }
+        val fills = mutableListOf<BinanceJournalFill>()
+        var skipped = 0
+        for (i in 0 until rows.length()) {
+            val parsed = runCatching {
+                val row = rows.getJSONObject(i)
+                val id = row.optString("id").trim()
+                val symbol = row.optString("symbol").trim()
+                val side = row.optString("side").trim().uppercase()
+                val quantity = row.optDouble("quantity", Double.NaN)
+                val price = row.optDouble("price", Double.NaN)
+                val quoteAmount = row.optDouble("quoteAmount", Double.NaN)
+                val fee = row.optDouble("fee", 0.0)
+                val time = row.optLong("time", 0L)
+                require(id.isNotBlank() && symbol.isNotBlank() && side in setOf("BUY", "SELL"))
+                require(quantity.isFinite() && quantity > 0.0 && price.isFinite() && price > 0.0)
+                require(quoteAmount.isFinite() && quoteAmount >= 0.0 && fee.isFinite() && time > 0L)
+                BinanceJournalFill(
+                    id = id, exchange = row.optString("exchange", "Binance"),
+                    market = row.optString("market", "Spot"), symbol = symbol,
+                    side = side, quantity = quantity, price = price, quoteAmount = quoteAmount,
+                    fee = fee, feeAsset = row.optString("feeAsset"),
+                    realizedPnl = if (row.isNull("realizedPnl")) null else row.optDouble("realizedPnl"),
+                    time = time, orderId = row.optString("orderId")
+                )
+            }.getOrNull()
+            if (parsed == null) skipped++ else fills += parsed
+        }
+        return BinanceJournalLoadResult(fills.distinctBy { it.id }.sortedByDescending { it.time }, skipped, false)
+    }
+
+    fun loadWithDiagnostics(context: Context): BinanceJournalLoadResult {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY, "[]") ?: "[]"
+        val result = parseSavedFills(raw)
+        if (result.skippedRecords > 0 || result.unreadableStore) {
+            // Keep the exact pre-recovery payload so skipped records can be recovered later.
+            val recovery = context.getSharedPreferences("binance_auto_journal_recovery_v1", Context.MODE_PRIVATE)
+            if (recovery.getString("fills_backup", null) == null) {
+                recovery.edit().putString("fills_backup", raw).commit()
+            }
+        }
+        return result
+    }
 
     /** Merge CSV/API representations one-to-one while preserving identical partial executions. */
     fun merge(context: Context, incoming: List<BinanceJournalFill>): Int {
