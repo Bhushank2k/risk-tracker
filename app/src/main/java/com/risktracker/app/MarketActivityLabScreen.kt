@@ -34,6 +34,8 @@ fun MarketActivityLabScreen() {
     var events by remember { mutableStateOf(MarketActivityPreferences.loadEvents(context)) }
     val symbols=config.symbols
     var interval by remember{mutableStateOf(MarketInterval.M15)}
+    var checkpointRestored by remember { mutableStateOf(false) }
+    var checkpointStatus by remember { mutableStateOf("Restoring saved scanner progress…") }
     var rows by remember{mutableStateOf<List<ActivityAnalysis>>(emptyList())}
     var tickerMap by remember{mutableStateOf<Map<String,MarketTicker>>(emptyMap())}
     var marketMovers by remember{mutableStateOf<List<MarketMover>>(emptyList())}
@@ -88,8 +90,16 @@ fun MarketActivityLabScreen() {
             .sortedBy { it.openTime }.takeLast(240)
     fun mergeClosedCandle(history: List<MarketCandle>, live: MarketCandle?): List<MarketCandle> =
         mergeCandleHistory(history, emptyList(), live)
+    suspend fun persistCheckpoint(history: Map<String, List<MarketCandle>> = candleHistory) {
+        MarketActivityCheckpointStore.save(context, MarketActivityCheckpoint(
+            interval = interval,
+            selectedSymbol = selected,
+            savedAt = System.currentTimeMillis(),
+            candles = history.filterKeys { key -> key.endsWith(":${interval.api}") && symbols.any { key.startsWith("$it:") } }
+        ))
+    }
     fun refresh(){
-        if(loading)return
+        if(loading || !checkpointRestored)return
         loading=true
         scope.launch{
             val liveTickers=BinanceFuturesStream.tickerSnapshot(symbols)
@@ -105,7 +115,10 @@ fun MarketActivityLabScreen() {
                     Triple(sym,withContext(Dispatchers.Default){MarketActivityEngine.analyze(sym,interval,merged,config.thresholds)},merged)
                 }.getOrNull()
             }}.awaitAll().filterNotNull()
-            candleHistory=candleHistory+result.associate{"${it.first}:${interval.api}" to it.third}
+            val updatedHistory = candleHistory + result.associate{"${it.first}:${interval.api}" to it.third}
+            candleHistory = updatedHistory
+            persistCheckpoint(updatedHistory)
+            checkpointStatus = "Progress saved on this device · REST history reconciled"
             result.mapNotNull{it.second}.forEach{MarketActivityPreferences.recordAnalysis(context,it)}
             events=MarketActivityPreferences.loadEvents(context)
             rows=result.mapNotNull{it.second}.filter{it.score.total>=config.minimumScore};errors=symbols.filter{sym->result.none{it.first==sym} || result.firstOrNull{it.first==sym}?.second==null}
@@ -114,7 +127,29 @@ fun MarketActivityLabScreen() {
             loading=false
         }
     }
-    LaunchedEffect(symbols, interval) {
+    LaunchedEffect(Unit) {
+        val saved = MarketActivityCheckpointStore.load(context)
+        if (saved != null) {
+            val restored = saved.candles.filterKeys { key -> key.endsWith(":${saved.interval.api}") && symbols.any { key.startsWith("$it:") } }
+            interval = saved.interval
+            selected = saved.selectedSymbol.takeIf { it in symbols } ?: symbols.first()
+            candleHistory = restored
+            val restoredRows = withContext(Dispatchers.Default) {
+                restored.mapNotNull { (key, candles) ->
+                    val symbol = key.substringBefore(':')
+                    runCatching { MarketActivityEngine.analyze(symbol, saved.interval, candles, config.thresholds) }.getOrNull()
+                }
+            }
+            rows = restoredRows.filter { it.score.total >= config.minimumScore }.sortedByDescending { it.score.total }
+            updated = saved.savedAt
+            checkpointStatus = "Restored " + restored.values.sumOf { it.size } + " saved candles · reconnecting and checking for missed data…"
+        } else {
+            checkpointStatus = "No saved scan yet · progress will be saved automatically"
+        }
+        checkpointRestored = true
+    }
+    LaunchedEffect(symbols, interval, checkpointRestored) {
+        if (!checkpointRestored) return@LaunchedEffect
         // One public combined stream carries the scanner's selected kline interval.
         BinanceFuturesStream.start(symbols, interval)
         while (true) {
@@ -136,7 +171,11 @@ fun MarketActivityLabScreen() {
                     replay = withContext(Dispatchers.Default) { MarketActivityEngine.replay(merged) }
                 }
             }
-            if (nextHistory != latestCandleHistory) candleHistory = nextHistory
+            if (nextHistory != latestCandleHistory) {
+                candleHistory = nextHistory
+                persistCheckpoint(nextHistory)
+                checkpointStatus = "Live candle progress saved"
+            }
             if (changed.isNotEmpty()) {
                 changed.forEach { MarketActivityPreferences.recordAnalysis(context, it) }
                 val replacements = changed.associateBy { it.symbol }
@@ -149,17 +188,21 @@ fun MarketActivityLabScreen() {
             delay(1_000L)
         }
     }
-    LaunchedEffect(interval){
+    LaunchedEffect(interval, checkpointRestored){
+        if (!checkpointRestored) return@LaunchedEffect
         while (true) {
             refresh()
             delay(30_000L)
         }
     }
-    LaunchedEffect(selected,interval){
+    LaunchedEffect(selected,interval,checkpointRestored){
+        if (!checkpointRestored) return@LaunchedEffect
         val base=runCatching{MarketActivityDataSource.candles(selected,interval)}.getOrDefault(emptyList())
         val merged=mergeCandleHistory(base,candleHistory["$selected:${interval.api}"].orEmpty(),
             BinanceFuturesStream.closedCandleSnapshot(listOf(selected),interval)[selected])
-        candleHistory=candleHistory+("$selected:${interval.api}" to merged)
+        val updatedHistory = candleHistory+("$selected:${interval.api}" to merged)
+        candleHistory=updatedHistory
+        persistCheckpoint(updatedHistory)
         chartCandles=merged
         replay=if(merged.isNotEmpty()) MarketActivityEngine.replay(merged) else null
     }
@@ -169,6 +212,7 @@ fun MarketActivityLabScreen() {
             Text("Market Activity Lab",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
             Text("Early-movement research · public Binance USD-M Futures data · read-only, no orders",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Live WebSocket tickers + completed candles · REST history bootstrap/recovery",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
+            Text(checkpointStatus,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         item {
             Card { Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
