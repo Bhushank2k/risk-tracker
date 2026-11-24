@@ -32,7 +32,8 @@ import java.util.Locale
 fun TradingIntelligenceScreen(
     dailyEntries: List<PnlEntry>,
     manualTrades: List<TradeEntry>,
-    importedDailyPnl: List<BinanceDailyResult>
+    importedDailyPnl: List<BinanceDailyResult>,
+    dailyLossLimit: Double = 0.0
 ) {
     val asOfDate = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
     val reconciled = remember(dailyEntries, manualTrades, importedDailyPnl) {
@@ -101,6 +102,7 @@ fun TradingIntelligenceScreen(
         }
         PeriodForecastSection(reconciled, asOfDate)
         PersonalTradingCoachSection(manualTrades)
+        ProfitProtectionSection(reconciled, manualTrades, asOfDate, dailyLossLimit)
     }
 }
 
@@ -227,6 +229,91 @@ private fun PersonalTradingCoachSection(trades: List<TradeEntry>) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfitProtectionSection(
+    rows: List<ReconciledDailyPnl>,
+    trades: List<TradeEntry>,
+    asOfDate: String,
+    dailyLossLimit: Double
+) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("trading_intelligence_protection_v1", 0) }
+    var targetText by remember { mutableStateOf(prefs.getString("profit_target", "") ?: "") }
+    var givebackText by remember { mutableStateOf(prefs.getString("maximum_giveback", "") ?: "") }
+    var streakText by remember { mutableStateOf(prefs.getString("maximum_loss_streak", "3") ?: "3") }
+    val dailyPnl = rows.firstOrNull { canonicalPnlDate(it.date) == asOfDate }?.selectedPnl
+    val savedPeak = prefs.getFloat("peak_pnl_$asOfDate", Float.NaN).toDouble()
+    var peakObserved by remember(asOfDate) {
+        androidx.compose.runtime.mutableStateOf(
+            if (savedPeak.isFinite()) maxOf(savedPeak, dailyPnl?.takeIf { it.isFinite() } ?: savedPeak)
+            else dailyPnl?.takeIf { it.isFinite() }
+        )
+    }
+    androidx.compose.runtime.LaunchedEffect(dailyPnl, asOfDate) {
+        val value = dailyPnl?.takeIf { it.isFinite() }
+        if (value != null && (peakObserved == null || value > peakObserved!!)) {
+            peakObserved = value
+            prefs.edit().putFloat("peak_pnl_$asOfDate", value.toFloat()).apply()
+        }
+    }
+    val streak = remember(trades) { currentTradeStreak(trades) }
+    val losses = if (streak.kind == "Loss") streak.count else 0
+    val target = targetText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val giveback = givebackText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val streakLimit = streakText.toIntOrNull()?.takeIf { it in 1..20 }
+    val alerts = remember(dailyPnl, peakObserved, losses, dailyLossLimit, target, giveback, streakLimit) {
+        ProfitProtectionEngine.evaluate(
+            dailyPnl, peakObserved, losses,
+            ProfitProtectionSettings(dailyLossLimit, target, giveback, streakLimit)
+        )
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Profit & loss protection", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Advisory rules only. They do not block orders, change leverage, or close positions.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Daily controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Existing daily loss limit: " + if (dailyLossLimit.isFinite() && dailyLossLimit > 0.0) dailyLossLimit.usd() else "Not configured")
+                OutlinedTextField(
+                    value = targetText,
+                    onValueChange = { targetText = it; prefs.edit().putString("profit_target", it).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Daily profit target (USD)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+                OutlinedTextField(
+                    value = givebackText,
+                    onValueChange = { givebackText = it; prefs.edit().putString("maximum_giveback", it).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Maximum giveback from observed peak (USD)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+                OutlinedTextField(
+                    value = streakText,
+                    onValueChange = { streakText = it.filter(Char::isDigit).take(2); prefs.edit().putString("maximum_loss_streak", streakText).apply() },
+                    modifier = Modifier.fillMaxWidth(), label = { Text("Consecutive losing trades threshold (1–20)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Text("Today's recorded P&L: " + (dailyPnl?.takeIf { it.isFinite() }?.usd() ?: "Unavailable"))
+                Text("Observed in-session peak: " + (peakObserved?.usd() ?: "Unavailable"))
+                if (alerts.isEmpty()) {
+                    Text(
+                        if (dailyPnl == null) "No current-day P&L record is available. Daily profit/loss checks are inactive."
+                        else "No configured protection threshold is currently triggered.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    alerts.forEach { alert ->
+                        Text(alert.title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                        Text(alert.detail, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Text("Peak tracking begins when this feature observes a current-day P&L update; earlier intraday peaks cannot be reconstructed from daily totals.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
