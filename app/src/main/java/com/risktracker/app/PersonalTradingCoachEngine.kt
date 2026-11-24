@@ -95,7 +95,7 @@ object PersonalTradingCoachEngine {
             if (tagged < valid.size) {
                 insights += TradingCoachInsight(
                     "Improve journal coverage",
-                    (valid.size - tagged) + " of " + valid.size +
+                    (valid.size - tagged).toString() + " of " + valid.size +
                         " valid trades have no strategy tag. Tagging trades makes strategy comparisons more useful.",
                     CoachInsightSeverity.INFO, valid.size
                 )
