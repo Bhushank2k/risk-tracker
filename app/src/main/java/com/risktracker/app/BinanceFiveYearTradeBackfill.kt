@@ -175,6 +175,13 @@ internal class FuturesTradeArchiveProgress(context: Context) {
     fun reset() { prefs.edit().clear().apply() }
     fun saveStatus(value: String) { prefs.edit().putString("automatic_status", value).apply() }
     fun status(): String? = prefs.getString("automatic_status", null)
+    /** Freeze the five-year range once so every worker run uses identical period keys. */
+    fun windows(nowMillis: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
+        val anchor = prefs.getLong("window_anchor_ms", 0L).takeIf { it > 0L } ?: nowMillis.also {
+            check(prefs.edit().putLong("window_anchor_ms", it).commit()) { "Could not save the archive range anchor." }
+        }
+        return fiveYearFuturesTradeWindows(anchor)
+    }
     fun setAutomaticEnabled(enabled: Boolean) { prefs.edit().putBoolean("automatic_enabled", enabled).apply() }
     fun automaticEnabled(): Boolean = prefs.getBoolean("automatic_enabled", false)
     fun cooldownUntilMillis(): Long = prefs.getLong("ip_ban_until_ms", 0L)
@@ -195,9 +202,9 @@ internal class FuturesTradeArchiveProgress(context: Context) {
 fun BinanceFiveYearTradeBackfillSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val windows = remember { fiveYearFuturesTradeWindows() }
-    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     val progress = remember { FuturesTradeArchiveProgress(context) }
+    val windows = remember { progress.windows() }
+    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     var summary by remember { mutableStateOf(progress.summary(windows)) }
     var status by remember { mutableStateOf("Five-year USDⓈ-M Futures trade archive. Binance allows up to five archive requests per month.") }
     var busy by remember { mutableStateOf(false) }
