@@ -47,6 +47,7 @@ internal class BinanceFuturesArchiveWorker(
         val windows = fiveYearFuturesTradeWindows()
         val credentials = BinanceCredentialStore(applicationContext).read()
         if (credentials == null) {
+            progress.setAutomaticEnabled(false)
             progress.saveStatus("Automatic import paused: connect Binance with read-only API credentials.")
             return@withContext Result.failure()
         }
@@ -61,6 +62,7 @@ internal class BinanceFuturesArchiveWorker(
         progress.clearExpiredCooldown(now)
 
         if (windows.all { progress.imported(it) }) {
+            progress.setAutomaticEnabled(false)
             progress.saveStatus("Automatic five-year Futures history import is complete.")
             return@withContext Result.success()
         }
