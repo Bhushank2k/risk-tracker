@@ -196,7 +196,9 @@ fun BinanceFiveYearTradeBackfillSection() {
         while (true) {
             clockNow = System.currentTimeMillis()
             progress.clearExpiredCooldown(clockNow)
-            delay(1_000L)
+            summary = progress.summary(windows)
+            progress.status()?.let { status = it }
+            delay(5_000L)
         }
     }
 
@@ -205,6 +207,19 @@ fun BinanceFiveYearTradeBackfillSection() {
             Text("Five-year Futures trade history", style = MaterialTheme.typography.titleMedium)
             Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
+            OutlinedButton(
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    if (BinanceCredentialStore(context).read() == null) {
+                        status = "Connect Binance with read-only API credentials first."
+                    } else {
+                        BinanceFuturesArchiveScheduler.start(context)
+                        status = "Automatic import queued. Risk Tracker will request one period at a time, pause for Binance cooldowns, and resume after app restarts."
+                        progress.saveStatus(status)
+                    }
+                }
+            ) { Text("Start / resume automatic five-year import") }
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (isCoolingDown) Text(
                 "Binance cooldown active until " + utcDateFormat.format(Date(cooldownUntil)) + " UTC. Archive API calls are disabled until then.",
