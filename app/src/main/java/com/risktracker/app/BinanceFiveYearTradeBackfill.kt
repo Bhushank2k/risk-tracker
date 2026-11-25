@@ -174,6 +174,8 @@ internal class FuturesTradeArchiveProgress(context: Context) {
     fun reset() { prefs.edit().clear().apply() }
     fun saveStatus(value: String) { prefs.edit().putString("automatic_status", value).apply() }
     fun status(): String? = prefs.getString("automatic_status", null)
+    fun setAutomaticEnabled(enabled: Boolean) { prefs.edit().putBoolean("automatic_enabled", enabled).apply() }
+    fun automaticEnabled(): Boolean = prefs.getBoolean("automatic_enabled", false)
     fun cooldownUntilMillis(): Long = prefs.getLong("ip_ban_until_ms", 0L)
     fun saveCooldownUntilMillis(untilMillis: Long) {
         prefs.edit().putLong("ip_ban_until_ms", maxOf(cooldownUntilMillis(), untilMillis)).commit()
@@ -224,6 +226,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                     if (BinanceCredentialStore(context).read() == null) {
                         status = "Connect Binance with read-only API credentials first."
                     } else {
+                        progress.setAutomaticEnabled(true)
                         BinanceFuturesArchiveScheduler.start(context)
                         status = "Automatic import queued. Risk Tracker will request one period at a time, pause for Binance cooldowns, and resume after app restarts."
                         progress.saveStatus(status)
@@ -236,7 +239,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
             )
             Button(
-                enabled = !busy && !isCoolingDown,
+                enabled = !busy && !isCoolingDown && !progress.automaticEnabled(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()
@@ -279,7 +282,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                 }
             ) { Text(if (busy) "Working…" else "Request missing archive periods") }
             OutlinedButton(
-                enabled = !busy && !isCoolingDown && windows.any { progress.id(it) != null && !progress.imported(it) },
+                enabled = !busy && !isCoolingDown && !progress.automaticEnabled() && windows.any { progress.id(it) != null && !progress.imported(it) },
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()
