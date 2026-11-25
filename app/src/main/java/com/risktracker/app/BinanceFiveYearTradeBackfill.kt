@@ -63,7 +63,7 @@ internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis())
 }
 
 /** Read-only access to Binance's official USDⓈ-M Futures trade-history archive endpoints. */
-private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private val secret: String) {
+internal class BinanceFuturesTradeArchiveApi(private val apiKey: String, private val secret: String) {
     private fun signedGet(path: String, params: List<Pair<String, String>>): JSONObject {
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (key, value) ->
@@ -85,9 +85,12 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $code")
-                if (code == 418) {
-                    val until = parseBinanceIpBanUntilMillis(message) ?: (System.currentTimeMillis() + 60_000L)
-                    throw BinanceArchiveIpBanException(until, "Binance HTTP 418: archive requests paused until " + Date(until) + ".")
+                if (code == 418 || code == 429 || message.contains("temporarily blocked", ignoreCase = true)) {
+                    val retryHeader = connection.getHeaderField("Retry-After")
+                    val retryMillis = retryHeader?.toLongOrNull()?.let { System.currentTimeMillis() + it.coerceAtLeast(1L) * 1_000L }
+                        ?: (parseBinanceIpBanUntilMillis(message) ?: (System.currentTimeMillis() + 5 * 60_000L))
+                    val until = maxOf(retryMillis, parseBinanceIpBanUntilMillis(message) ?: 0L)
+                    throw BinanceArchiveIpBanException(until, "Binance temporarily limited archive requests (HTTP $code). Paused until " + Date(until) + ".")
                 }
                 error("Binance archive API error ($code): $message")
             }
@@ -147,7 +150,7 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
 }
 
 /** Local progress is durable: request IDs survive app restarts, and already-imported years are never requested twice. */
-private class FuturesTradeArchiveProgress(context: Context) {
+internal class FuturesTradeArchiveProgress(context: Context) {
     private val prefs = context.getSharedPreferences("binance_futures_trade_archives_v1", Context.MODE_PRIVATE)
 
     fun id(window: FuturesTradeArchiveWindow): String? = prefs.getString("id_${window.key}", null)
@@ -159,6 +162,8 @@ private class FuturesTradeArchiveProgress(context: Context) {
         check(prefs.edit().putBoolean("imported_${window.key}", true).commit()) { "Could not save archive import progress." }
     }
     fun reset() { prefs.edit().clear().apply() }
+    fun saveStatus(value: String) { prefs.edit().putString("automatic_status", value).apply() }
+    fun status(): String? = prefs.getString("automatic_status", null)
     fun cooldownUntilMillis(): Long = prefs.getLong("ip_ban_until_ms", 0L)
     fun saveCooldownUntilMillis(untilMillis: Long) {
         prefs.edit().putLong("ip_ban_until_ms", maxOf(cooldownUntilMillis(), untilMillis)).commit()
