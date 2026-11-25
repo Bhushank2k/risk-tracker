@@ -19,11 +19,14 @@ internal fun exploreMenuGroups(): List<Pair<String, List<Pair<String, Int>>>> =
             "Coin Explosion Radar" to 32,
             "Market Activity Lab" to 35
         ),
+        "BUSINESS & TAX" to listOf(
+            "India Business Tax Center" to 38,
+            "Crypto tax report" to 9
+        ),
         "PERFORMANCE & REPORTS" to listOf(
             "Automatic daily target & risk" to 37,
             "Trading Intelligence" to 36,
-            "P&L Calendar" to 23,
-            "Crypto tax report" to 9
+            "P&L Calendar" to 23
         ),
         "EXCHANGE & ACCOUNT" to listOf(
             "Binance Sync & imports" to 6,
