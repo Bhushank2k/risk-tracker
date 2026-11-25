@@ -47,6 +47,16 @@ internal fun parseBinanceIpBanUntilMillis(message: String): Long? =
     Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
+internal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+    val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    raw.toLongOrNull()?.let { seconds -> return nowMillis + seconds.coerceAtLeast(1L) * 1_000L }
+    return runCatching {
+        val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        format.timeZone = TimeZone.getTimeZone("GMT")
+        format.parse(raw)?.time
+    }.getOrNull()?.takeIf { it > nowMillis }
+}
+
 internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
     val utc = TimeZone.getTimeZone("UTC")
     val cursor = Calendar.getInstance(utc).apply { timeInMillis = now; add(Calendar.YEAR, -5) }
@@ -86,9 +96,9 @@ internal class BinanceFuturesTradeArchiveApi(private val apiKey: String, private
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $code")
                 if (code == 418 || code == 429 || message.contains("temporarily blocked", ignoreCase = true)) {
-                    val retryHeader = connection.getHeaderField("Retry-After")
-                    val retryMillis = retryHeader?.toLongOrNull()?.let { System.currentTimeMillis() + it.coerceAtLeast(1L) * 1_000L }
-                        ?: (parseBinanceIpBanUntilMillis(message) ?: (System.currentTimeMillis() + 5 * 60_000L))
+                    val now = System.currentTimeMillis()
+                    val retryMillis = parseBinanceRetryAfterMillis(connection.getHeaderField("Retry-After"), now)
+                        ?: (parseBinanceIpBanUntilMillis(message) ?: (now + 5 * 60_000L))
                     val until = maxOf(retryMillis, parseBinanceIpBanUntilMillis(message) ?: 0L)
                     throw BinanceArchiveIpBanException(until, "Binance temporarily limited archive requests (HTTP $code). Paused until " + Date(until) + ".")
                 }
