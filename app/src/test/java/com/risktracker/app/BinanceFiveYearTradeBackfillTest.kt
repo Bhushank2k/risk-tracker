@@ -65,6 +65,11 @@ class BinanceFiveYearTradeBackfillTest {
     }
 
     @Test
+    fun formatsBinanceTimesInIndiaStandardTime() {
+        assertEquals("25 Nov 2026, 9:20 AM IST", formatBinanceTimestampIST(utcMillis("2026-11-25 03:50:00")))
+    }
+
+    @Test
     fun ignoresExpiredRetryAfterHttpDate() {
         assertEquals(
             null,
