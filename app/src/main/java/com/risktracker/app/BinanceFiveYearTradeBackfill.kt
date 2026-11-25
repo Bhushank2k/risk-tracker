@@ -47,7 +47,7 @@ internal fun parseBinanceIpBanUntilMillis(message: String): Long? =
     Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
-internal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+internal fun formatBinanceTimestampIST(timestampMillis: Long): String =\n    SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.ROOT).apply {\n        timeZone = TimeZone.getTimeZone("Asia/Kolkata")\n    }.format(Date(timestampMillis)) + " IST"\n\ninternal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
     val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     raw.toLongOrNull()?.let { seconds -> return nowMillis + seconds.coerceAtLeast(1L) * 1_000L }
     return runCatching {
@@ -204,7 +204,7 @@ fun BinanceFiveYearTradeBackfillSection() {
     val scope = rememberCoroutineScope()
     val progress = remember { FuturesTradeArchiveProgress(context) }
     val windows = remember { progress.windows() }
-    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
+    val istDateFormat = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Kolkata") } }
     var summary by remember { mutableStateOf(progress.summary(windows)) }
     var status by remember { mutableStateOf("Five-year USDⓈ-M Futures trade archive. Binance allows up to five archive requests per month.") }
     var busy by remember { mutableStateOf(false) }
@@ -225,7 +225,7 @@ fun BinanceFiveYearTradeBackfillSection() {
     RiskCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Five-year Futures trade history", style = MaterialTheme.typography.titleMedium)
-            Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
+            Text("Target: ${istDateFormat.format(Date(windows.first().start))} – ${istDateFormat.format(Date(windows.last().end))} IST. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
             OutlinedButton(
                 enabled = !busy && !progress.automaticEnabled(),
@@ -243,7 +243,7 @@ fun BinanceFiveYearTradeBackfillSection() {
             ) { Text("Start / resume automatic five-year import") }
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (isCoolingDown) Text(
-                "Binance cooldown active until " + utcDateFormat.format(Date(cooldownUntil)) + " UTC. Archive API calls are disabled until then.",
+                "Binance cooldown active until " + istDateFormat.format(Date(cooldownUntil)) + " IST. Archive API calls are disabled until then.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
             )
             Button(
