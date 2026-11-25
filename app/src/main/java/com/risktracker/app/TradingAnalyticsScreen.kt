@@ -139,7 +139,7 @@ fun TradingAnalyticsScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -156,7 +156,7 @@ fun TradingAnalyticsScreen(
         item {
             RiskCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("REALIZED P&L · BEFORE FEES", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text((if (netPnl > 0.0) "+" else "") + netPnl.usd(),
@@ -171,7 +171,7 @@ fun TradingAnalyticsScreen(
                     Text("${validFills.size} fetched executions · counted once per fill",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
-                    volumeByQuoteAsset.forEach { (asset, amount) ->
+                    volumeByQuoteAsset.take(3).forEach { (asset, amount) ->
                         Text(amount.num() + " " + asset, style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f))
                     }
@@ -221,7 +221,7 @@ fun TradingAnalyticsScreen(
                     MaterialTheme.colorScheme.error, "Based on the separate manual balance ledger")
                 Text("${reconciledDaily.size} reconciled days · ${reconciledDaily.count { it.source == DailyPnlSource.BINANCE }} Binance · ${reconciledDaily.count { it.source == DailyPnlSource.MANUAL }} manual · ${reconciledDaily.count { it.source == DailyPnlSource.JOURNAL }} journal estimates",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                reconciledDaily.takeLast(7).asReversed().forEach { day ->
+                reconciledDaily.takeLast(5).asReversed().forEach { day ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -241,7 +241,7 @@ fun TradingAnalyticsScreen(
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("Win / loss ratio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
@@ -333,13 +333,13 @@ fun TradingAnalyticsScreen(
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Realized P&L by pair", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (pairStats.isEmpty()) {
                         Text("Pair results will appear when Binance provides realized P&L for executions.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        pairStats.take(12).forEach { pair ->
+                        pairStats.take(6).forEach { pair ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -352,7 +352,7 @@ fun TradingAnalyticsScreen(
                                     color = if (pair.realizedPnl >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                     fontWeight = FontWeight.SemiBold)
                             }
-                            if (pair != pairStats.take(12).last()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            if (pair != pairStats.take(6).last()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
@@ -363,9 +363,9 @@ fun TradingAnalyticsScreen(
                 .toSortedMap(compareByDescending { it })
             if (monthly.isNotEmpty()) {
                 RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Monthly reconciled P&L", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        monthly.entries.take(12).forEach { (month, days) ->
+                        monthly.entries.take(6).forEach { (month, days) ->
                             val net = days.sumOf { it.selectedPnl }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column {
@@ -384,7 +384,7 @@ fun TradingAnalyticsScreen(
         item {
             if (futuresIncomeTotals.isNotEmpty()) {
                 RiskCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Futures income breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         val labels = listOf(
                             "REALIZED_PNL" to "Realized trading P&L",
@@ -415,7 +415,7 @@ fun TradingAnalyticsScreen(
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("R-multiple analysis", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (rMultipleSummary.sampleCount == 0) {
                         Text("R-multiple is unavailable: record a positive Risk USD amount for each journal trade. Exchange fills do not contain your original stop-loss risk, so R cannot be inferred safely.",
@@ -446,7 +446,7 @@ fun TradingAnalyticsScreen(
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Trading fees", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     if (feeTotals.isEmpty()) {
                         Text("No fee amounts available for this period.", style = MaterialTheme.typography.bodySmall,
@@ -466,7 +466,7 @@ fun TradingAnalyticsScreen(
         }
         item {
             RiskCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("Data quality checks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     val syncColor = if (staleSync || syncStatus.symbolsFailed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     Text("Sync: ${syncStatus.state}", color = syncColor, style = MaterialTheme.typography.bodySmall)
@@ -507,13 +507,13 @@ private fun AnalyticsMetric(
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(13.dp),
         colors = CardDefaults.cardColors(
             containerColor = valueColor.copy(alpha = 0.085f)
         ),
         border = BorderStroke(1.dp, valueColor.copy(alpha = 0.28f))
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 val metricIcon = when {
                     label.contains("win", true) || label.contains("profit factor", true) -> Icons.Filled.TrendingUp
@@ -528,13 +528,13 @@ private fun AnalyticsMetric(
                     color = valueColor.copy(alpha = 0.16f)
                 ) {
                     Icon(metricIcon, contentDescription = null, tint = valueColor,
-                        modifier = Modifier.padding(6.dp).size(17.dp))
+                        modifier = Modifier.padding(4.dp).size(14.dp))
                 }
                 Text(label, style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
             }
-            Text(value, style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold, color = valueColor)
+            Text(value, style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, color = valueColor)
             supporting?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
