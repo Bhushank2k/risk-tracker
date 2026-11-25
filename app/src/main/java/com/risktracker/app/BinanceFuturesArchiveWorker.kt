@@ -44,7 +44,7 @@ internal class BinanceFuturesArchiveWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val progress = FuturesTradeArchiveProgress(applicationContext)
-        val windows = fiveYearFuturesTradeWindows()
+        val windows = progress.windows()
         val credentials = BinanceCredentialStore(applicationContext).read()
         if (credentials == null) {
             progress.setAutomaticEnabled(false)
