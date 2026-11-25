@@ -47,7 +47,12 @@ internal fun parseBinanceIpBanUntilMillis(message: String): Long? =
     Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
-internal fun formatBinanceTimestampIST(timestampMillis: Long): String =\n    SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.ROOT).apply {\n        timeZone = TimeZone.getTimeZone("Asia/Kolkata")\n    }.format(Date(timestampMillis)) + " IST"\n\ninternal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+internal fun formatBinanceTimestampIST(timestampMillis: Long): String =
+    SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.ROOT).apply {
+        timeZone = TimeZone.getTimeZone("Asia/Kolkata")
+    }.format(Date(timestampMillis)) + " IST"
+
+internal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
     val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     raw.toLongOrNull()?.let { seconds -> return nowMillis + seconds.coerceAtLeast(1L) * 1_000L }
     return runCatching {
