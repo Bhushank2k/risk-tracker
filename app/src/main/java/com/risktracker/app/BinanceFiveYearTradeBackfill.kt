@@ -47,6 +47,16 @@ internal fun parseBinanceIpBanUntilMillis(message: String): Long? =
     Regex("banned until\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(message)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
+internal fun parseBinanceRetryAfterMillis(value: String?, nowMillis: Long = System.currentTimeMillis()): Long? {
+    val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    raw.toLongOrNull()?.let { seconds -> return nowMillis + seconds.coerceAtLeast(1L) * 1_000L }
+    return runCatching {
+        val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US)
+        format.timeZone = TimeZone.getTimeZone("GMT")
+        format.parse(raw)?.time
+    }.getOrNull()?.takeIf { it > nowMillis }
+}
+
 internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
     val utc = TimeZone.getTimeZone("UTC")
     val cursor = Calendar.getInstance(utc).apply { timeInMillis = now; add(Calendar.YEAR, -5) }
@@ -63,7 +73,7 @@ internal fun fiveYearFuturesTradeWindows(now: Long = System.currentTimeMillis())
 }
 
 /** Read-only access to Binance's official USDⓈ-M Futures trade-history archive endpoints. */
-private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private val secret: String) {
+internal class BinanceFuturesTradeArchiveApi(private val apiKey: String, private val secret: String) {
     private fun signedGet(path: String, params: List<Pair<String, String>>): JSONObject {
         val all = params + ("timestamp" to System.currentTimeMillis().toString()) + ("recvWindow" to "10000")
         val query = all.joinToString("&") { (key, value) ->
@@ -85,9 +95,12 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
             val body = stream.bufferedReader().use { it.readText() }
             if (code !in 200..299) {
                 val message = runCatching { JSONObject(body).optString("msg") }.getOrDefault("HTTP $code")
-                if (code == 418) {
-                    val until = parseBinanceIpBanUntilMillis(message) ?: (System.currentTimeMillis() + 60_000L)
-                    throw BinanceArchiveIpBanException(until, "Binance HTTP 418: archive requests paused until " + Date(until) + ".")
+                if (code == 418 || code == 429 || message.contains("temporarily blocked", ignoreCase = true)) {
+                    val now = System.currentTimeMillis()
+                    val retryMillis = parseBinanceRetryAfterMillis(connection.getHeaderField("Retry-After"), now)
+                        ?: (parseBinanceIpBanUntilMillis(message) ?: (now + 5 * 60_000L))
+                    val until = maxOf(retryMillis, parseBinanceIpBanUntilMillis(message) ?: 0L)
+                    throw BinanceArchiveIpBanException(until, "Binance temporarily limited archive requests (HTTP $code). Paused until " + Date(until) + ".")
                 }
                 error("Binance archive API error ($code): $message")
             }
@@ -147,18 +160,30 @@ private class BinanceFuturesTradeArchiveApi(private val apiKey: String, private 
 }
 
 /** Local progress is durable: request IDs survive app restarts, and already-imported years are never requested twice. */
-private class FuturesTradeArchiveProgress(context: Context) {
+internal class FuturesTradeArchiveProgress(context: Context) {
     private val prefs = context.getSharedPreferences("binance_futures_trade_archives_v1", Context.MODE_PRIVATE)
 
     fun id(window: FuturesTradeArchiveWindow): String? = prefs.getString("id_${window.key}", null)
     fun saveId(window: FuturesTradeArchiveWindow, id: String) {
         check(prefs.edit().putString("id_${window.key}", id).commit()) { "Could not save the Binance archive request ID." }
     }
+    fun removeId(window: FuturesTradeArchiveWindow) { prefs.edit().remove("id_${window.key}").commit() }
     fun imported(window: FuturesTradeArchiveWindow): Boolean = prefs.getBoolean("imported_${window.key}", false)
     fun markImported(window: FuturesTradeArchiveWindow) {
         check(prefs.edit().putBoolean("imported_${window.key}", true).commit()) { "Could not save archive import progress." }
     }
     fun reset() { prefs.edit().clear().apply() }
+    fun saveStatus(value: String) { prefs.edit().putString("automatic_status", value).apply() }
+    fun status(): String? = prefs.getString("automatic_status", null)
+    /** Freeze the five-year range once so every worker run uses identical period keys. */
+    fun windows(nowMillis: Long = System.currentTimeMillis()): List<FuturesTradeArchiveWindow> {
+        val anchor = prefs.getLong("window_anchor_ms", 0L).takeIf { it > 0L } ?: nowMillis.also {
+            check(prefs.edit().putLong("window_anchor_ms", it).commit()) { "Could not save the archive range anchor." }
+        }
+        return fiveYearFuturesTradeWindows(anchor)
+    }
+    fun setAutomaticEnabled(enabled: Boolean) { prefs.edit().putBoolean("automatic_enabled", enabled).apply() }
+    fun automaticEnabled(): Boolean = prefs.getBoolean("automatic_enabled", false)
     fun cooldownUntilMillis(): Long = prefs.getLong("ip_ban_until_ms", 0L)
     fun saveCooldownUntilMillis(untilMillis: Long) {
         prefs.edit().putLong("ip_ban_until_ms", maxOf(cooldownUntilMillis(), untilMillis)).commit()
@@ -177,9 +202,9 @@ private class FuturesTradeArchiveProgress(context: Context) {
 fun BinanceFiveYearTradeBackfillSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val windows = remember { fiveYearFuturesTradeWindows() }
-    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     val progress = remember { FuturesTradeArchiveProgress(context) }
+    val windows = remember { progress.windows() }
+    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     var summary by remember { mutableStateOf(progress.summary(windows)) }
     var status by remember { mutableStateOf("Five-year USDⓈ-M Futures trade archive. Binance allows up to five archive requests per month.") }
     var busy by remember { mutableStateOf(false) }
@@ -191,7 +216,9 @@ fun BinanceFiveYearTradeBackfillSection() {
         while (true) {
             clockNow = System.currentTimeMillis()
             progress.clearExpiredCooldown(clockNow)
-            delay(1_000L)
+            summary = progress.summary(windows)
+            progress.status()?.let { status = it }
+            delay(5_000L)
         }
     }
 
@@ -200,13 +227,27 @@ fun BinanceFiveYearTradeBackfillSection() {
             Text("Five-year Futures trade history", style = MaterialTheme.typography.titleMedium)
             Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
+            OutlinedButton(
+                enabled = !busy && !progress.automaticEnabled(),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    if (BinanceCredentialStore(context).read() == null) {
+                        status = "Connect Binance with read-only API credentials first."
+                    } else {
+                        progress.setAutomaticEnabled(true)
+                        BinanceFuturesArchiveScheduler.start(context)
+                        status = "Automatic import queued. Risk Tracker will request one period at a time, pause for Binance cooldowns, and resume after app restarts."
+                        progress.saveStatus(status)
+                    }
+                }
+            ) { Text("Start / resume automatic five-year import") }
             Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (isCoolingDown) Text(
                 "Binance cooldown active until " + utcDateFormat.format(Date(cooldownUntil)) + " UTC. Archive API calls are disabled until then.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
             )
             Button(
-                enabled = !busy && !isCoolingDown,
+                enabled = !busy && !isCoolingDown && !progress.automaticEnabled(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()
@@ -249,7 +290,7 @@ fun BinanceFiveYearTradeBackfillSection() {
                 }
             ) { Text(if (busy) "Working…" else "Request missing archive periods") }
             OutlinedButton(
-                enabled = !busy && !isCoolingDown && windows.any { progress.id(it) != null && !progress.imported(it) },
+                enabled = !busy && !isCoolingDown && !progress.automaticEnabled() && windows.any { progress.id(it) != null && !progress.imported(it) },
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val credentials = BinanceCredentialStore(context).read()

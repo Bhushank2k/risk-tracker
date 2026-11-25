@@ -51,4 +51,25 @@ class BinanceFiveYearTradeBackfillTest {
     fun missingBanExpiryReturnsNull() {
         assertEquals(null, parseBinanceIpBanUntilMillis("Way too many requests"))
     }
+    @Test
+    fun parsesRetryAfterSeconds() {
+        assertEquals(15_000L, parseBinanceRetryAfterMillis("15", 0L))
+    }
+
+    @Test
+    fun parsesRetryAfterHttpDate() {
+        assertEquals(
+            utcMillis("2026-11-25 03:55:00"),
+            parseBinanceRetryAfterMillis("Wed, 25 Nov 2026 03:55:00 GMT", utcMillis("2026-11-25 03:50:00"))
+        )
+    }
+
+    @Test
+    fun ignoresExpiredRetryAfterHttpDate() {
+        assertEquals(
+            null,
+            parseBinanceRetryAfterMillis("Tue, 24 Nov 2026 03:55:00 GMT", utcMillis("2026-11-25 03:50:00"))
+        )
+    }
+
 }
