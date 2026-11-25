@@ -77,7 +77,12 @@ internal class BinanceFuturesArchiveWorker(
                     .map { state.optString(it) }.firstOrNull { it.isNotBlank() }
                 val label = state.optString("status", state.optString("state")).lowercase(Locale.ROOT)
                 if (url.isNullOrBlank()) {
-                    progress.saveStatus("Archive ${pending.key} is ${label.ifBlank { "processing" }}. Will check again automatically.")
+                    if (label.contains("fail") || label.contains("expired")) {
+                        progress.removeId(pending)
+                        progress.saveStatus("Binance archive ${pending.key} expired or failed. It will be requested again automatically.")
+                    } else {
+                        progress.saveStatus("Archive ${pending.key} is ${label.ifBlank { "processing" }}. Will check again automatically.")
+                    }
                 } else {
                     val fills = api.downloadCsv(url)
                     val added = BinanceAutoJournalStore.merge(applicationContext, fills)
