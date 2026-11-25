@@ -34,7 +34,7 @@ class PrimaryNavigationTest {
 
         assertEquals(destinations.size, destinations.map { it.second }.distinct().size)
         assertEquals(
-            listOf("TRADING & TOOLS", "MARKET INTELLIGENCE", "PERFORMANCE & REPORTS", "EXCHANGE & ACCOUNT", "APP"),
+            listOf("TRADING & TOOLS", "MARKET INTELLIGENCE", "BUSINESS & TAX", "PERFORMANCE & REPORTS", "EXCHANGE & ACCOUNT", "APP"),
             groups.map { it.first }
         )
         val marketIntelligence = groups.first { it.first == "MARKET INTELLIGENCE" }.second

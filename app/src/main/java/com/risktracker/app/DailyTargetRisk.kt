@@ -84,6 +84,10 @@ fun calculateDailyTargetRisk(
         return DailyTargetRiskResult(date, validEquity, null, validPnl, null, null,
             0.0, 0.0, DailyTargetRiskStatus.INVALID, "Settings")
     }
+    if (equity != null && (!equity.isFinite() || equity <= 0.0)) {
+        return DailyTargetRiskResult(date, equity, null, validPnl, null, null,
+            0.0, 0.0, DailyTargetRiskStatus.INVALID, "Invalid account equity")
+    }
     if (validEquity == null) {
         return DailyTargetRiskResult(date, null, null, validPnl, null, null,
             0.0, 0.0, DailyTargetRiskStatus.DATA_UNAVAILABLE, "Account equity unavailable")
