@@ -167,6 +167,7 @@ internal class FuturesTradeArchiveProgress(context: Context) {
     fun saveId(window: FuturesTradeArchiveWindow, id: String) {
         check(prefs.edit().putString("id_${window.key}", id).commit()) { "Could not save the Binance archive request ID." }
     }
+    fun removeId(window: FuturesTradeArchiveWindow) { prefs.edit().remove("id_${window.key}").commit() }
     fun imported(window: FuturesTradeArchiveWindow): Boolean = prefs.getBoolean("imported_${window.key}", false)
     fun markImported(window: FuturesTradeArchiveWindow) {
         check(prefs.edit().putBoolean("imported_${window.key}", true).commit()) { "Could not save archive import progress." }
