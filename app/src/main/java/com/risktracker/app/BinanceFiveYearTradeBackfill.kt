@@ -220,7 +220,7 @@ fun BinanceFiveYearTradeBackfillSection() {
             Text("Target: ${utcDateFormat.format(Date(windows.first().start))} – ${utcDateFormat.format(Date(windows.last().end))} UTC. Each request covers at most one year; the five-year range is split into five contiguous periods.", style = MaterialTheme.typography.bodySmall)
             Text(summary, style = MaterialTheme.typography.labelLarge)
             OutlinedButton(
-                enabled = !busy,
+                enabled = !busy && !progress.automaticEnabled(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     if (BinanceCredentialStore(context).read() == null) {
