@@ -42,7 +42,7 @@ fun IndiaBusinessTaxCenterScreen(
     val spotTrades = trades.count { !it.market.contains("Futures", ignoreCase = true) }
     val futuresTrades = trades.size - spotTrades
     val missingPnl = trades.count { it.realizedPnl == null }
-    val fyTrades = trades.filter { it.year == financialYearStart }
+    val fyTrades = trades.filter { indiaFinancialYearStart(it.timestamp) == financialYearStart }
     val fySpot = fyTrades.count { !it.market.contains("Futures", ignoreCase = true) }
     val fyFutures = fyTrades.size - fySpot
 
@@ -146,4 +146,13 @@ private fun WorkspaceAction(title: String, description: String, action: String, 
             OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) { Text(action) }
         }
     }
+}
+
+/** Returns the Indian financial-year start year for an epoch-millisecond timestamp. */
+internal fun indiaFinancialYearStart(timestampMillis: Long): Int {
+    val calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Kolkata"), Locale.US).apply {
+        timeInMillis = timestampMillis
+    }
+    val year = calendar.get(Calendar.YEAR)
+    return if (calendar.get(Calendar.MONTH) >= Calendar.APRIL) year else year - 1
 }
