@@ -55,7 +55,7 @@ internal class BinanceFuturesArchiveWorker(
         val now = System.currentTimeMillis()
         val cooldown = progress.cooldownUntilMillis()
         if (cooldown > now) {
-            progress.saveStatus("Binance cooldown active until ${cooldown} UTC. Automatic import is paused.")
+            progress.saveStatus("Binance cooldown active until ${formatBinanceTimestampIST(cooldown)}. Automatic import is paused.")
             BinanceFuturesArchiveScheduler.enqueue(applicationContext, cooldown - now + 1_000L)
             return@withContext Result.success()
         }
@@ -99,7 +99,7 @@ internal class BinanceFuturesArchiveWorker(
             }
         } catch (blocked: BinanceArchiveIpBanException) {
             progress.saveCooldownUntilMillis(blocked.untilMillis)
-            progress.saveStatus("Binance temporarily limited archive requests. Paused until ${blocked.untilMillis}; will resume automatically.")
+            progress.saveStatus("Binance temporarily limited archive requests. Paused until ${formatBinanceTimestampIST(blocked.untilMillis)}; will resume automatically.")
             BinanceFuturesArchiveScheduler.enqueue(applicationContext, blocked.untilMillis - System.currentTimeMillis() + 1_000L)
             return@withContext Result.success()
         } catch (error: Exception) {
