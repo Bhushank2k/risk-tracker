@@ -576,9 +576,13 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
 
     /** Fetches the official USDⓈ-M income ledger and retains each P&L component by UTC day. */
     fun futuresDailyIncomeByType(
-        startTime: Long = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+        startTime: Long = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000,
+        endTime: Long = System.currentTimeMillis()
     ): Map<String, Map<String, Double>> {
-        require(startTime > 0L) { "Income history start time must be positive." }
+        require(startTime > 0L && endTime >= startTime) { "Income history range is invalid." }
+        require(endTime - startTime <= 90L * 24 * 60 * 60 * 1000) {
+            "Binance Futures income API supports at most a 90-day range per sync. Import an official export for older history."
+        }
         val daily = mutableMapOf<String, MutableMap<String, Double>>()
         val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -588,7 +592,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         var pages = 0
         while (more && pages < 100) {
             pages++
-            val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/income", listOf("startTime" to cursor.toString(), "limit" to "1000"))
+            val page = signedGetArray("https://fapi.binance.com", "/fapi/v1/income", listOf("startTime" to cursor.toString(), "endTime" to endTime.toString(), "limit" to "1000"))
             if (page.length() == 0) {
                 more = false
             } else {
@@ -853,6 +857,17 @@ object BinanceSyncRunner {
         val futures = futuresIncome.mapValues { (_, values) -> values.values.sum() }
         BinanceSyncData.merge(context, spot, futures, futuresIncome)
     }
+
+    /** Date-range Futures income backfill; preserves saved Spot rows and other dates. */
+    suspend fun syncHistoricalFuturesIncome(context: Context, startTime: Long, endTime: Long) =
+        withContext(Dispatchers.IO) {
+            val credentials = BinanceCredentialStore(context).read()
+                ?: error("Save Binance read-only API credentials first.")
+            val income = BinanceApi(credentials.first, credentials.second)
+                .futuresDailyIncomeByType(startTime, endTime)
+            val totals = income.mapValues { (_, components) -> components.values.sum() }
+            BinanceSyncData.merge(context, emptyMap(), totals, income)
+        }
 
     /**
      * Lightweight foreground reconciliation: refreshes the current and previous UTC income days
