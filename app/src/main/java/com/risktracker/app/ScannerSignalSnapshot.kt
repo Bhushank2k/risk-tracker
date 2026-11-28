@@ -82,7 +82,12 @@ data class ScannerSignalSnapshot(
                 target2 = signal.target2,
                 rewardRisk = signal.rewardRisk,
                 explanation = signal.explanation,
-                confirmation = signal.confirmation
+                confirmation = signal.confirmation,
+                btcBias = signal.btcBias,
+                adx = signal.adx,
+                atrPct = signal.atrPct,
+                relativeVolume = signal.relativeVolume,
+                fundingRate = signal.fundingRate
             )
         }
     }
