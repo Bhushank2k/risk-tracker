@@ -43,11 +43,12 @@ internal object StoredSignalPerformanceAnalyzer {
         val samples = snapshots.zip(results).mapNotNull { (snapshot, result) ->
             if (result.entryTime == null || result.outcome == ReplayOutcome.INVALID ||
                 !result.netR.isFinite() || result.netR == 0.0) return@mapNotNull null
+            val completedAt = result.exitTime ?: result.entryTime ?: return@mapNotNull null
             Sample(
                 setup = snapshot.setup.ifBlank { "Unspecified" },
                 horizon = snapshot.horizon.ifBlank { "Unspecified" },
                 score = snapshot.score,
-                time = result.exitTime ?: result.entryTime,
+                time = completedAt,
                 netR = result.netR
             )
         }
