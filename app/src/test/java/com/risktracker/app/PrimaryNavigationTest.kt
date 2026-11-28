@@ -39,7 +39,7 @@ class PrimaryNavigationTest {
         )
         val marketIntelligence = groups.first { it.first == "MARKET INTELLIGENCE" }.second
         assertEquals(
-            listOf("Best Opportunities" to 34, "Unified SMC Signals" to 33, "Coin Explosion Radar" to 32, "Market Activity Lab" to 35),
+            listOf("Best Opportunities" to 34, "Unified SMC Signals" to 33, "Coin Explosion Radar" to 32, "Market Activity Lab" to 35, "Stored Signal Replay" to 39),
             marketIntelligence
         )
     }
