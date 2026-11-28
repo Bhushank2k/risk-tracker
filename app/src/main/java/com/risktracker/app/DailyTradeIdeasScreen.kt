@@ -179,6 +179,8 @@ internal object TradeIdeaCache {
     }.getOrNull()
 
     fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
+        // Persist immutable V2TradePlan-derived research snapshots alongside the latest scan cache.
+        runCatching { ConfluenceV4PlanSnapshotStore.append(context, ideas.map { ConfluenceV4PlanSnapshot.from(it, updatedAt) }) }
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
