@@ -43,7 +43,7 @@ object SMCScanStateStore {
             .putLong("resultsAt", capturedAt).apply()
         CoreScannerEmissionSnapshotStore.append(context, setups.map { setup ->
             CoreScannerEmissionSnapshot(
-                snapshotId = "${setup.id}_$capturedAt",
+                snapshotId = setup.id,
                 signalId = setup.id,
                 symbol = setup.symbol,
                 side = setup.side,
