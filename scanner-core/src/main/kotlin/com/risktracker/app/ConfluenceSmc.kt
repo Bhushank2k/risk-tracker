@@ -70,12 +70,16 @@ fun hasTradeIdeaSmcStructureBreak(candles: List<V2Candle>, side: String, atr: Do
     else event.direction == SmcDirection.BEARISH
 }
 
-/** Detect a recent three-candle imbalance whose zone is being revisited now. */
+/**
+ * Detect a recent three-candle imbalance being revisited now.
+ * A prior close through the far edge invalidates the gap; wick mitigation alone
+ * does not. The newest eligible gap is considered first.
+ */
 fun hasTradeIdeaSmcFvgRetest(candles: List<V2Candle>, side: String, lookback: Int = 30): Boolean {
     if (side !in setOf("LONG", "SHORT") || candles.size < 4 || lookback < 2) return false
     val current = candles.last()
     val start = (candles.size - lookback).coerceAtLeast(2)
-    for (i in start until candles.lastIndex) {
+    for (i in candles.lastIndex - 1 downTo start) {
         val first = candles[i - 2]
         val third = candles[i]
         val bullishGap = third.low > first.high
@@ -83,12 +87,16 @@ fun hasTradeIdeaSmcFvgRetest(candles: List<V2Candle>, side: String, lookback: In
         if (side == "LONG" && bullishGap) {
             val zoneLow = first.high
             val zoneHigh = third.low
-            if (current.low <= zoneHigh && current.high >= zoneLow && current.close >= zoneLow) return true
+            val invalidated = (i + 1 until candles.lastIndex).any { candles[it].close < zoneLow }
+            if (!invalidated && current.low <= zoneHigh && current.high >= zoneLow &&
+                current.close >= zoneLow) return true
         }
         if (side == "SHORT" && bearishGap) {
             val zoneLow = third.high
             val zoneHigh = first.low
-            if (current.high >= zoneLow && current.low <= zoneHigh && current.close <= zoneHigh) return true
+            val invalidated = (i + 1 until candles.lastIndex).any { candles[it].close > zoneHigh }
+            if (!invalidated && current.high >= zoneLow && current.low <= zoneHigh &&
+                current.close <= zoneHigh) return true
         }
     }
     return false
@@ -96,7 +104,8 @@ fun hasTradeIdeaSmcFvgRetest(candles: List<V2Candle>, side: String, lookback: In
 
 /**
  * Find an opposing candle followed by an ATR-sized displacement through its
- * far edge, then require the current candle to revisit that candle's body zone.
+ * far edge, then require a revisit of its body. A close through the far edge
+ * after displacement invalidates the block; wick mitigation alone does not.
  */
 fun hasTradeIdeaSmcOrderBlockRetest(
     candles: List<V2Candle>,
@@ -108,20 +117,23 @@ fun hasTradeIdeaSmcOrderBlockRetest(
         !atr.isFinite() || atr <= 0.0 || lookback < 3) return false
     val current = candles.last()
     val start = (candles.size - lookback - 1).coerceAtLeast(0)
-    for (i in start until candles.lastIndex - 1) {
+    for (i in candles.lastIndex - 2 downTo start) {
         val block = candles[i]
         val opposing = if (side == "LONG") block.close < block.open else block.close > block.open
         if (!opposing) continue
-        val displacement = (i + 1 until candles.lastIndex).any { j ->
+        val zoneLow = min(block.open, block.close)
+        val zoneHigh = max(block.open, block.close)
+        val displacementIndex = (i + 1 until candles.lastIndex).firstOrNull { j ->
             val candle = candles[j]
             val body = abs(candle.close - candle.open)
             if (side == "LONG") candle.close > block.high && body >= atr * 0.8
             else candle.close < block.low && body >= atr * 0.8
+        } ?: continue
+        val invalidated = (displacementIndex + 1 until candles.lastIndex).any { j ->
+            if (side == "LONG") candles[j].close < zoneLow else candles[j].close > zoneHigh
         }
-        if (!displacement) continue
-        val zoneLow = min(block.open, block.close)
-        val zoneHigh = max(block.open, block.close)
-        if (current.low <= zoneHigh && current.high >= zoneLow) return true
+        if (!invalidated && current.low <= zoneHigh && current.high >= zoneLow &&
+            (if (side == "LONG") current.close >= zoneLow else current.close <= zoneHigh)) return true
     }
     return false
 }
