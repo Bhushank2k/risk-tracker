@@ -9,7 +9,8 @@ internal data class StoredSignalReplayReport(
     val replayedSignals: Int,
     val missingHistorySignals: Int,
     val trades: List<ReplayTradeResult>,
-    val summary: ReplaySummary
+    val summary: ReplaySummary,
+    val performance: StoredSignalPerformanceAnalytics
 )
 
 internal object StoredSignalReplayRunner {
@@ -55,7 +56,8 @@ internal object StoredSignalReplayRunner {
             replayedSignals = results.count { it.outcome != ReplayOutcome.INVALID },
             missingHistorySignals = missingHistory,
             trades = results,
-            summary = HistoricalSignalReplay.summarize(results)
+            summary = HistoricalSignalReplay.summarize(results),
+            performance = StoredSignalPerformanceAnalyzer.analyze(snapshots, results)
         )
     }
 }

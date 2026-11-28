@@ -106,6 +106,15 @@ fun StoredSignalReplayScreen() {
                     }
                 }
             }
+            Text("Performance by cohort", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${data.performance.evaluatedTrades} entered outcomes with a non-zero realized result. Cohorts below 30 samples are directional only; no confidence claim is made.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            PerformanceCohortSection("Strategy / setup", data.performance.bySetup)
+            PerformanceCohortSection("Signal timeframe", data.performance.byHorizon)
+            PerformanceCohortSection("Signal score band", data.performance.byScoreBand)
             Text("Recent replay outcomes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val visible = data.trades.asReversed().take(50)
             if (visible.isEmpty()) {
@@ -130,6 +139,38 @@ fun StoredSignalReplayScreen() {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceCohortSection(title: String, rows: List<StoredSignalPerformanceRow>) {
+    if (rows.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        rows.take(6).forEach { row ->
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(row.dimension, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("${row.samples} samples", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Metric("Win rate", "${"%.1f".format(Locale.US, row.winRatePct)}%")
+                        Metric("Expectancy", "${signed(row.expectancyNetR)} R")
+                        Metric("Profit factor", row.profitFactor?.let {
+                            if (it.isInfinite()) "∞" else "%.2f".format(Locale.US, it)
+                        } ?: "—")
+                        Metric("Max DD", "${"%.2f".format(Locale.US, row.maxDrawdownR)} R")
+                    }
+                    Text(
+                        if (row.hasMinimumSample) "30+ samples · historical estimate" else "Small sample · build to 30+ before relying on this rate",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
