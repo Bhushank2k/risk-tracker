@@ -61,7 +61,7 @@ data class ScannerSignalSnapshot(
         const val CURRENT_SCHEMA_VERSION = 1
         const val DEFAULT_STRATEGY_VERSION = "advanced-smc-v1"
 
-        fun from(signal: AdvancedSMCSignal, capturedAt: Long): ScannerSignalSnapshot {
+        internal fun from(signal: AdvancedSMCSignal, capturedAt: Long): ScannerSignalSnapshot {
             val id = "${signal.id}_${signal.detectedAt}"
             return ScannerSignalSnapshot(
                 snapshotId = id,
