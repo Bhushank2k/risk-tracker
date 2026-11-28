@@ -4,7 +4,9 @@ import kotlin.math.abs
 import kotlin.math.ln1p
 
 /** Bounded work sizes for the all-market Quick Scan pipeline. */
-internal const val QUICK_SCAN_DEEP_SCAN_CONCURRENCY = 4
+internal const val QUICK_SCAN_DEEP_SCAN_CONCURRENCY = 8
+internal const val QUICK_SCAN_CANDLE_FETCH_CONCURRENCY = 8
+internal const val QUICK_SCAN_CANDLE_REQUEST_INTERVAL_MS = 150L
 internal const val QUICK_SCAN_DEPTH_BATCH_SIZE = 150
 
 /**
