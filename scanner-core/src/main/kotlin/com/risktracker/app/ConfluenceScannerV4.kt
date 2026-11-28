@@ -237,7 +237,15 @@ import kotlin.math.min
             )
             // SMC is additive supporting confluence only: it never bypasses a hard safety gate.
             val smc = evaluateTradeIdeaSmc(setupCandles, s.side, atr)
-            val score = (baseScore + smc.points).coerceAtMost(100)
+            val volatilityExpansionRatio = if (baselineAtr > 0.0) atr / baselineAtr else Double.NaN
+            val quality = applyConfluenceScoreQualityCaps(
+                rawScore = baseScore + smc.points,
+                btcContextAvailable = btcContextAvailable,
+                adxAvailable = directional != null,
+                btcAgainst = btcAgainst,
+                volatilityExpansionRatio = volatilityExpansionRatio
+            )
+            val score = quality.score
             val blocks=mutableListOf<String>()
             if(!liquid)blocks.add("spread/depth"); if(!geometry)blocks.add("stop geometry"); if(!rr)blocks.add("2R net R:R")
             if(!fundingOk)blocks.add(if(fundingUnavailable)"funding data unavailable" else "adverse funding"); if(!volatility)blocks.add("ATR%"); if(!extended)blocks.add("extended entry")
@@ -288,6 +296,7 @@ import kotlin.math.min
                 )),
                 "Confluence score "+score+"/100: regime 15 · setup structure 25 · ${executionLabel} entry 15 · volume 10 · RSI momentum 10 · liquidity 10 · BTC ${if (btcContextAvailable) 5 else 0} · stop geometry 5 · ADX/DI 5",
                 "SMC confluence +${smc.points}/10: "+smc.explanation,
+                if (quality.appliedCaps.isEmpty()) "Signal confidence guardrails: no score caps applied" else "Signal confidence guardrails: " + quality.appliedCaps.joinToString("; "),
                 "Sequential signal lifecycle: "+sequential.reason,
                 "${bias1Label} swing structure: "+h1Structure+" · ${bias2Label}: "+(if(up4)"Bullish" else if(dn4)"Bearish" else "Neutral")+(if(structureConfirmed)" (aligned)" else " (review required)"),
                 if(liquiditySweep)"15M liquidity sweep and reclaim detected (supporting evidence; not a standalone trigger)" else "No confirmed 15M liquidity sweep/reclaim (not required for trend continuation)",
