@@ -62,4 +62,41 @@ class ConfluenceSmcConfluenceTest {
         assertTrue(evaluateTradeIdeaSmc(bars, "LONG", 1.0).premiumDiscountAligned)
         assertFalse(evaluateTradeIdeaSmc(bars, "SHORT", 1.0).premiumDiscountAligned)
     }
+
+    @Test fun bullishFvgRetestIsRejectedAfterAClosingInvalidation() {
+        val bars = listOf(
+            candle(10.0,11.0,9.0,10.5,1),
+            candle(10.5,12.0,10.2,11.8,2),
+            candle(11.8,13.0,11.5,12.8,3),
+            candle(10.8,11.2,10.5,10.7,4),
+            candle(11.1,11.6,10.9,11.2,5)
+        )
+        assertFalse(hasTradeIdeaSmcFvgRetest(bars, "LONG"))
+    }
+
+    @Test fun orderBlockRetestRequiresAnUninvalidatedDisplacementZone() {
+        val valid = listOf(
+            candle(10.0,10.5,8.0,9.0,1),
+            candle(10.6,12.2,10.5,12.0,2),
+            candle(11.8,12.1,10.8,11.2,3),
+            candle(10.2,10.4,9.2,10.1,4)
+        )
+        val invalidated = listOf(
+            valid[0], valid[1], candle(9.2,9.5,8.7,8.9,3), valid[3]
+        )
+        assertTrue(hasTradeIdeaSmcOrderBlockRetest(valid, "LONG", atr = 1.0))
+        assertFalse(hasTradeIdeaSmcOrderBlockRetest(invalidated, "LONG", atr = 1.0))
+    }
+
+    @Test fun bearishFvgRetestIsRejectedAfterAClosingInvalidation() {
+        val bars = listOf(
+            candle(13.0,14.0,12.0,13.5,1),
+            candle(12.5,13.0,11.0,11.2,2),
+            candle(11.2,11.5,9.0,9.2,3),
+            candle(12.2,12.5,11.8,12.3,4),
+            candle(11.0,11.3,10.5,10.8,5)
+        )
+        assertFalse(hasTradeIdeaSmcFvgRetest(bars, "SHORT"))
+    }
+
 }
