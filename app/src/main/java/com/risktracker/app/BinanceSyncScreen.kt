@@ -153,6 +153,10 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
     var historyEnd by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
     var historyPreview by remember { mutableStateOf<List<BinanceJournalFill>?>(null) }
     var historyBusy by remember { mutableStateOf(false) }
+    val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false; timeZone = TimeZone.getTimeZone("UTC") } }
+    var incomeBackfillStart by remember { mutableStateOf(utcDateFormat.format(Date(System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000))) }
+    var incomeBackfillEnd by remember { mutableStateOf(utcDateFormat.format(Date())) }
+    var incomeBackfillBusy by remember { mutableStateOf(false) }
     var fillCsvMarket by remember { mutableStateOf("USDⓈ-M Futures") }
     var fillCsvPreview by remember { mutableStateOf<BinanceFillCsvReport?>(null) }
     var fillCsvBusy by remember { mutableStateOf(false) }
@@ -398,6 +402,52 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                 Text("Yearly Futures history", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("Calendar-year totals (Jan–Dec). The Crypto Tax Report uses Indian financial years (1 April–31 March) and a separate trade-history dataset.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Historical daily P&L backfill (API availability: up to 90 days)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(incomeBackfillStart, { incomeBackfillStart = it }, label = { Text("From (UTC date)") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedTextField(incomeBackfillEnd, { incomeBackfillEnd = it }, label = { Text("To (UTC date)") }, modifier = Modifier.weight(1f), singleLine = true)
+                }
+                Text("This fetches Futures income components (realized P&L, commissions, funding and insurance adjustments) for the selected inclusive date range. It preserves Spot history and existing dates. Older periods require official Binance export/CSV import.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(
+                    enabled = !incomeBackfillBusy && !busy,
+                    onClick = {
+                        val credentialsNow = credentials.read()
+                        if (credentialsNow == null) {
+                            status = "Save Binance read-only API credentials first."
+                        } else {
+                            try {
+                                val start = utcDateFormat.parse(incomeBackfillStart.trim())?.time
+                                    ?: error("Enter a valid start date in YYYY-MM-DD format.")
+                                val endDay = utcDateFormat.parse(incomeBackfillEnd.trim())?.time
+                                    ?: error("Enter a valid end date in YYYY-MM-DD format.")
+                                val end = endDay + 24L * 60 * 60 * 1000 - 1
+                                require(start <= end) { "Start date must be on or before end date." }
+                                require(end - start <= 90L * 24 * 60 * 60 * 1000) {
+                                    "Choose a range of 90 days or less. Older history requires Binance exports."
+                                }
+                                incomeBackfillBusy = true
+                                status = "Backfilling historical Futures income…"
+                                scope.launch {
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            BinanceSyncRunner.syncHistoricalFuturesIncome(context, start, end)
+                                        }
+                                        rows = BinanceSyncData.load(context)
+                                        lastSync = BinanceSyncData.lastSync(context)
+                                        onSynced()
+                                        status = "Historical Futures income backfill completed. Calendar history was updated for the selected range."
+                                    } catch (e: Exception) {
+                                        status = AppErrorMessage.from(e, "Historical backfill failed. Check API access and date range.")
+                                    } finally { incomeBackfillBusy = false }
+                                }
+                            } catch (e: Exception) {
+                                status = AppErrorMessage.from(e, "Invalid historical date range.")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (incomeBackfillBusy) "Backfilling…" else "Backfill selected dates") }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { yearMenuExpanded = true }, modifier = Modifier.weight(1f)) {
                         Text("Year: $selectedYear")
