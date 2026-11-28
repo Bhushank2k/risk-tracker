@@ -5,6 +5,25 @@ import org.junit.Test
 
 class BinanceSyncStatusTest {
     @Test
+    fun historicalIncomeRangeAllowsUpToNinetyDays() {
+        val day = 24L * 60 * 60 * 1000
+        validateBinanceIncomeRange(100L, 100L + 90L * day)
+    }
+
+    @Test
+    fun historicalIncomeRangeRejectsMoreThanNinetyDays() {
+        val day = 24L * 60 * 60 * 1000
+        val error = runCatching { validateBinanceIncomeRange(100L, 100L + 90L * day + 1L) }.exceptionOrNull()
+        assertEquals(true, error is IllegalArgumentException)
+    }
+
+    @Test
+    fun historicalIncomeRangeRejectsReversedAndNonPositiveDates() {
+        assertEquals(true, runCatching { validateBinanceIncomeRange(200L, 100L) }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(true, runCatching { validateBinanceIncomeRange(0L, 100L) }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
     fun successfulSyncIsExplicitlyWindowBounded() {
         assertEquals("Synced (last 7 days)", classifyBinanceSyncState(
             success = true,
