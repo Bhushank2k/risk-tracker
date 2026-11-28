@@ -7,7 +7,9 @@ internal data class AdvancedSMCSignal(
     val id: String, val symbol: String, val side: String, val signalType: String, val horizon: String,
     val score: Int, val status: String, val entryLow: Double, val entryHigh: Double, val stop: Double,
     val target1: Double, val target2: Double, val rewardRisk: Double, val explanation: String,
-    val confirmation: String, val detectedAt: Long
+    val confirmation: String, val detectedAt: Long,
+    val btcBias: String? = null, val adx: Double? = null, val atrPct: Double? = null,
+    val relativeVolume: Double? = null, val fundingRate: Double? = null
 )
 
 /** Candle-derived pattern detection; not proof of institutional orders or guaranteed outcomes. */
