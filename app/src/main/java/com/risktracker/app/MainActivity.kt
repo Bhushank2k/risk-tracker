@@ -110,6 +110,7 @@ private fun pageIcon(destination: Int): ImageVector = when (destination) {
     36 -> Icons.Filled.ShowChart
     37 -> Icons.Filled.Security
     38 -> Icons.Filled.AccountBalanceWallet
+    39 -> Icons.Filled.ShowChart
     else -> Icons.Filled.Apps
 }
 
@@ -276,6 +277,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 36 -> "Trading Intelligence"
                 37 -> "Daily Target & Risk"
                 38 -> "India Business Tax Center"
+                39 -> "Stored Signal Replay"
                 else -> "Explore"
             }
 
@@ -469,6 +471,7 @@ fun App(store: Store, themeMode: String, onThemeModeChange: (String) -> Unit) {
                 36 -> TradingIntelligenceScreen(entries, trades, importedPnl, store.maxDailyLoss)
                 37 -> DailyTargetRiskScreen(entries, trades, exchangeFills)
                 38 -> IndiaBusinessTaxCenterScreen(CryptoTaxHistory.load(context), onNavigate = { tab = it })
+                39 -> StoredSignalReplayScreen()
                 else -> MoreScreen(store, entries, trades, themeMode, onThemeModeChange,
                     onRestore = { pair ->
                         entries = pair.first
