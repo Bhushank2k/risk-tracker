@@ -37,9 +37,32 @@ object SMCScanStateStore {
                 .put("displacement", s.displacement).put("zoneDescription", s.zoneDescription)
                 .put("location", s.location))
         }
+        val capturedAt = System.currentTimeMillis()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("setups", rows.toString())
-            .putLong("resultsAt", System.currentTimeMillis()).apply()
+            .putLong("resultsAt", capturedAt).apply()
+        CoreScannerEmissionSnapshotStore.append(context, setups.map { setup ->
+            CoreScannerEmissionSnapshot(
+                snapshotId = setup.id,
+                signalId = setup.id,
+                symbol = setup.symbol,
+                side = setup.side,
+                timeframe = setup.horizon,
+                score = setup.score,
+                status = setup.status,
+                entryLow = setup.entryLow,
+                entryHigh = setup.entryHigh,
+                stop = setup.stop,
+                target = setup.target,
+                rewardRisk = setup.rewardRisk,
+                structure = setup.structure,
+                sweep = setup.sweep,
+                displacement = setup.displacement,
+                zoneDescription = setup.zoneDescription,
+                location = setup.location,
+                capturedAt = capturedAt
+            )
+        })
     }
 
     internal fun loadResults(context: Context): List<SMCTradeSetup> {
