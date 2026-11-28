@@ -79,10 +79,11 @@ class ConfluenceSmcConfluenceTest {
             candle(10.0,10.5,8.0,9.0,1),
             candle(10.6,12.2,10.5,12.0,2),
             candle(11.8,12.1,10.8,11.2,3),
-            candle(10.2,10.4,9.2,10.1,4)
+            candle(11.0,11.3,10.5,10.8,4),
+            candle(10.2,10.4,9.2,10.1,5)
         )
         val invalidated = listOf(
-            valid[0], valid[1], candle(9.2,9.5,8.7,8.9,3), valid[3]
+            valid[0], valid[1], candle(9.2,9.5,8.7,8.9,3), valid[3], valid[4]
         )
         assertTrue(hasTradeIdeaSmcOrderBlockRetest(valid, "LONG", atr = 1.0))
         assertFalse(hasTradeIdeaSmcOrderBlockRetest(invalidated, "LONG", atr = 1.0))
