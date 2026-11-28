@@ -22,12 +22,29 @@ internal object AdvancedSMCSignalEngine {
         if (!livePrice.isFinite() || livePrice <= 0.0 || rows.size < 45 || execution.size < 20) return emptyList()
         val atr = rows.zipWithNext { p, c -> maxOf(c.high-c.low, abs(c.high-p.close), abs(c.low-p.close)) }.takeLast(14).average()
         if (!atr.isFinite() || atr <= 0.0) return emptyList()
+        val adx = ScannerCalculationCore.directionalStrength(
+            rows.map { it.high }, rows.map { it.low }, rows.map { it.close }
+        )?.adx
+        val averageVolume = ScannerCalculationCore.averageVolume(rows.map { it.volume }, 20, excludeLast = true)
+        val relativeVolume = averageVolume?.let { rows.last().volume / it }?.takeIf { it.isFinite() }
+        val atrPct = (atr / rows.last().close * 100.0).takeIf { it.isFinite() }
+        val btcCloses = benchmark.map { it.close }
+        val btcFast = ScannerCalculationCore.ema(btcCloses, 20)
+        val btcSlow = ScannerCalculationCore.ema(btcCloses, 50)
+        val btcBias = if (btcFast != null && btcSlow != null) when {
+            btcFast > btcSlow -> "Bullish"
+            btcFast < btcSlow -> "Bearish"
+            else -> "Neutral"
+        } else null
         return listOfNotNull(
             ifvg(symbol, livePrice, rows, execution, atr, horizon),
             breaker(symbol, livePrice, rows, execution, atr, horizon),
             smt(symbol, livePrice, rows, benchmark, atr, horizon),
             sessionRaid(symbol, livePrice, rows, atr, horizon)
-        ).distinctBy { it.signalType }.sortedByDescending { it.score }
+        ).distinctBy { it.signalType }.map { signal ->
+            signal.copy(btcBias = btcBias, adx = adx, atrPct = atrPct,
+                relativeVolume = relativeVolume, fundingRate = null)
+        }.sortedByDescending { it.score }
     }
 
     private fun ifvg(symbol: String, price: Double, r: List<AdvancedSMCCandle>, x: List<AdvancedSMCCandle>, atr: Double, h: String): AdvancedSMCSignal? {
