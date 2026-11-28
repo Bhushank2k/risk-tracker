@@ -122,3 +122,29 @@ fun isRecognizedBtcShock(value: String?): Boolean = value in setOf("Bullish", "B
 /** Minimum relative volume required on the execution candle for this setup family. */
  fun confluenceExecutionVolumeThreshold(setup: String): Double =
     if (setup.contains("breakout", ignoreCase = true)) 1.20 else 0.90
+
+
+/** Confidence guardrails lower scores when independent context is missing or market conditions are hostile. */
+data class ConfluenceScoreQualityResult(val score: Int, val appliedCaps: List<String>)
+
+fun applyConfluenceScoreQualityCaps(
+    rawScore: Int,
+    btcContextAvailable: Boolean,
+    adxAvailable: Boolean,
+    btcAgainst: Boolean,
+    volatilityExpansionRatio: Double?
+): ConfluenceScoreQualityResult {
+    val caps = mutableListOf<Pair<Int, String>>()
+    if (!btcContextAvailable) caps += 82 to "BTC market context unavailable · score capped at 82"
+    if (!adxAvailable) caps += 78 to "ADX/DI context unavailable · score capped at 78"
+    if (btcAgainst) caps += 75 to "BTC direction is a headwind · score capped at 75"
+    when {
+        volatilityExpansionRatio == null || !volatilityExpansionRatio.isFinite() || volatilityExpansionRatio <= 0.0 ->
+            caps += 70 to "ATR comparison unavailable · score capped at 70"
+        volatilityExpansionRatio > 1.8 -> caps += 60 to "Volatility expanded beyond 1.8× · score capped at 60"
+        volatilityExpansionRatio > 1.5 -> caps += 78 to "Volatility expansion above 1.5× · score capped at 78"
+    }
+    val cap = caps.minOfOrNull { it.first } ?: 100
+    val score = rawScore.coerceIn(0, 100).coerceAtMost(cap)
+    return ConfluenceScoreQualityResult(score, caps.filter { rawScore > it.first }.map { it.second })
+}
