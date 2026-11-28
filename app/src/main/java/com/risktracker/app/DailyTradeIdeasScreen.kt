@@ -179,7 +179,16 @@ internal object TradeIdeaCache {
     }.getOrNull()
 
     fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
- main
+        // Persist immutable plan snapshots and the post-signal candle history for offline replay.
+        runCatching {
+            ConfluenceV4PlanSnapshotStore.append(
+                context,
+                ideas.map { ConfluenceV4PlanSnapshot.from(it, updatedAt) }
+            )
+        }
+        runCatching {
+            BinanceMarketScanner.persistReplayCandleHistory(context, ideas.map { it.symbol }.toSet() + "BTCUSDT")
+        }
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
