@@ -179,8 +179,7 @@ internal object TradeIdeaCache {
     }.getOrNull()
 
     fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
-        // Persist immutable V2TradePlan-derived research snapshots alongside the latest scan cache.
-        runCatching { ConfluenceV4PlanSnapshotStore.append(context, ideas.map { ConfluenceV4PlanSnapshot.from(it, updatedAt) }) }
+ main
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
@@ -498,6 +497,25 @@ internal object BinanceMarketScanner {
                 rows
             }
         }
+    }
+
+    /** Persist the freshest in-memory candle window for emitted-signal symbols only. */
+    internal fun persistReplayCandleHistory(context: android.content.Context, symbols: Set<String>) {
+        if (symbols.isEmpty()) return
+        val intervalMs = mapOf("1m" to 60_000L, "5m" to 300_000L, "15m" to 900_000L,
+            "1h" to 3_600_000L, "4h" to 14_400_000L, "1d" to 86_400_000L)
+        val selected = candleCache.entries.mapNotNull { (key, cached) ->
+            val parts = key.split("|")
+            if (parts.size != 3 || parts[0] !in symbols || parts[1] !in intervalMs) return@mapNotNull null
+            Triple(parts[0] to parts[1], cached.fetchedAt, cached.rows)
+        }.groupBy { it.first }.values.mapNotNull { entries -> entries.maxByOrNull { it.second } }
+        val records = selected.flatMap { (series, _, rows) ->
+            val duration = intervalMs.getValue(series.second)
+            rows.map { candle ->
+                HistoricalMarketCandle.from(series.first, series.second, candle, candle.closeTime - duration + 1L)
+            }
+        }
+        HistoricalMarketCandleStore.append(context, records)
     }
 
     private fun ema(v: List<Double>, p: Int): Double? {

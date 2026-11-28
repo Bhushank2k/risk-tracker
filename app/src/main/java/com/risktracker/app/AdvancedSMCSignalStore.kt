@@ -35,6 +35,7 @@ internal object AdvancedSMCSignalStore {
                 .put("confirmation", s.confirmation).put("detectedAt", s.detectedAt))
         }
         val capturedAt = System.currentTimeMillis()
+        runCatching { BinanceMarketScanner.persistReplayCandleHistory(context, signals.map { it.symbol }.toSet() + "BTCUSDT") }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("signals", rows.toString()).putLong("resultsAt", capturedAt).apply()
 
