@@ -87,14 +87,14 @@ object HistoricalSignalReplay {
         var outcome: ReplayOutcome? = null
         var note = ""
 
-        for ((index, bar) in bars.withIndex()) {
-            held = index + 1
+        for (bar in bars) {
             if (!entered) {
                 val entryTouched = if (long) bar.low <= signal.entry else bar.high >= signal.entry
                 if (!entryTouched) continue
                 entered = true
                 entryTime = bar.openTime
             }
+            held += 1
 
             val stopHit = if (long) bar.low <= signal.stop else bar.high >= signal.stop
             val tp1HitNow = if (long) bar.high >= signal.target1 else bar.low <= signal.target1
