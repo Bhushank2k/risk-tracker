@@ -1,8 +1,5 @@
 package com.risktracker.app
 
-import kotlin.math.max
-import kotlin.math.min
-
 /** Immutable signal snapshot for deterministic, offline replay. No exchange/order APIs are used. */
 data class ReplaySignal(
     val id: String,
