@@ -48,6 +48,16 @@ data class BinanceFuturesAccountBalance(
 )
 data class BinanceLiveTrade(val id: String, val symbol: String, val market: String, val side: String, val quantity: Double, val entryPrice: Double, val markPrice: Double, val unrealizedPnl: Double, val leverage: Int, val liquidationPrice: Double, val status: String)
 
+internal const val BINANCE_INCOME_MAX_RANGE_MILLIS = 90L * 24 * 60 * 60 * 1000
+
+/** Validates a bounded historical income request before network calls or persistence. */
+internal fun validateBinanceIncomeRange(startTime: Long, endTime: Long) {
+    require(startTime > 0L && endTime >= startTime) { "Income history range is invalid." }
+    require(endTime - startTime <= BINANCE_INCOME_MAX_RANGE_MILLIS) {
+        "Binance Futures income API supports at most a 90-day range per sync. Import an official export for older history."
+    }
+}
+
 data class BinanceDailyResult(
     val date: String,
     val spotPnl: Double,
@@ -579,10 +589,7 @@ class BinanceApi(private val apiKey: String, private val secret: String) {
         startTime: Long = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000,
         endTime: Long = System.currentTimeMillis()
     ): Map<String, Map<String, Double>> {
-        require(startTime > 0L && endTime >= startTime) { "Income history range is invalid." }
-        require(endTime - startTime <= 90L * 24 * 60 * 60 * 1000) {
-            "Binance Futures income API supports at most a 90-day range per sync. Import an official export for older history."
-        }
+        validateBinanceIncomeRange(startTime, endTime)
         val daily = mutableMapOf<String, MutableMap<String, Double>>()
         val includedTypes = setOf("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "INSURANCE_CLEAR")
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
