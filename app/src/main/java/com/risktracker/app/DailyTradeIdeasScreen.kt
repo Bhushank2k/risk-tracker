@@ -179,7 +179,7 @@ internal object TradeIdeaCache {
     }.getOrNull()
 
     fun save(context: android.content.Context, updatedAt: Long, ideas: List<TradeIdea>) {
-        runCatching { BinanceMarketScanner.persistReplayCandleHistory(context, ideas.map { it.symbol }.toSet() + "BTCUSDT") }
+ main
         runCatching {
             val rows = JSONArray()
             ideas.forEach { idea ->
