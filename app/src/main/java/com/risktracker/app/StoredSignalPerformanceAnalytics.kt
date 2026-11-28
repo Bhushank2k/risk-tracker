@@ -18,6 +18,8 @@ internal data class StoredSignalPerformanceRow(
     }
 }
 
+internal data class StoredSignalPerformanceObservation(val time: Long, val netR: Double)
+
 internal data class StoredSignalPerformanceAnalytics(
     val bySetup: List<StoredSignalPerformanceRow>,
     val byHorizon: List<StoredSignalPerformanceRow>,
@@ -51,7 +53,7 @@ internal object StoredSignalPerformanceAnalyzer {
         }
         fun rows(key: (Sample) -> String): List<StoredSignalPerformanceRow> =
             samples.groupBy(key).map { (dimension, cohort) ->
-                summarize(dimension, cohort.sortedBy { it.time })
+                summarizeObservations(dimension, cohort.map { StoredSignalPerformanceObservation(it.time, it.netR) })
             }.sortedWith(compareByDescending<StoredSignalPerformanceRow> { it.samples }.thenBy { it.dimension })
 
         return StoredSignalPerformanceAnalytics(
@@ -68,8 +70,12 @@ internal object StoredSignalPerformanceAnalyzer {
         return if (lower == 100) "100" else "$lower–$upper"
     }
 
-    private fun summarize(dimension: String, samples: List<Sample>): StoredSignalPerformanceRow {
-        val values = samples.map { it.netR }
+    internal fun summarizeObservations(
+        dimension: String,
+        observations: List<StoredSignalPerformanceObservation>
+    ): StoredSignalPerformanceRow {
+        val values = observations.filter { it.netR.isFinite() }.sortedBy { it.time }.map { it.netR }
+        if (values.isEmpty()) return StoredSignalPerformanceRow(dimension, 0, 0, 0, 0.0, 0.0, null, 0.0)
         val wins = values.count { it > 0.0 }
         val losses = values.count { it < 0.0 }
         val grossWins = values.filter { it > 0.0 }.sum()
