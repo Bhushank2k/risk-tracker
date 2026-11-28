@@ -42,3 +42,8 @@ Before replacing a year's Futures values, the app stores a local pre-import snap
 ## Review and reconciliation
 
 Compare export periods, year, currency and income categories before treating totals as comparable. A matching year total is a total-level check, not proof of row-level completeness. Keep manual estimates visibly separate from exchange-reported values.
+
+
+## Explicit daily income backfill
+
+The Binance Sync screen includes a date-range backfill for USDⓈ-M Futures income. It requests the selected inclusive UTC dates using explicit `startTime` and `endTime`, paginates the response, and merges results into saved daily history without replacing Spot values or dates outside the selected range. The API backfill is capped at 90 days per request; older income must be recovered through official Binance exports and the existing CSV preview/import/recovery workflow. This is Futures income history only and does not claim account-wide historical Spot P&L or daily balance snapshots. A backfill that returns no rows cannot prove a date had no activity.
