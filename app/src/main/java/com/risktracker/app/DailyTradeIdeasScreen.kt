@@ -376,7 +376,7 @@ internal object BinanceMarketScanner {
     private data class CachedCandles(val fetchedAt: Long, val rows: List<ScanCandle>)
     private val candleCache = ConcurrentHashMap<String, CachedCandles>()
     private val candleKeyLocks = ConcurrentHashMap<String, Mutex>()
-    private val candleFetchSlots = Semaphore(4)
+    private val candleFetchSlots = Semaphore(QUICK_SCAN_CANDLE_FETCH_CONCURRENCY)
     private val candleRequestPacer = Mutex()
     @Volatile private var nextCandleRequestAtMs = 0L
 
@@ -499,7 +499,7 @@ internal object BinanceMarketScanner {
                 candleRequestPacer.withLock {
                     val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
                     if (waitMs > 0L) delay(waitMs)
-                    nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+                    nextCandleRequestAtMs = System.currentTimeMillis() + QUICK_SCAN_CANDLE_REQUEST_INTERVAL_MS
                 }
                 val rows = withContext(Dispatchers.IO) { candles(symbol, interval, limit) }
                 if (rows.isNotEmpty()) candleCache[key] = CachedCandles(System.currentTimeMillis(), rows)
@@ -568,7 +568,7 @@ internal object BinanceMarketScanner {
             candleRequestPacer.withLock {
                 val waitMs = nextCandleRequestAtMs - System.currentTimeMillis()
                 if (waitMs > 0L) delay(waitMs)
-                nextCandleRequestAtMs = System.currentTimeMillis() + 250L
+                nextCandleRequestAtMs = System.currentTimeMillis() + QUICK_SCAN_CANDLE_REQUEST_INTERVAL_MS
             }
             val rows = withContext(Dispatchers.IO) {
                 JSONArray(get("/futures/data/openInterestHist?symbol=$symbol&period=15m&limit=2"))
@@ -865,7 +865,7 @@ internal object BinanceMarketScanner {
         var completed = 0
         val failedSymbols = java.util.concurrent.atomic.AtomicInteger(0)
 
-        for (batch in universe.chunked(4)) {
+        for (batch in universe.chunked(QUICK_SCAN_DEEP_SCAN_CONCURRENCY)) {
             coroutineContext.ensureActive()
             val batchResults = coroutineScope {
                 batch.map { (symbol, _, snapshotLast) ->
