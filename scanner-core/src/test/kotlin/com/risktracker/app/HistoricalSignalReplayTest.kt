@@ -25,7 +25,7 @@ class HistoricalSignalReplayTest {
             ReplayCandle(2, 121.0, 108.0, 120.0)
         ))
         assertEquals(ReplayOutcome.TP2, result.outcome)
-        assertEquals(1.5, result.grossR, 0.00001) // 50% at 2R, 50% at 4R
+        assertEquals(3.0, result.grossR, 0.00001) // 50% at 2R, 50% at 4R
     }
 
     @Test fun tp1ThenOriginalStopOnRemainingPositionReturnsZeroGrossR() {
@@ -65,7 +65,7 @@ class HistoricalSignalReplayTest {
         val short = ReplaySignal("s2", "ETHUSDT", "SHORT", 0, 72, 100.0, 105.0, 90.0, 80.0, true)
         val result = HistoricalSignalReplay.replay(short, listOf(ReplayCandle(1, 91.0, 79.0, 85.0)))
         assertEquals(ReplayOutcome.TP2, result.outcome)
-        assertEquals(1.5, result.grossR, 0.00001)
+        assertEquals(3.0, result.grossR, 0.00001)
     }
 
     @Test fun summaryReportsScoreBandsAndSideStats() {
