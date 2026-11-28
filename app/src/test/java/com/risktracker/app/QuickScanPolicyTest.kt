@@ -26,8 +26,11 @@ class QuickScanPolicyTest {
     }
 
     @Test fun boundedConcurrencyAndDepthBatchStayWithinStreamCapacity() {
-        assertEquals(4, QUICK_SCAN_DEEP_SCAN_CONCURRENCY)
+        assertEquals(8, QUICK_SCAN_DEEP_SCAN_CONCURRENCY)
+        assertEquals(8, QUICK_SCAN_CANDLE_FETCH_CONCURRENCY)
+        assertEquals(150L, QUICK_SCAN_CANDLE_REQUEST_INTERVAL_MS)
         assertEquals(150, QUICK_SCAN_DEPTH_BATCH_SIZE)
+        assertTrue(QUICK_SCAN_DEEP_SCAN_CONCURRENCY <= QUICK_SCAN_CANDLE_FETCH_CONCURRENCY)
         assertTrue(QUICK_SCAN_DEEP_SCAN_CONCURRENCY <= QUICK_SCAN_DEPTH_BATCH_SIZE)
     }
 
