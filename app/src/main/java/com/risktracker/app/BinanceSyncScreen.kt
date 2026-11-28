@@ -54,6 +54,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 
 @Composable
@@ -154,7 +155,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
     var historyPreview by remember { mutableStateOf<List<BinanceJournalFill>?>(null) }
     var historyBusy by remember { mutableStateOf(false) }
     val utcDateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false; timeZone = TimeZone.getTimeZone("UTC") } }
-    var incomeBackfillStart by remember { mutableStateOf(utcDateFormat.format(Date(System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000))) }
+    var incomeBackfillStart by remember { mutableStateOf(utcDateFormat.format(Date(System.currentTimeMillis() - 89L * 24 * 60 * 60 * 1000))) }
     var incomeBackfillEnd by remember { mutableStateOf(utcDateFormat.format(Date())) }
     var incomeBackfillBusy by remember { mutableStateOf(false) }
     var fillCsvMarket by remember { mutableStateOf("USDⓈ-M Futures") }
@@ -421,7 +422,7 @@ fun BinanceSyncScreen(onSynced: () -> Unit, onJournalImported: () -> Unit = {}, 
                                     ?: error("Enter a valid start date in YYYY-MM-DD format.")
                                 val endDay = utcDateFormat.parse(incomeBackfillEnd.trim())?.time
                                     ?: error("Enter a valid end date in YYYY-MM-DD format.")
-                                val end = endDay + 24L * 60 * 60 * 1000 - 1
+                                val end = minOf(endDay + 24L * 60 * 60 * 1000 - 1, System.currentTimeMillis())
                                 require(start <= end) { "Start date must be on or before end date." }
                                 require(end - start <= 90L * 24 * 60 * 60 * 1000) {
                                     "Choose a range of 90 days or less. Older history requires Binance exports."
